@@ -1,21 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Agents - Snapper{% endblock %}
+{% block title %}Connect Your AI - Snapper{% endblock %}
 
 {% block header %}
 <header class="bg-white shadow">
     <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center">
             <div>
-                <h1 class="text-3xl font-bold tracking-tight text-gray-900">AI Agents</h1>
-                <p class="mt-1 text-sm text-gray-500">Register AI agent instances to apply custom rule sets (e.g., Claude Code, Cursor, Copilot)</p>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Connect Your AI</h1>
+                <p class="mt-1 text-sm text-gray-500">Tell Snapper which AI assistants you want to protect. We'll help you set up security rules for each one.</p>
             </div>
-            <button onclick="showRegisterModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700">
-                <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Register Agent
-            </button>
         </div>
     </div>
 </header>
@@ -23,89 +17,271 @@
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Filters -->
-    <div class="bg-white shadow rounded-lg p-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Status</label>
-                <select id="filter-status" onchange="loadAgents()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
-                    <option value="">All</option>
-                    <option value="active">Active</option>
-                    <option value="pending">Pending</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="quarantined">Quarantined</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Trust Level</label>
-                <select id="filter-trust" onchange="loadAgents()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
-                    <option value="">All</option>
-                    <option value="untrusted">Untrusted</option>
-                    <option value="limited">Limited</option>
-                    <option value="standard">Standard</option>
-                    <option value="elevated">Elevated</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Search</label>
-                <input type="text" id="filter-search" onkeyup="debounceSearch()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="Search agents...">
+    <!-- Getting Started Banner -->
+    <div id="getting-started" class="bg-gradient-to-r from-primary-600 to-primary-700 rounded-lg shadow-lg overflow-hidden">
+        <div class="px-6 py-6">
+            <div class="flex items-start space-x-4">
+                <div class="flex-shrink-0">
+                    <div class="h-12 w-12 bg-white/20 rounded-full flex items-center justify-center">
+                        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-white">
+                    <h2 class="text-xl font-bold">Quick Start: Connect OpenClaw in 2 minutes</h2>
+                    <p class="mt-1 text-primary-100">OpenClaw is an AI coding assistant. Once connected, Snapper will control what it can access.</p>
+                    <button onclick="showOpenClawSetup()" class="mt-4 inline-flex items-center px-4 py-2 bg-white text-primary-700 font-medium rounded-md hover:bg-primary-50 transition-colors">
+                        <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Connect OpenClaw
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Agents Grid -->
-    <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="animate-pulse bg-white shadow rounded-lg p-6">
-            <div class="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div class="h-3 bg-gray-200 rounded w-1/2 mt-4"></div>
+    <!-- Connected AI Services -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Your Connected AI Services</h3>
+                <p class="text-sm text-gray-500">AI assistants that Snapper is protecting</p>
+            </div>
+            <button onclick="showRegisterModal()" class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Add Another AI
+            </button>
+        </div>
+        <div id="agents-list" class="divide-y divide-gray-200">
+            <div class="px-6 py-8 text-center text-gray-500">
+                <div class="animate-pulse">Loading...</div>
+            </div>
         </div>
     </div>
 
-    <!-- Pagination -->
-    <div id="pagination" class="flex justify-center space-x-2"></div>
+    <!-- Help Section -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">What AI services can I connect?</h3>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+                            <span class="text-xl">🦎</span>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">OpenClaw</h4>
+                            <p class="text-xs text-gray-500">AI coding assistant</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="h-10 w-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <span class="text-xl">🤖</span>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Claude Code</h4>
+                            <p class="text-xs text-gray-500">Anthropic's coding AI</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <span class="text-xl">✨</span>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Cursor</h4>
+                            <p class="text-xs text-gray-500">AI-powered code editor</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="h-10 w-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                            <span class="text-xl">🚀</span>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">GitHub Copilot</h4>
+                            <p class="text-xs text-gray-500">AI pair programmer</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <span class="text-xl">🔧</span>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Custom MCP Server</h4>
+                            <p class="text-xs text-gray-500">Any MCP-compatible AI</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="border border-dashed border-gray-300 rounded-lg p-4 flex items-center justify-center">
+                    <p class="text-sm text-gray-400">More coming soon...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Register Modal -->
+<!-- OpenClaw Setup Modal -->
+<div id="openclaw-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 transition-opacity" onclick="hideOpenClawSetup()">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+            <div class="bg-white px-6 pt-6 pb-4">
+                <div class="flex items-center space-x-4 mb-6">
+                    <div class="h-14 w-14 bg-green-100 rounded-xl flex items-center justify-center">
+                        <span class="text-3xl">🦎</span>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900">Connect OpenClaw</h3>
+                        <p class="text-sm text-gray-500">Let's get your AI assistant connected to Snapper</p>
+                    </div>
+                </div>
+
+                <!-- Step 1: Platform Selection -->
+                <div id="setup-step-1">
+                    <h4 class="font-medium text-gray-900 mb-3">Where is OpenClaw running?</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button onclick="selectPlatform('macos')" class="platform-btn flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left">
+                            <span class="text-2xl mr-3">🍎</span>
+                            <div>
+                                <p class="font-medium text-gray-900">macOS</p>
+                                <p class="text-xs text-gray-500">Running on your Mac</p>
+                            </div>
+                        </button>
+                        <button onclick="selectPlatform('linux')" class="platform-btn flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left">
+                            <span class="text-2xl mr-3">🐧</span>
+                            <div>
+                                <p class="font-medium text-gray-900">Linux / Ubuntu</p>
+                                <p class="text-xs text-gray-500">Local Linux machine</p>
+                            </div>
+                        </button>
+                        <button onclick="selectPlatform('digitalocean')" class="platform-btn flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left">
+                            <span class="text-2xl mr-3">🌊</span>
+                            <div>
+                                <p class="font-medium text-gray-900">DigitalOcean</p>
+                                <p class="text-xs text-gray-500">Droplet or App Platform</p>
+                            </div>
+                        </button>
+                        <button onclick="selectPlatform('hostinger')" class="platform-btn flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left">
+                            <span class="text-2xl mr-3">🏠</span>
+                            <div>
+                                <p class="font-medium text-gray-900">Hostinger VPS</p>
+                                <p class="text-xs text-gray-500">Hostinger virtual server</p>
+                            </div>
+                        </button>
+                        <button onclick="selectPlatform('aws')" class="platform-btn flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left">
+                            <span class="text-2xl mr-3">☁️</span>
+                            <div>
+                                <p class="font-medium text-gray-900">AWS / EC2</p>
+                                <p class="text-xs text-gray-500">Amazon cloud server</p>
+                            </div>
+                        </button>
+                        <button onclick="selectPlatform('docker')" class="platform-btn flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left">
+                            <span class="text-2xl mr-3">🐳</span>
+                            <div>
+                                <p class="font-medium text-gray-900">Docker</p>
+                                <p class="text-xs text-gray-500">Running in a container</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Instructions (hidden initially) -->
+                <div id="setup-step-2" class="hidden">
+                    <div class="flex items-center mb-4">
+                        <button onclick="backToStep1()" class="text-gray-500 hover:text-gray-700 mr-3">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <h4 class="font-medium text-gray-900">Setup Instructions for <span id="platform-name"></span></h4>
+                    </div>
+
+                    <div id="platform-instructions" class="bg-gray-50 rounded-lg p-4 mb-4">
+                        <!-- Instructions will be inserted here -->
+                    </div>
+
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                        <h5 class="font-medium text-green-800 mb-2">Your Snapper Connection Details</h5>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center justify-between bg-white rounded px-3 py-2">
+                                <span class="text-gray-600">Snapper URL:</span>
+                                <code id="snapper-url" class="text-green-700 font-mono">http://localhost:8000</code>
+                            </div>
+                            <div class="flex items-center justify-between bg-white rounded px-3 py-2">
+                                <span class="text-gray-600">Agent ID:</span>
+                                <code class="text-green-700 font-mono">openclaw-main</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-2 text-sm text-gray-600 mb-4">
+                        <input type="checkbox" id="setup-confirmed" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                        <label for="setup-confirmed">I've added the configuration to OpenClaw</label>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+                <button onclick="hideOpenClawSetup()" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+                    Cancel
+                </button>
+                <button id="setup-complete-btn" onclick="completeOpenClawSetup()" class="hidden px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700">
+                    Complete Setup
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Generic Register Modal -->
 <div id="register-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
         <div class="fixed inset-0 transition-opacity" onclick="hideRegisterModal()">
             <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
         </div>
         <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
             <form id="register-form" onsubmit="registerAgent(event)">
-                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Register New Agent</h3>
+                <div class="bg-white px-6 pt-6 pb-4">
+                    <h3 class="text-lg font-bold text-gray-900 mb-2">Connect Another AI Service</h3>
+                    <p class="text-sm text-gray-500 mb-4">Add any AI assistant that supports MCP (Model Context Protocol)</p>
+
                     <div class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Name</label>
-                            <input type="text" name="name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                            <input type="text" name="name" required placeholder="e.g., My Claude Code" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                            <p class="mt-1 text-xs text-gray-500">A friendly name to identify this AI</p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">External ID</label>
-                            <input type="text" name="external_id" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="my-coding-agent-001">
-                            <p class="mt-1 text-xs text-gray-500">Unique identifier for this AI agent instance</p>
+                            <label class="block text-sm font-medium text-gray-700">Agent ID</label>
+                            <input type="text" name="external_id" required placeholder="e.g., claude-code-laptop" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono">
+                            <p class="mt-1 text-xs text-gray-500">This ID will be used in your AI's configuration</p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">Description</label>
-                            <textarea name="description" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"></textarea>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Trust Level</label>
-                            <select name="trust_level" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
-                                <option value="untrusted">Untrusted (Default)</option>
-                                <option value="limited">Limited</option>
-                                <option value="standard">Standard</option>
-                                <option value="elevated">Elevated</option>
-                            </select>
+                            <label class="block text-sm font-medium text-gray-700">Description (optional)</label>
+                            <textarea name="description" rows="2" placeholder="e.g., Claude Code on my work laptop" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"></textarea>
                         </div>
                     </div>
                 </div>
-                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 sm:ml-3 sm:w-auto sm:text-sm">
-                        Register
-                    </button>
-                    <button type="button" onclick="hideRegisterModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                <div class="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+                    <button type="button" onclick="hideRegisterModal()" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
                         Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700">
+                        Add AI Service
                     </button>
                 </div>
             </form>
@@ -116,107 +292,279 @@
 
 {% block scripts %}
 <script>
-    let currentPage = 1;
-    let searchTimeout;
+    let selectedPlatform = null;
 
-    function debounceSearch() {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => loadAgents(), 300);
-    }
+    const platformInstructions = {
+        macos: {
+            name: 'macOS',
+            steps: `
+                <ol class="list-decimal list-inside space-y-3 text-sm text-gray-700">
+                    <li>Open <strong>Terminal</strong> on your Mac</li>
+                    <li>Open your OpenClaw config file:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">nano ~/.openclaw/config.yaml</pre>
+                    </li>
+                    <li>Add these lines to the config:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">snapper:
+  enabled: true
+  url: http://localhost:8000
+  agent_id: openclaw-main</pre>
+                    </li>
+                    <li>Save the file (Ctrl+O, then Ctrl+X)</li>
+                    <li>Restart OpenClaw</li>
+                </ol>
+            `
+        },
+        linux: {
+            name: 'Linux / Ubuntu',
+            steps: `
+                <ol class="list-decimal list-inside space-y-3 text-sm text-gray-700">
+                    <li>Open a terminal window</li>
+                    <li>Edit your OpenClaw config:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">nano ~/.openclaw/config.yaml</pre>
+                    </li>
+                    <li>Add the Snapper configuration:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">snapper:
+  enabled: true
+  url: http://localhost:8000
+  agent_id: openclaw-main</pre>
+                    </li>
+                    <li>Save and exit (Ctrl+O, Ctrl+X)</li>
+                    <li>Restart OpenClaw: <code class="bg-gray-200 px-1 rounded">systemctl restart openclaw</code></li>
+                </ol>
+            `
+        },
+        digitalocean: {
+            name: 'DigitalOcean',
+            steps: `
+                <ol class="list-decimal list-inside space-y-3 text-sm text-gray-700">
+                    <li>SSH into your Droplet:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">ssh root@your-droplet-ip</pre>
+                    </li>
+                    <li>Edit the OpenClaw config:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">nano /etc/openclaw/config.yaml</pre>
+                    </li>
+                    <li>Add Snapper configuration (use your Droplet's IP for the URL if Snapper is remote):
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">snapper:
+  enabled: true
+  url: http://YOUR_SNAPPER_IP:8000
+  agent_id: openclaw-main</pre>
+                    </li>
+                    <li>Restart: <code class="bg-gray-200 px-1 rounded">systemctl restart openclaw</code></li>
+                </ol>
+                <div class="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-800">
+                    <strong>Tip:</strong> Make sure port 8000 is open in your firewall if Snapper runs on a different server.
+                </div>
+            `
+        },
+        hostinger: {
+            name: 'Hostinger VPS',
+            steps: `
+                <ol class="list-decimal list-inside space-y-3 text-sm text-gray-700">
+                    <li>Log into your Hostinger VPS via SSH or the browser terminal</li>
+                    <li>Navigate to OpenClaw's config directory:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">cd /etc/openclaw</pre>
+                    </li>
+                    <li>Edit the config file:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">nano config.yaml</pre>
+                    </li>
+                    <li>Add:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">snapper:
+  enabled: true
+  url: http://YOUR_SNAPPER_IP:8000
+  agent_id: openclaw-main</pre>
+                    </li>
+                    <li>Restart OpenClaw</li>
+                </ol>
+            `
+        },
+        aws: {
+            name: 'AWS / EC2',
+            steps: `
+                <ol class="list-decimal list-inside space-y-3 text-sm text-gray-700">
+                    <li>SSH into your EC2 instance:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">ssh -i your-key.pem ec2-user@your-instance-ip</pre>
+                    </li>
+                    <li>Edit OpenClaw config:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">sudo nano /etc/openclaw/config.yaml</pre>
+                    </li>
+                    <li>Add Snapper settings:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">snapper:
+  enabled: true
+  url: http://YOUR_SNAPPER_IP:8000
+  agent_id: openclaw-main</pre>
+                    </li>
+                    <li>Restart: <code class="bg-gray-200 px-1 rounded">sudo systemctl restart openclaw</code></li>
+                </ol>
+                <div class="mt-3 p-3 bg-yellow-50 rounded-lg text-xs text-yellow-800">
+                    <strong>Security:</strong> Update your Security Group to allow inbound traffic on port 8000 from your Snapper server.
+                </div>
+            `
+        },
+        docker: {
+            name: 'Docker',
+            steps: `
+                <ol class="list-decimal list-inside space-y-3 text-sm text-gray-700">
+                    <li>Add environment variables to your Docker run command or docker-compose.yml:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">docker run -e SNAPPER_URL=http://host.docker.internal:8000 \\
+  -e SNAPPER_AGENT_ID=openclaw-main \\
+  -e SNAPPER_ENABLED=true \\
+  openclaw/openclaw</pre>
+                    </li>
+                    <li>Or in docker-compose.yml:
+                        <pre class="bg-gray-800 text-green-400 rounded p-2 mt-2 text-xs overflow-x-auto">services:
+  openclaw:
+    image: openclaw/openclaw
+    environment:
+      - SNAPPER_URL=http://host.docker.internal:8000
+      - SNAPPER_AGENT_ID=openclaw-main
+      - SNAPPER_ENABLED=true</pre>
+                    </li>
+                    <li>Restart your container</li>
+                </ol>
+                <div class="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-800">
+                    <strong>Note:</strong> Use <code>host.docker.internal</code> if Snapper runs on your host machine, or the actual IP/hostname if it's elsewhere.
+                </div>
+            `
+        }
+    };
 
-    async function loadAgents(page = 1) {
-        currentPage = page;
-        const status = document.getElementById('filter-status').value;
-        const trust = document.getElementById('filter-trust').value;
-        const search = document.getElementById('filter-search').value;
+    document.addEventListener('DOMContentLoaded', () => {
+        loadAgents();
 
-        let url = `/api/v1/agents?page=${page}&page_size=9`;
-        if (status) url += `&status=${status}`;
-        if (trust) url += `&trust_level=${trust}`;
-        if (search) url += `&search=${encodeURIComponent(search)}`;
+        // Show/hide complete button based on checkbox
+        document.getElementById('setup-confirmed')?.addEventListener('change', (e) => {
+            document.getElementById('setup-complete-btn').classList.toggle('hidden', !e.target.checked);
+        });
+    });
 
+    async function loadAgents() {
         try {
-            const response = await fetch(url);
+            const response = await fetch('/api/v1/agents?page_size=50');
             const data = await response.json();
             renderAgents(data.items);
-            renderPagination(data.page, data.pages);
+
+            // Hide getting started if OpenClaw is already connected
+            const hasOpenClaw = data.items.some(a => a.external_id === 'openclaw-main');
+            if (hasOpenClaw) {
+                document.getElementById('getting-started').classList.add('hidden');
+            }
         } catch (error) {
             console.error('Failed to load agents:', error);
         }
     }
 
     function renderAgents(agents) {
-        const container = document.getElementById('agents-grid');
+        const container = document.getElementById('agents-list');
 
         if (agents.length === 0) {
-            container.innerHTML = '<div class="col-span-full text-center text-gray-500 py-12">No agents found</div>';
+            container.innerHTML = `
+                <div class="px-6 py-12 text-center">
+                    <div class="text-4xl mb-4">🔌</div>
+                    <h4 class="text-lg font-medium text-gray-900 mb-2">No AI services connected yet</h4>
+                    <p class="text-gray-500 mb-4">Click "Connect OpenClaw" above to get started</p>
+                </div>
+            `;
             return;
         }
 
         container.innerHTML = agents.map(agent => `
-            <div class="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow">
-                <div class="flex items-start justify-between">
+            <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
+                <div class="flex items-center space-x-4">
+                    <div class="h-10 w-10 ${agent.status === 'active' ? 'bg-green-100' : 'bg-gray-100'} rounded-full flex items-center justify-center">
+                        ${agent.external_id.includes('openclaw') ? '🦎' : '🤖'}
+                    </div>
                     <div>
-                        <h3 class="text-lg font-medium text-gray-900">${agent.name}</h3>
-                        <p class="text-sm text-gray-500">${agent.external_id}</p>
-                    </div>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(agent.status)}">${agent.status}</span>
-                </div>
-                <div class="mt-4 space-y-2">
-                    <div class="flex items-center text-sm">
-                        <span class="text-gray-500">Trust Level:</span>
-                        <span class="ml-2 font-medium ${getTrustColor(agent.trust_level)}">${agent.trust_level}</span>
-                    </div>
-                    <div class="flex items-center text-sm">
-                        <span class="text-gray-500">Last seen:</span>
-                        <span class="ml-2">${agent.last_seen_at ? new Date(agent.last_seen_at).toLocaleString() : 'Never'}</span>
+                        <h4 class="font-medium text-gray-900">${agent.name}</h4>
+                        <p class="text-sm text-gray-500">ID: <code class="bg-gray-100 px-1 rounded">${agent.external_id}</code></p>
                     </div>
                 </div>
-                <div class="mt-4 flex space-x-2">
-                    <button onclick="viewAgent('${agent.id}')" class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        View
-                    </button>
-                    ${agent.status === 'active' ?
-                        `<button onclick="suspendAgent('${agent.id}')" class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100">Suspend</button>` :
-                        `<button onclick="activateAgent('${agent.id}')" class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-green-300 text-sm font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100">Activate</button>`
-                    }
+                <div class="flex items-center space-x-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        agent.status === 'active' ? 'bg-green-100 text-green-800' :
+                        agent.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                    }">
+                        ${agent.status === 'active' ? '● Connected' : agent.status === 'pending' ? '○ Pending' : agent.status}
+                    </span>
+                    <div class="flex space-x-2">
+                        ${agent.status === 'active' ?
+                            `<button onclick="suspendAgent('${agent.id}')" class="text-sm text-yellow-600 hover:text-yellow-700">Pause</button>` :
+                            `<button onclick="activateAgent('${agent.id}')" class="text-sm text-green-600 hover:text-green-700">Activate</button>`
+                        }
+                    </div>
                 </div>
             </div>
         `).join('');
     }
 
-    function getStatusColor(status) {
-        switch (status) {
-            case 'active': return 'bg-green-100 text-green-800';
-            case 'pending': return 'bg-yellow-100 text-yellow-800';
-            case 'suspended': return 'bg-orange-100 text-orange-800';
-            case 'quarantined': return 'bg-red-100 text-red-800';
-            default: return 'bg-gray-100 text-gray-800';
-        }
+    function showOpenClawSetup() {
+        document.getElementById('openclaw-modal').classList.remove('hidden');
+        document.getElementById('setup-step-1').classList.remove('hidden');
+        document.getElementById('setup-step-2').classList.add('hidden');
     }
 
-    function getTrustColor(level) {
-        switch (level) {
-            case 'untrusted': return 'text-red-600';
-            case 'limited': return 'text-orange-600';
-            case 'standard': return 'text-blue-600';
-            case 'elevated': return 'text-green-600';
-            default: return 'text-gray-600';
-        }
+    function hideOpenClawSetup() {
+        document.getElementById('openclaw-modal').classList.add('hidden');
     }
 
-    function renderPagination(current, total) {
-        const container = document.getElementById('pagination');
-        if (total <= 1) {
-            container.innerHTML = '';
-            return;
+    function selectPlatform(platform) {
+        selectedPlatform = platform;
+        const info = platformInstructions[platform];
+
+        document.getElementById('platform-name').textContent = info.name;
+        document.getElementById('platform-instructions').innerHTML = info.steps;
+
+        // Update Snapper URL based on platform
+        const snapperUrl = document.getElementById('snapper-url');
+        if (['digitalocean', 'hostinger', 'aws'].includes(platform)) {
+            snapperUrl.textContent = 'http://YOUR_SNAPPER_IP:8000';
+        } else if (platform === 'docker') {
+            snapperUrl.textContent = 'http://host.docker.internal:8000';
+        } else {
+            snapperUrl.textContent = 'http://localhost:8000';
         }
 
-        let html = '';
-        for (let i = 1; i <= total; i++) {
-            html += `<button onclick="loadAgents(${i})" class="px-3 py-1 rounded ${i === current ? 'bg-primary-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'}">${i}</button>`;
+        document.getElementById('setup-step-1').classList.add('hidden');
+        document.getElementById('setup-step-2').classList.remove('hidden');
+        document.getElementById('setup-complete-btn').classList.add('hidden');
+        document.getElementById('setup-confirmed').checked = false;
+    }
+
+    function backToStep1() {
+        document.getElementById('setup-step-1').classList.remove('hidden');
+        document.getElementById('setup-step-2').classList.add('hidden');
+    }
+
+    async function completeOpenClawSetup() {
+        try {
+            const response = await fetch('/api/v1/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: 'OpenClaw',
+                    external_id: 'openclaw-main',
+                    description: `OpenClaw instance (${platformInstructions[selectedPlatform].name})`,
+                    trust_level: 'standard',
+                    status: 'active'
+                })
+            });
+
+            if (response.ok) {
+                hideOpenClawSetup();
+                loadAgents();
+                showToast('OpenClaw connected successfully!', 'success');
+            } else {
+                const error = await response.json();
+                if (error.detail?.includes('already exists')) {
+                    showToast('OpenClaw is already connected', 'info');
+                    hideOpenClawSetup();
+                } else {
+                    showToast(error.detail || 'Failed to connect', 'error');
+                }
+            }
+        } catch (error) {
+            showToast('Connection failed', 'error');
         }
-        container.innerHTML = html;
     }
 
     function showRegisterModal() {
@@ -232,69 +580,59 @@
         const form = event.target;
         const formData = new FormData(form);
 
-        const agent = {
-            name: formData.get('name'),
-            external_id: formData.get('external_id'),
-            description: formData.get('description'),
-            trust_level: formData.get('trust_level'),
-            allowed_origins: [],
-            require_localhost_only: true
-        };
-
         try {
             const response = await fetch('/api/v1/agents', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(agent)
+                body: JSON.stringify({
+                    name: formData.get('name'),
+                    external_id: formData.get('external_id'),
+                    description: formData.get('description'),
+                    trust_level: 'standard'
+                })
             });
 
             if (response.ok) {
                 hideRegisterModal();
                 form.reset();
                 loadAgents();
+                showToast('AI service added!', 'success');
             } else {
                 const error = await response.json();
-                alert('Error: ' + (error.detail || 'Failed to register agent'));
+                showToast(error.detail || 'Failed to add', 'error');
             }
         } catch (error) {
-            console.error('Failed to register agent:', error);
-            alert('Failed to register agent');
+            showToast('Failed to add AI service', 'error');
         }
     }
 
-    async function viewAgent(id) {
-        // Could open a modal or navigate to detail page
-        alert('Agent details: ' + id);
-    }
-
     async function suspendAgent(id) {
-        if (!confirm('Are you sure you want to suspend this agent?')) return;
-
+        if (!confirm('Pause this AI service? Snapper will stop protecting it.')) return;
         try {
-            const response = await fetch(`/api/v1/agents/${id}/suspend`, { method: 'POST' });
-            if (response.ok) {
-                loadAgents(currentPage);
-            } else {
-                alert('Failed to suspend agent');
-            }
+            await fetch(`/api/v1/agents/${id}/suspend`, { method: 'POST' });
+            loadAgents();
         } catch (error) {
-            console.error('Failed to suspend agent:', error);
+            showToast('Failed to pause', 'error');
         }
     }
 
     async function activateAgent(id) {
         try {
-            const response = await fetch(`/api/v1/agents/${id}/activate`, { method: 'POST' });
-            if (response.ok) {
-                loadAgents(currentPage);
-            } else {
-                alert('Failed to activate agent');
-            }
+            await fetch(`/api/v1/agents/${id}/activate`, { method: 'POST' });
+            loadAgents();
         } catch (error) {
-            console.error('Failed to activate agent:', error);
+            showToast('Failed to activate', 'error');
         }
     }
 
-    document.addEventListener('DOMContentLoaded', () => loadAgents());
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+        toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
 </script>
 {% endblock %}
