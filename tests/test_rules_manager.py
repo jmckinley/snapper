@@ -262,18 +262,34 @@ class TestRuleEvaluation:
 
     @pytest.fixture(scope="class")
     def agent_id(self):
-        """Get existing test agent ID."""
-        response = httpx.get(f"{API_URL}/agents")
-        agents = response.json()["items"]
-        if agents:
-            return agents[0]["external_id"]
-        # Create one if none exists
+        """Create test agent with allow rules for safe commands."""
+        # Create agent
         agent_data = {
             "name": "Eval Test Agent",
             "external_id": f"eval-test-{int(time.time())}",
         }
         response = httpx.post(f"{API_URL}/agents", json=agent_data)
-        httpx.post(f"{API_URL}/agents/{response.json()['id']}/activate")
+        agent = response.json()
+        agent_uuid = agent["id"]
+
+        # Activate agent
+        httpx.post(f"{API_URL}/agents/{agent_uuid}/activate")
+
+        # Create allow rule for safe commands (ls, pwd, echo, etc.)
+        allow_rule = {
+            "agent_id": agent_uuid,
+            "rule_type": "command_allowlist",
+            "action": "allow",
+            "priority": 100,
+            "parameters": {
+                "patterns": ["^ls\\b", "^pwd$", "^echo\\b", "^cat\\b(?!.*\\.(env|pem|key))"]
+            },
+            "is_active": True,
+            "name": "Safe Commands Allow",
+            "description": "Allow basic safe commands",
+        }
+        httpx.post(f"{API_URL}/rules", json=allow_rule)
+
         return agent_data["external_id"]
 
     def evaluate(self, agent_id: str, request_type: str, **kwargs):
@@ -283,20 +299,19 @@ class TestRuleEvaluation:
         return response.json()
 
     def test_allow_safe_command(self, agent_id):
-        """RE-001: Allow safe command."""
+        """RE-001: Allow safe command when explicit allow rule exists."""
         result = self.evaluate(agent_id, "command", command="ls -la")
         assert result["decision"] == "allow"
 
     def test_allow_pwd_command(self, agent_id):
-        """RE-003: Allow pwd command."""
+        """RE-003: Allow pwd command when explicit allow rule exists."""
         result = self.evaluate(agent_id, "command", command="pwd")
         assert result["decision"] == "allow"
 
     def test_block_rm_rf_root(self, agent_id):
-        """RE-010: Block rm -rf /."""
+        """RE-010: Block rm -rf / (no allow rule, deny by default)."""
         result = self.evaluate(agent_id, "command", command="rm -rf /")
         assert result["decision"] == "deny"
-        assert "Dangerous Command" in result.get("matched_rule_name", "") or "deny" in result["reason"].lower()
 
     def test_block_rm_rf_home(self, agent_id):
         """RE-011: Block rm -rf ~."""

@@ -1,6 +1,4 @@
 # Snapper - Docker Compose Configuration
-version: "3.8"
-
 services:
   # FastAPI Application
   app:
