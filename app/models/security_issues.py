@@ -44,7 +44,7 @@ class SecurityIssue(Base):
     Security vulnerability or issue tracking.
 
     Tracks CVEs, security advisories, and other vulnerabilities
-    that may affect OpenClaw agents.
+    that may affect AI agents.
     """
 
     __tablename__ = "security_issues"

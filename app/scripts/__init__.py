@@ -1,1 +1,1 @@
-"""Scripts for OpenClaw Rules Manager."""
+"""Scripts for Snapper."""

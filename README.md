@@ -33,7 +33,7 @@ This will:
 ```bash
 # Clone the repository
 git clone https://github.com/jmckinley/snapper.git
-cd openclaw2
+cd snapper
 
 # Start services
 docker compose up -d

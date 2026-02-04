@@ -1,3 +1,3 @@
-"""OpenClaw Rules Manager - Security-focused rule management for OpenClaw agents."""
+"""Snapper - Security-focused rule management for AI agents."""
 
 __version__ = "1.0.0"

@@ -69,7 +69,7 @@ class Rule(Base):
     """
     Security rule definition.
 
-    Rules define security policies for OpenClaw agents. They are evaluated
+    Rules define security policies for AI agents. They are evaluated
     in priority order (highest first) with deny-by-default semantics.
     """
 

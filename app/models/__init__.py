@@ -1,4 +1,4 @@
-"""SQLAlchemy models for OpenClaw Rules Manager."""
+"""SQLAlchemy models for Snapper."""
 
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity

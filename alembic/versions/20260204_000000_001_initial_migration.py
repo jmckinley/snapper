@@ -1,4 +1,4 @@
-"""Initial database schema for OpenClaw Rules Manager.
+"""Initial database schema for Snapper.
 
 Revision ID: 001
 Revises:

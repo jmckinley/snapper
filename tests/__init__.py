@@ -1,1 +1,1 @@
-"""Tests for OpenClaw Rules Manager."""
+"""Tests for Snapper."""

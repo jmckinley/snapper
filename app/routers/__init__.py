@@ -1,4 +1,4 @@
-"""API routers for OpenClaw Rules Manager."""
+"""API routers for Snapper."""
 
 from app.routers import agents, audit, rules, security, setup
 

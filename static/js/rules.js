@@ -1,5 +1,5 @@
 /**
- * OpenClaw Rules Manager - Rules Management JavaScript
+ * Snapper - Rules Management JavaScript
  */
 
 let currentPage = 1;
@@ -209,16 +209,16 @@ async function toggleRule(id, active) {
 
         if (response.ok) {
             loadRules(currentPage);
-            if (window.OpenClawUI) {
-                window.OpenClawUI.Toast.show(`Rule ${active ? 'enabled' : 'disabled'}`, 'success');
+            if (window.SnapperUI) {
+                window.SnapperUI.Toast.show(`Rule ${active ? 'enabled' : 'disabled'}`, 'success');
             }
         } else {
             throw new Error('Failed to update rule');
         }
     } catch (error) {
         console.error('Failed to toggle rule:', error);
-        if (window.OpenClawUI) {
-            window.OpenClawUI.Toast.show('Failed to update rule', 'error');
+        if (window.SnapperUI) {
+            window.SnapperUI.Toast.show('Failed to update rule', 'error');
         }
     }
 }
@@ -232,16 +232,16 @@ async function deleteRule(id) {
 
         if (response.ok) {
             loadRules(currentPage);
-            if (window.OpenClawUI) {
-                window.OpenClawUI.Toast.show('Rule deleted', 'success');
+            if (window.SnapperUI) {
+                window.SnapperUI.Toast.show('Rule deleted', 'success');
             }
         } else {
             throw new Error('Failed to delete rule');
         }
     } catch (error) {
         console.error('Failed to delete rule:', error);
-        if (window.OpenClawUI) {
-            window.OpenClawUI.Toast.show('Failed to delete rule', 'error');
+        if (window.SnapperUI) {
+            window.SnapperUI.Toast.show('Failed to delete rule', 'error');
         }
     }
 }
@@ -257,16 +257,16 @@ async function applyTemplate(templateId) {
 
         if (response.ok) {
             loadRules(currentPage);
-            if (window.OpenClawUI) {
-                window.OpenClawUI.Toast.show('Template applied successfully', 'success');
+            if (window.SnapperUI) {
+                window.SnapperUI.Toast.show('Template applied successfully', 'success');
             }
         } else {
             throw new Error('Failed to apply template');
         }
     } catch (error) {
         console.error('Failed to apply template:', error);
-        if (window.OpenClawUI) {
-            window.OpenClawUI.Toast.show('Failed to apply template', 'error');
+        if (window.SnapperUI) {
+            window.SnapperUI.Toast.show('Failed to apply template', 'error');
         }
     }
 }

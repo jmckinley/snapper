@@ -1,5 +1,5 @@
 /**
- * OpenClaw Rules Manager - Dashboard JavaScript
+ * Snapper - Dashboard JavaScript
  */
 
 // Toast notification system
@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Export for use in other scripts
-window.OpenClawUI = {
+window.SnapperUI = {
     Toast,
     API,
     Utils,

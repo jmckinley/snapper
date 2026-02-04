@@ -80,7 +80,7 @@ flake8 app/ tests/
 mypy app/
 
 # Docker development
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Code Patterns

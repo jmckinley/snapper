@@ -1,4 +1,4 @@
-# OpenClaw Rules Manager - Dockerfile
+# Snapper - Dockerfile
 FROM python:3.11-slim as base
 
 # Set environment variables

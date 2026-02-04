@@ -1,4 +1,4 @@
-"""Business logic services for OpenClaw Rules Manager."""
+"""Business logic services for Snapper."""
 
 from app.services.rule_engine import RuleEngine, EvaluationContext, EvaluationResult
 from app.services.rate_limiter import RateLimiterService
