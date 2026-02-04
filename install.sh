@@ -1,6 +1,6 @@
 #!/bin/bash
 # Snapper - One-Command Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/jmckinley/openclaw2/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/install.sh | bash
 
 set -e
 
@@ -61,11 +61,11 @@ if [ -d "$INSTALL_DIR" ]; then
 else
     if command -v git &> /dev/null; then
         echo -e "${BLUE}Cloning repository...${NC}"
-        git clone https://github.com/jmckinley/openclaw2.git "$INSTALL_DIR"
+        git clone https://github.com/jmckinley/snapper.git "$INSTALL_DIR"
     else
         echo -e "${BLUE}Downloading release...${NC}"
         mkdir -p "$INSTALL_DIR"
-        curl -fsSL https://github.com/jmckinley/openclaw2/archive/main.tar.gz | \
+        curl -fsSL https://github.com/jmckinley/snapper/archive/main.tar.gz | \
             tar -xz -C "$INSTALL_DIR" --strip-components=1
     fi
     cd "$INSTALL_DIR"

@@ -3,6 +3,10 @@
 .env.*
 *.env
 .mcp.json
+gmail-config/
+mcp-configs/
+celerybeat-schedule
+snapper-sandbox/
 
 # Python
 __pycache__/

@@ -19,7 +19,7 @@ Think of it as a firewall for AI agents.
 ### One-Command Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jmckinley/openclaw2/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/install.sh | bash
 ```
 
 This will:
@@ -32,7 +32,7 @@ This will:
 
 ```bash
 # Clone the repository
-git clone https://github.com/jmckinley/openclaw2.git
+git clone https://github.com/jmckinley/snapper.git
 cd openclaw2
 
 # Start services
@@ -202,5 +202,5 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-- **Issues**: https://github.com/jmckinley/openclaw2/issues
-- **Discussions**: https://github.com/jmckinley/openclaw2/discussions
+- **Issues**: https://github.com/jmckinley/snapper/issues
+- **Discussions**: https://github.com/jmckinley/snapper/discussions
