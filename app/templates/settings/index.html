@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Settings</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+    <!-- Security Settings -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Security Settings</h2>
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900">Deny by Default</h3>
+                    <p class="text-sm text-gray-500">When no rules match, deny the request (recommended)</p>
+                </div>
+                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Enabled</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900">WebSocket Origin Validation</h3>
+                    <p class="text-sm text-gray-500">Mitigate CVE-2026-25253 by validating origin headers</p>
+                </div>
+                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Enabled</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900">Localhost Only Mode</h3>
+                    <p class="text-sm text-gray-500">Restrict access to localhost connections only</p>
+                </div>
+                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Enabled</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Configuration -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Alert Notifications</h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Email Alerts</label>
+                <input type="email" placeholder="admin@example.com" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Slack Webhook URL</label>
+                <input type="url" placeholder="https://hooks.slack.com/..." class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Alert Severity Threshold</label>
+                <select class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    <option value="critical">Critical only</option>
+                    <option value="high">High and above</option>
+                    <option value="medium">Medium and above</option>
+                    <option value="all">All alerts</option>
+                </select>
+            </div>
+        </div>
+        <div class="mt-4">
+            <button class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
+                Save Alert Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- API Access -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">API Access</h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">API Documentation</label>
+                <p class="text-sm text-gray-500">
+                    <a href="/api/docs" target="_blank" class="text-primary-600 hover:text-primary-500">OpenAPI Documentation (Swagger UI)</a>
+                </p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Base URL</label>
+                <code class="mt-1 block w-full bg-gray-100 rounded-md py-2 px-3 text-sm font-mono">http://localhost:8000/api/v1</code>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Export -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Data Export</h2>
+        <div class="space-y-4">
+            <button onclick="exportRules()" class="w-full px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Export All Rules (JSON)
+            </button>
+            <button onclick="generateReport()" class="w-full px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Generate Compliance Report
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function exportRules() {
+        try {
+            const response = await fetch('/api/v1/rules/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ format: 'json' })
+            });
+            const data = await response.json();
+
+            const blob = new Blob([data.data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'snapper-rules-export.json';
+            a.click();
+        } catch (error) {
+            console.error('Failed to export rules:', error);
+            alert('Failed to export rules');
+        }
+    }
+
+    async function generateReport() {
+        try {
+            const response = await fetch('/api/v1/audit/reports/compliance');
+            const data = await response.json();
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'compliance-report.json';
+            a.click();
+        } catch (error) {
+            console.error('Failed to generate report:', error);
+            alert('Failed to generate report');
+        }
+    }
+</script>
+{% endblock %}

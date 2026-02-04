@@ -1,0 +1,577 @@
+{% extends "base.html" %}
+
+{% block title %}Integrations - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Integrations & Rules</h1>
+                <p class="mt-1 text-sm text-gray-500">Click any integration to view and manage its security rules</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="enabled-count" class="text-sm text-gray-500">0 integrations active</span>
+                <span class="text-gray-300">|</span>
+                <span id="rules-count" class="text-sm text-gray-500">0 rules active</span>
+            </div>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Quick Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm font-medium text-gray-500">Available</div>
+            <div id="stat-available" class="text-2xl font-bold text-gray-900">--</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm font-medium text-gray-500">Enabled</div>
+            <div id="stat-enabled" class="text-2xl font-bold text-green-600">--</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm font-medium text-gray-500">Rules Active</div>
+            <div id="stat-rules" class="text-2xl font-bold text-primary-600">--</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="text-sm font-medium text-gray-500">Categories</div>
+            <div id="stat-categories" class="text-2xl font-bold text-gray-900">--</div>
+        </div>
+    </div>
+
+    <!-- Integration Categories -->
+    <div id="integrations-container" class="space-y-6">
+        <!-- Loading state -->
+        <div class="animate-pulse space-y-4">
+            <div class="h-8 bg-gray-200 rounded w-1/4"></div>
+            <div class="space-y-3">
+                <div class="h-20 bg-gray-200 rounded"></div>
+                <div class="h-20 bg-gray-200 rounded"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let integrationData = [];
+    let integrationDetails = {};  // Cache for detailed integration data
+    let expandedIntegration = null;
+    let selectedRules = new Set();
+
+    document.addEventListener('DOMContentLoaded', loadIntegrations);
+
+    async function loadIntegrations() {
+        try {
+            const response = await fetch('/api/v1/integrations');
+            integrationData = await response.json();
+            renderIntegrations(integrationData);
+            updateStats();
+        } catch (error) {
+            console.error('Failed to load integrations:', error);
+            document.getElementById('integrations-container').innerHTML = `
+                <div class="text-center py-12 text-red-500">
+                    Failed to load integrations. Please refresh the page.
+                </div>
+            `;
+        }
+    }
+
+    function renderIntegrations(categories) {
+        const container = document.getElementById('integrations-container');
+
+        if (!categories.length) {
+            container.innerHTML = '<div class="text-center py-12 text-gray-500">No integrations available.</div>';
+            return;
+        }
+
+        container.innerHTML = categories.map(category => `
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <div class="flex items-center">
+                        <span class="text-2xl mr-3">${category.icon}</span>
+                        <div>
+                            <h2 class="text-lg font-semibold text-gray-900">${category.name}</h2>
+                            <p class="text-sm text-gray-500">${category.description}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    ${category.integrations.map(integration => renderIntegrationRow(integration)).join('')}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderIntegrationRow(integration) {
+        const isExpanded = expandedIntegration === integration.id;
+        const statusBadge = integration.enabled
+            ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                 <span class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
+                 ${integration.rule_count} rules active
+               </span>`
+            : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                 Disabled
+               </span>`;
+
+        return `
+            <div class="integration-row ${isExpanded ? 'bg-gray-50' : ''}" id="integration-${integration.id}">
+                <!-- Clickable Header -->
+                <div class="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                     onclick="toggleIntegrationExpand('${integration.id}')">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center flex-1 min-w-0">
+                            <span class="text-2xl mr-4">${integration.icon}</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center">
+                                    <h3 class="font-semibold text-gray-900">${integration.name}</h3>
+                                    <span class="ml-3">${statusBadge}</span>
+                                </div>
+                                <p class="text-sm text-gray-500 truncate">${integration.description}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4 ml-4">
+                            <svg class="w-5 h-5 text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expandable Rules Section -->
+                <div id="rules-${integration.id}" class="${isExpanded ? '' : 'hidden'}">
+                    <div class="px-6 pb-4">
+                        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                            <!-- Rules Header -->
+                            <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <span class="text-sm font-medium text-gray-700">Security Rules</span>
+                                    <code class="text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-600">${integration.mcp_matcher}</code>
+                                </div>
+                                <div id="actions-${integration.id}" class="flex items-center space-x-2">
+                                    <!-- Actions will be populated -->
+                                </div>
+                            </div>
+
+                            <!-- Rules List -->
+                            <div id="rules-list-${integration.id}" class="divide-y divide-gray-100">
+                                <div class="px-4 py-8 text-center text-gray-500 text-sm">
+                                    Loading rules...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function toggleIntegrationExpand(integrationId) {
+        const wasExpanded = expandedIntegration === integrationId;
+
+        // Collapse current
+        if (expandedIntegration) {
+            document.getElementById(`rules-${expandedIntegration}`)?.classList.add('hidden');
+            const oldRow = document.getElementById(`integration-${expandedIntegration}`);
+            if (oldRow) oldRow.classList.remove('bg-gray-50');
+        }
+
+        if (wasExpanded) {
+            expandedIntegration = null;
+            return;
+        }
+
+        // Expand new
+        expandedIntegration = integrationId;
+        const rulesSection = document.getElementById(`rules-${integrationId}`);
+        const row = document.getElementById(`integration-${integrationId}`);
+
+        if (rulesSection) {
+            rulesSection.classList.remove('hidden');
+            row?.classList.add('bg-gray-50');
+
+            // Load details if not cached
+            if (!integrationDetails[integrationId]) {
+                await loadIntegrationDetails(integrationId);
+            } else {
+                renderRulesForIntegration(integrationId);
+            }
+        }
+    }
+
+    async function loadIntegrationDetails(integrationId) {
+        try {
+            const response = await fetch(`/api/v1/integrations/${integrationId}`);
+            const details = await response.json();
+            integrationDetails[integrationId] = details;
+
+            // Initialize selected rules
+            selectedRules = new Set();
+            details.rules.forEach(rule => {
+                if (details.enabled && rule.enabled) {
+                    selectedRules.add(rule.id);
+                } else if (!details.enabled && rule.default_enabled !== false) {
+                    selectedRules.add(rule.id);
+                }
+            });
+
+            renderRulesForIntegration(integrationId);
+        } catch (error) {
+            console.error('Failed to load integration details:', error);
+            document.getElementById(`rules-list-${integrationId}`).innerHTML = `
+                <div class="px-4 py-8 text-center text-red-500 text-sm">
+                    Failed to load rules. Please try again.
+                </div>
+            `;
+        }
+    }
+
+    function renderRulesForIntegration(integrationId) {
+        const details = integrationDetails[integrationId];
+        if (!details) return;
+
+        const rulesList = document.getElementById(`rules-list-${integrationId}`);
+        const actionsDiv = document.getElementById(`actions-${integrationId}`);
+
+        // Render action buttons
+        if (details.enabled) {
+            actionsDiv.innerHTML = `
+                <button onclick="disableIntegration('${integrationId}')"
+                        class="text-xs px-3 py-1.5 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors">
+                    Disable All
+                </button>
+            `;
+        } else {
+            const isSelectable = details.selectable_rules;
+            actionsDiv.innerHTML = isSelectable ? `
+                <button onclick="selectAllRules('${integrationId}')" class="text-xs text-primary-600 hover:text-primary-700">All</button>
+                <span class="text-gray-300">|</span>
+                <button onclick="selectDefaultRules('${integrationId}')" class="text-xs text-primary-600 hover:text-primary-700">Defaults</button>
+                <span class="text-gray-300">|</span>
+                <button onclick="clearAllRules('${integrationId}')" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+                <button onclick="enableIntegration('${integrationId}')"
+                        class="ml-3 text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                    Enable ${selectedRules.size} Selected
+                </button>
+            ` : `
+                <button onclick="enableIntegration('${integrationId}')"
+                        class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                    Enable All Rules
+                </button>
+            `;
+        }
+
+        // For enabled integrations, use existing_rules from database
+        // For disabled integrations, use template rules
+        if (details.enabled && details.existing_rules && details.existing_rules.length > 0) {
+            rulesList.innerHTML = details.existing_rules.map(rule => renderActiveRuleRow(rule, details)).join('');
+        } else if (!details.rules || details.rules.length === 0) {
+            rulesList.innerHTML = `
+                <div class="px-4 py-8 text-center text-gray-500 text-sm">
+                    No rules defined for this integration.
+                </div>
+            `;
+        } else {
+            rulesList.innerHTML = details.rules.map(rule => renderRuleRow(rule, details)).join('');
+        }
+    }
+
+    // Render an active rule from the database (for enabled integrations)
+    function renderActiveRuleRow(rule, integration) {
+        const actionColor = rule.action === 'allow' ? 'green' :
+                           rule.action === 'deny' ? 'red' : 'yellow';
+
+        // Clean rule name (remove integration prefix)
+        const ruleName = rule.name.replace(integration.name + ' - ', '');
+
+        return `
+            <div class="px-4 py-3 bg-green-50/50 hover:bg-gray-50 transition-colors">
+                <div class="flex items-start">
+                    <span class="w-2 h-2 bg-green-500 rounded-full mr-3 mt-1.5"></span>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between">
+                            <span class="font-medium text-sm text-gray-900">${ruleName}</span>
+                            <div class="relative inline-block" onclick="event.stopPropagation()">
+                                <button onclick="toggleActionDropdown('${rule.id}')"
+                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700 hover:bg-${actionColor}-200 transition-colors cursor-pointer">
+                                    ${rule.action.replace('_', ' ')}
+                                    <svg class="w-3 h-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+                                <div id="dropdown-${rule.id}" class="hidden absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-gray-200 z-20">
+                                    <div class="py-1">
+                                        <button onclick="updateRuleAction('${rule.id}', 'allow', '${integration.id}')"
+                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center ${rule.action === 'allow' ? 'bg-green-50 text-green-700' : 'text-gray-700'}">
+                                            <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span> Allow
+                                        </button>
+                                        <button onclick="updateRuleAction('${rule.id}', 'deny', '${integration.id}')"
+                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center ${rule.action === 'deny' ? 'bg-red-50 text-red-700' : 'text-gray-700'}">
+                                            <span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span> Deny
+                                        </button>
+                                        <button onclick="updateRuleAction('${rule.id}', 'require_approval', '${integration.id}')"
+                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center ${rule.action === 'require_approval' ? 'bg-yellow-50 text-yellow-700' : 'text-gray-700'}">
+                                            <span class="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span> Require Approval
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-0.5">${rule.rule_type.replace('_', ' ')}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Render a template rule (for disabled integrations - to preview before enabling)
+    function renderRuleRow(rule, integration) {
+        const isSelected = selectedRules.has(rule.id);
+        const isSelectable = integration.selectable_rules;
+
+        const actionColor = rule.action === 'allow' ? 'green' :
+                           rule.action === 'deny' ? 'red' : 'yellow';
+
+        // Extract patterns
+        const patterns = rule.parameters?.patterns || [];
+        const patternsDisplay = patterns.slice(0, 4).map(p =>
+            `<code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">${p}</code>`
+        ).join(' ');
+        const morePatterns = patterns.length > 4 ? `<span class="text-xs text-gray-400">+${patterns.length - 4} more</span>` : '';
+
+        // Clean rule name (remove integration prefix)
+        const ruleName = rule.name.replace(integration.name + ' - ', '');
+
+        // Checkbox for selectable integrations
+        const checkbox = isSelectable ? `
+            <label class="flex items-center cursor-pointer mr-4" onclick="event.stopPropagation()">
+                <input type="checkbox"
+                       ${isSelected ? 'checked' : ''}
+                       onchange="toggleRuleSelection('${rule.id}', '${integration.id}')"
+                       class="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
+            </label>
+        ` : '';
+
+        // Status indicator
+        const statusIndicator = (isSelected && isSelectable)
+            ? `<span class="w-2 h-2 bg-primary-300 rounded-full mr-3 mt-1.5"></span>`
+            : `<span class="w-2 h-2 bg-gray-300 rounded-full mr-3 mt-1.5"></span>`;
+
+        const rowClass = (isSelected && isSelectable) ? 'bg-primary-50/30' : '';
+
+        return `
+            <div class="px-4 py-3 ${rowClass} hover:bg-gray-50 transition-colors ${isSelectable ? 'cursor-pointer' : ''}"
+                 ${isSelectable ? `onclick="toggleRuleSelection('${rule.id}', '${integration.id}')"` : ''}>
+                <div class="flex items-start">
+                    ${checkbox}
+                    ${statusIndicator}
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between">
+                            <span class="font-medium text-sm text-gray-900">${ruleName}</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">
+                                ${rule.action.replace('_', ' ')}
+                            </span>
+                        </div>
+                        ${rule.description ? `<p class="text-xs text-gray-500 mt-0.5">${rule.description}</p>` : ''}
+                        ${patterns.length > 0 ? `
+                            <div class="mt-2 flex flex-wrap items-center gap-1">
+                                ${patternsDisplay}
+                                ${morePatterns}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    let openDropdown = null;
+
+    function toggleActionDropdown(ruleId) {
+        const dropdown = document.getElementById(`dropdown-${ruleId}`);
+
+        // Close any other open dropdown
+        if (openDropdown && openDropdown !== dropdown) {
+            openDropdown.classList.add('hidden');
+        }
+
+        dropdown.classList.toggle('hidden');
+        openDropdown = dropdown.classList.contains('hidden') ? null : dropdown;
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (openDropdown && !e.target.closest('.relative')) {
+            openDropdown.classList.add('hidden');
+            openDropdown = null;
+        }
+    });
+
+    async function updateRuleAction(ruleId, newAction, integrationId) {
+        try {
+            const response = await fetch(`/api/v1/rules/${ruleId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: newAction })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to update rule');
+            }
+
+            showToast(`Rule updated to "${newAction.replace('_', ' ')}"`, 'success');
+
+            // Close dropdown
+            if (openDropdown) {
+                openDropdown.classList.add('hidden');
+                openDropdown = null;
+            }
+
+            // Refresh the integration details
+            delete integrationDetails[integrationId];
+            await loadIntegrationDetails(integrationId);
+        } catch (error) {
+            console.error('Failed to update rule:', error);
+            showToast(error.message, 'error');
+        }
+    }
+
+    function toggleRuleSelection(ruleId, integrationId) {
+        if (selectedRules.has(ruleId)) {
+            selectedRules.delete(ruleId);
+        } else {
+            selectedRules.add(ruleId);
+        }
+        renderRulesForIntegration(integrationId);
+    }
+
+    function selectAllRules(integrationId) {
+        const details = integrationDetails[integrationId];
+        if (!details) return;
+        details.rules.forEach(rule => selectedRules.add(rule.id));
+        renderRulesForIntegration(integrationId);
+    }
+
+    function selectDefaultRules(integrationId) {
+        const details = integrationDetails[integrationId];
+        if (!details) return;
+        selectedRules = new Set();
+        details.rules.forEach(rule => {
+            if (rule.default_enabled !== false) {
+                selectedRules.add(rule.id);
+            }
+        });
+        renderRulesForIntegration(integrationId);
+    }
+
+    function clearAllRules(integrationId) {
+        selectedRules = new Set();
+        renderRulesForIntegration(integrationId);
+    }
+
+    async function enableIntegration(integrationId) {
+        const details = integrationDetails[integrationId];
+        const rulesToEnable = details?.selectable_rules ? Array.from(selectedRules) : null;
+
+        try {
+            const response = await fetch(`/api/v1/integrations/${integrationId}/enable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ selected_rules: rulesToEnable })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to enable integration');
+            }
+
+            const result = await response.json();
+            showToast(result.message, 'success');
+
+            // Clear cache and reload
+            delete integrationDetails[integrationId];
+            await loadIntegrations();
+
+            // Re-expand the integration
+            setTimeout(() => toggleIntegrationExpand(integrationId), 100);
+        } catch (error) {
+            console.error('Failed to enable integration:', error);
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function disableIntegration(integrationId) {
+        if (!confirm('Disable this integration and remove all its rules?')) return;
+
+        try {
+            const response = await fetch(`/api/v1/integrations/${integrationId}/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to disable integration');
+            }
+
+            const result = await response.json();
+            showToast(result.message, 'success');
+
+            // Clear cache and reload
+            delete integrationDetails[integrationId];
+            await loadIntegrations();
+
+            // Re-expand the integration
+            setTimeout(() => toggleIntegrationExpand(integrationId), 100);
+        } catch (error) {
+            console.error('Failed to disable integration:', error);
+            showToast(error.message, 'error');
+        }
+    }
+
+    function updateStats() {
+        let totalIntegrations = 0;
+        let enabledIntegrations = 0;
+        let totalRules = 0;
+
+        integrationData.forEach(category => {
+            category.integrations.forEach(integration => {
+                totalIntegrations++;
+                if (integration.enabled) {
+                    enabledIntegrations++;
+                    totalRules += integration.rule_count;
+                }
+            });
+        });
+
+        document.getElementById('stat-available').textContent = totalIntegrations;
+        document.getElementById('stat-enabled').textContent = enabledIntegrations;
+        document.getElementById('stat-rules').textContent = totalRules;
+        document.getElementById('stat-categories').textContent = integrationData.length;
+        document.getElementById('enabled-count').textContent = `${enabledIntegrations} integrations active`;
+        document.getElementById('rules-count').textContent = `${totalRules} rules active`;
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+
+        toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg transform transition-all duration-300`;
+        toast.textContent = message;
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-x-full');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,489 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-gradient-to-r from-primary-600 to-primary-800 text-white">
+    <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 text-center">
+        <h1 class="text-4xl font-bold tracking-tight">Welcome to Snapper</h1>
+        <p class="mt-3 text-lg text-primary-100">Protect your AI agents in minutes</p>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Progress Steps -->
+    <nav class="mb-8">
+        <ol class="flex items-center justify-center">
+            <li class="flex items-center">
+                <span id="step1-indicator" class="flex items-center justify-center w-10 h-10 bg-primary-600 rounded-full text-white font-medium">1</span>
+                <span class="ml-2 text-sm font-medium text-gray-900 hidden sm:inline">Discover</span>
+            </li>
+            <li class="flex items-center ml-4 sm:ml-8">
+                <div class="w-8 sm:w-16 h-0.5 bg-gray-300" id="progress-1-2"></div>
+            </li>
+            <li class="flex items-center ml-4 sm:ml-8">
+                <span id="step2-indicator" class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium">2</span>
+                <span class="ml-2 text-sm font-medium text-gray-500 hidden sm:inline">Register</span>
+            </li>
+            <li class="flex items-center ml-4 sm:ml-8">
+                <div class="w-8 sm:w-16 h-0.5 bg-gray-300" id="progress-2-3"></div>
+            </li>
+            <li class="flex items-center ml-4 sm:ml-8">
+                <span id="step3-indicator" class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium">3</span>
+                <span class="ml-2 text-sm font-medium text-gray-500 hidden sm:inline">Secure</span>
+            </li>
+            <li class="flex items-center ml-4 sm:ml-8">
+                <div class="w-8 sm:w-16 h-0.5 bg-gray-300" id="progress-3-4"></div>
+            </li>
+            <li class="flex items-center ml-4 sm:ml-8">
+                <span id="step4-indicator" class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium">4</span>
+                <span class="ml-2 text-sm font-medium text-gray-500 hidden sm:inline">Connect</span>
+            </li>
+        </ol>
+    </nav>
+
+    <!-- Step 1: Welcome & Discover -->
+    <div id="step1" class="step-content">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-primary-100 rounded-full mb-4">
+                        <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-900">Let's Find Your AI Agents</h2>
+                    <p class="mt-2 text-gray-600">We'll scan your system for running agent instances</p>
+                </div>
+
+                <div id="discovery-area" class="space-y-4">
+                    <button onclick="discoverAgents()" id="discover-btn" class="w-full flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-colors">
+                        <svg class="w-6 h-6 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <span class="text-gray-600 font-medium">Click to Scan for AI agent Instances</span>
+                    </button>
+
+                    <div id="discovery-results" class="hidden">
+                        <div id="discovery-loading" class="text-center py-8 hidden">
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary-500 border-t-transparent"></div>
+                            <p class="mt-3 text-gray-600">Scanning for agent instances...</p>
+                        </div>
+
+                        <div id="discovery-found" class="hidden">
+                            <div class="flex items-center mb-4">
+                                <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                </svg>
+                                <span class="font-medium text-gray-900">Found <span id="instance-count">0</span> AI agent instance(s)</span>
+                            </div>
+                            <div id="instances-list" class="space-y-2"></div>
+                        </div>
+
+                        <div id="discovery-empty" class="hidden text-center py-6">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 12h.01M12 14h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <h3 class="mt-2 text-sm font-medium text-gray-900">No instances detected</h3>
+                            <p class="mt-1 text-sm text-gray-500">You can register an agent manually in the next step</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-between items-center">
+                    <a href="/" class="text-sm text-gray-500 hover:text-gray-700">Skip setup</a>
+                    <button onclick="nextStep(2)" class="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium">
+                        Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Register Agent -->
+    <div id="step2" class="step-content hidden">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Register Your Agent</h2>
+
+                <div id="quick-register-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
+                        <input type="text" id="agent-name" placeholder="My Agent"
+                               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Host</label>
+                            <input type="text" id="agent-host" value="localhost"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Port</label>
+                            <input type="number" id="agent-port" value="8080"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                        </div>
+                    </div>
+
+                    <div id="register-error" class="hidden p-3 bg-red-50 text-red-700 rounded-md text-sm"></div>
+                    <div id="register-success" class="hidden p-3 bg-green-50 text-green-700 rounded-md text-sm"></div>
+                </div>
+
+                <div class="mt-8 flex justify-between">
+                    <button onclick="prevStep(1)" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                        Back
+                    </button>
+                    <button onclick="registerAgent()" id="register-btn" class="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium">
+                        Register Agent
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Choose Security Profile -->
+    <div id="step3" class="step-content hidden">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <h2 class="text-xl font-bold text-gray-900 mb-2">Choose Your Security Level</h2>
+                <p class="text-gray-600 mb-6">Select how strictly you want to protect your agent</p>
+
+                <div class="space-y-4">
+                    <label class="block p-4 border-2 rounded-lg cursor-pointer hover:border-primary-400 transition-colors profile-option" data-profile="strict">
+                        <div class="flex items-start">
+                            <input type="radio" name="profile" value="strict" class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300">
+                            <div class="ml-3 flex-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-lg font-semibold text-gray-900">Strict</span>
+                                    <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded">Maximum Security</span>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Require approval for sensitive operations. Best for production environments.
+                                </p>
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">CVE Protection</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">Human Approval</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">Strict Rate Limits</span>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <label class="block p-4 border-2 border-primary-500 rounded-lg cursor-pointer hover:border-primary-600 transition-colors profile-option" data-profile="recommended">
+                        <div class="flex items-start">
+                            <input type="radio" name="profile" value="recommended" checked class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300">
+                            <div class="ml-3 flex-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-lg font-semibold text-gray-900">Recommended</span>
+                                    <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded">Best for Most Users</span>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Block known threats while allowing normal operations. Great balance of security and usability.
+                                </p>
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">CVE Protection</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">Malware Blocking</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">Credential Protection</span>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <label class="block p-4 border-2 rounded-lg cursor-pointer hover:border-primary-400 transition-colors profile-option" data-profile="permissive">
+                        <div class="flex items-start">
+                            <input type="radio" name="profile" value="permissive" class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300">
+                            <div class="ml-3 flex-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-lg font-semibold text-gray-900">Permissive</span>
+                                    <span class="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 rounded">Development Mode</span>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Log everything but don't block. Good for testing and development.
+                                </p>
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">Logging Only</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">No Blocking</span>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="mt-8 flex justify-between">
+                    <button onclick="prevStep(2)" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                        Back
+                    </button>
+                    <button onclick="applyProfile()" id="apply-btn" class="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium">
+                        Apply Security Rules
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 4: Success & Config -->
+    <div id="step4" class="step-content hidden">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-900">You're All Set!</h2>
+                    <p class="mt-2 text-gray-600">Your agent is registered and protected</p>
+                </div>
+
+                <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700">Agent ID</span>
+                        <button onclick="copyToClipboard(registeredAgentId)" class="text-primary-600 hover:text-primary-700 text-sm">Copy</button>
+                    </div>
+                    <code id="display-agent-id" class="block text-sm bg-white px-3 py-2 rounded border font-mono break-all"></code>
+                </div>
+
+                <div class="mb-6">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Add this to your agent configuration:</h3>
+                    <div class="relative">
+                        <pre id="config-snippet" class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto"></pre>
+                        <button onclick="copyConfig()" class="absolute top-2 right-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div class="flex">
+                        <svg class="h-5 w-5 text-blue-400 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                        </svg>
+                        <div class="text-sm text-blue-700">
+                            <p class="font-medium">Next Steps:</p>
+                            <ol class="mt-1 list-decimal list-inside space-y-1">
+                                <li>Add the config above to your agent setup</li>
+                                <li>Restart your agent to apply changes</li>
+                                <li>Test by running a command through your agent</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center">
+                    <a href="/" class="px-8 py-3 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium">
+                        Go to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let discoveredInstances = [];
+    let registeredAgentId = '';
+    let registeredApiKey = '';
+    let selectedProfile = 'recommended';
+
+    // Profile selection
+    document.querySelectorAll('.profile-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const profile = this.dataset.profile;
+            selectedProfile = profile;
+
+            document.querySelectorAll('.profile-option').forEach(opt => {
+                opt.classList.remove('border-primary-500');
+                opt.classList.add('border-gray-200');
+            });
+            this.classList.remove('border-gray-200');
+            this.classList.add('border-primary-500');
+
+            this.querySelector('input[type="radio"]').checked = true;
+        });
+    });
+
+    async function discoverAgents() {
+        const btn = document.getElementById('discover-btn');
+        const results = document.getElementById('discovery-results');
+        const loading = document.getElementById('discovery-loading');
+        const found = document.getElementById('discovery-found');
+        const empty = document.getElementById('discovery-empty');
+
+        btn.classList.add('hidden');
+        results.classList.remove('hidden');
+        loading.classList.remove('hidden');
+        found.classList.add('hidden');
+        empty.classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/v1/setup/discover');
+            const data = await response.json();
+
+            loading.classList.add('hidden');
+            discoveredInstances = data.instances;
+
+            if (discoveredInstances.length > 0) {
+                found.classList.remove('hidden');
+                document.getElementById('instance-count').textContent = discoveredInstances.length;
+
+                const list = document.getElementById('instances-list');
+                list.innerHTML = discoveredInstances.map((inst, idx) => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                            <span class="font-medium">${inst.host}:${inst.port}</span>
+                            <span class="ml-2 text-xs text-gray-500">(${inst.status})</span>
+                        </div>
+                        <button onclick="useInstance(${idx})" class="text-sm text-primary-600 hover:text-primary-700">
+                            Use this
+                        </button>
+                    </div>
+                `).join('');
+
+                // Pre-fill form with first instance
+                if (discoveredInstances.length > 0) {
+                    document.getElementById('agent-host').value = discoveredInstances[0].host;
+                    document.getElementById('agent-port').value = discoveredInstances[0].port;
+                }
+            } else {
+                empty.classList.remove('hidden');
+            }
+        } catch (error) {
+            loading.classList.add('hidden');
+            empty.classList.remove('hidden');
+            console.error('Discovery failed:', error);
+        }
+    }
+
+    function useInstance(index) {
+        const inst = discoveredInstances[index];
+        document.getElementById('agent-host').value = inst.host;
+        document.getElementById('agent-port').value = inst.port;
+        document.getElementById('agent-name').value = `Agent @ ${inst.host}:${inst.port}`;
+        nextStep(2);
+    }
+
+    async function registerAgent() {
+        const btn = document.getElementById('register-btn');
+        const errorDiv = document.getElementById('register-error');
+        const successDiv = document.getElementById('register-success');
+
+        const name = document.getElementById('agent-name').value || `Agent`;
+        const host = document.getElementById('agent-host').value || 'localhost';
+        const port = parseInt(document.getElementById('agent-port').value) || 8080;
+
+        btn.disabled = true;
+        btn.textContent = 'Registering...';
+        errorDiv.classList.add('hidden');
+        successDiv.classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/v1/setup/quick-register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    host: host,
+                    port: port,
+                    security_profile: selectedProfile
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Registration failed');
+            }
+
+            const data = await response.json();
+            registeredAgentId = data.agent_id;
+            registeredApiKey = data.api_key;
+
+            successDiv.textContent = `Agent registered successfully!`;
+            successDiv.classList.remove('hidden');
+
+            // Move to step 3
+            setTimeout(() => nextStep(3), 500);
+
+        } catch (error) {
+            errorDiv.textContent = error.message;
+            errorDiv.classList.remove('hidden');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Register Agent';
+        }
+    }
+
+    async function applyProfile() {
+        const btn = document.getElementById('apply-btn');
+        btn.disabled = true;
+        btn.textContent = 'Applying...';
+
+        // Profile was already applied during registration
+        // Just move to next step and show config
+
+        document.getElementById('display-agent-id').textContent = registeredAgentId;
+        document.getElementById('config-snippet').textContent = `# Add to .claude/settings.json
+rules_manager:
+  enabled: true
+  url: http://localhost:8000
+  agent_id: ${registeredAgentId}
+  api_key: ${registeredApiKey}
+  enforce_rules: true`;
+
+        nextStep(4);
+
+        btn.disabled = false;
+        btn.textContent = 'Apply Security Rules';
+    }
+
+    function nextStep(step) {
+        // Hide all steps
+        document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+        document.getElementById(`step${step}`).classList.remove('hidden');
+
+        // Update progress indicators
+        for (let i = 1; i <= 4; i++) {
+            const indicator = document.getElementById(`step${i}-indicator`);
+            const progressBar = document.getElementById(`progress-${i-1}-${i}`);
+
+            if (i < step) {
+                indicator.className = 'flex items-center justify-center w-10 h-10 bg-green-500 rounded-full text-white font-medium';
+                indicator.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+                if (progressBar) progressBar.className = 'w-8 sm:w-16 h-0.5 bg-green-500';
+            } else if (i === step) {
+                indicator.className = 'flex items-center justify-center w-10 h-10 bg-primary-600 rounded-full text-white font-medium';
+                indicator.textContent = i;
+            } else {
+                indicator.className = 'flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium';
+                indicator.textContent = i;
+                if (progressBar) progressBar.className = 'w-8 sm:w-16 h-0.5 bg-gray-300';
+            }
+        }
+    }
+
+    function prevStep(step) {
+        nextStep(step);
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Could show a toast notification here
+        });
+    }
+
+    function copyConfig() {
+        const config = document.getElementById('config-snippet').textContent;
+        navigator.clipboard.writeText(config);
+    }
+
+    // Auto-start discovery on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(discoverAgents, 500);
+    });
+</script>
+{% endblock %}

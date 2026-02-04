@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}Agents - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">AI Agents</h1>
+                <p class="mt-1 text-sm text-gray-500">Register AI agent instances to apply custom rule sets (e.g., Claude Code, Cursor, Copilot)</p>
+            </div>
+            <button onclick="showRegisterModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700">
+                <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Register Agent
+            </button>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Filters -->
+    <div class="bg-white shadow rounded-lg p-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Status</label>
+                <select id="filter-status" onchange="loadAgents()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="quarantined">Quarantined</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Trust Level</label>
+                <select id="filter-trust" onchange="loadAgents()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    <option value="">All</option>
+                    <option value="untrusted">Untrusted</option>
+                    <option value="limited">Limited</option>
+                    <option value="standard">Standard</option>
+                    <option value="elevated">Elevated</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Search</label>
+                <input type="text" id="filter-search" onkeyup="debounceSearch()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="Search agents...">
+            </div>
+        </div>
+    </div>
+
+    <!-- Agents Grid -->
+    <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="animate-pulse bg-white shadow rounded-lg p-6">
+            <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div class="h-3 bg-gray-200 rounded w-1/2 mt-4"></div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="flex justify-center space-x-2"></div>
+</div>
+
+<!-- Register Modal -->
+<div id="register-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 transition-opacity" onclick="hideRegisterModal()">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <form id="register-form" onsubmit="registerAgent(event)">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Register New Agent</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Name</label>
+                            <input type="text" name="name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">External ID</label>
+                            <input type="text" name="external_id" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="my-coding-agent-001">
+                            <p class="mt-1 text-xs text-gray-500">Unique identifier for this AI agent instance</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Description</label>
+                            <textarea name="description" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Trust Level</label>
+                            <select name="trust_level" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                                <option value="untrusted">Untrusted (Default)</option>
+                                <option value="limited">Limited</option>
+                                <option value="standard">Standard</option>
+                                <option value="elevated">Elevated</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 sm:ml-3 sm:w-auto sm:text-sm">
+                        Register
+                    </button>
+                    <button type="button" onclick="hideRegisterModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPage = 1;
+    let searchTimeout;
+
+    function debounceSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => loadAgents(), 300);
+    }
+
+    async function loadAgents(page = 1) {
+        currentPage = page;
+        const status = document.getElementById('filter-status').value;
+        const trust = document.getElementById('filter-trust').value;
+        const search = document.getElementById('filter-search').value;
+
+        let url = `/api/v1/agents?page=${page}&page_size=9`;
+        if (status) url += `&status=${status}`;
+        if (trust) url += `&trust_level=${trust}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            renderAgents(data.items);
+            renderPagination(data.page, data.pages);
+        } catch (error) {
+            console.error('Failed to load agents:', error);
+        }
+    }
+
+    function renderAgents(agents) {
+        const container = document.getElementById('agents-grid');
+
+        if (agents.length === 0) {
+            container.innerHTML = '<div class="col-span-full text-center text-gray-500 py-12">No agents found</div>';
+            return;
+        }
+
+        container.innerHTML = agents.map(agent => `
+            <div class="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900">${agent.name}</h3>
+                        <p class="text-sm text-gray-500">${agent.external_id}</p>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(agent.status)}">${agent.status}</span>
+                </div>
+                <div class="mt-4 space-y-2">
+                    <div class="flex items-center text-sm">
+                        <span class="text-gray-500">Trust Level:</span>
+                        <span class="ml-2 font-medium ${getTrustColor(agent.trust_level)}">${agent.trust_level}</span>
+                    </div>
+                    <div class="flex items-center text-sm">
+                        <span class="text-gray-500">Last seen:</span>
+                        <span class="ml-2">${agent.last_seen_at ? new Date(agent.last_seen_at).toLocaleString() : 'Never'}</span>
+                    </div>
+                </div>
+                <div class="mt-4 flex space-x-2">
+                    <button onclick="viewAgent('${agent.id}')" class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        View
+                    </button>
+                    ${agent.status === 'active' ?
+                        `<button onclick="suspendAgent('${agent.id}')" class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100">Suspend</button>` :
+                        `<button onclick="activateAgent('${agent.id}')" class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-green-300 text-sm font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100">Activate</button>`
+                    }
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function getStatusColor(status) {
+        switch (status) {
+            case 'active': return 'bg-green-100 text-green-800';
+            case 'pending': return 'bg-yellow-100 text-yellow-800';
+            case 'suspended': return 'bg-orange-100 text-orange-800';
+            case 'quarantined': return 'bg-red-100 text-red-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    function getTrustColor(level) {
+        switch (level) {
+            case 'untrusted': return 'text-red-600';
+            case 'limited': return 'text-orange-600';
+            case 'standard': return 'text-blue-600';
+            case 'elevated': return 'text-green-600';
+            default: return 'text-gray-600';
+        }
+    }
+
+    function renderPagination(current, total) {
+        const container = document.getElementById('pagination');
+        if (total <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        for (let i = 1; i <= total; i++) {
+            html += `<button onclick="loadAgents(${i})" class="px-3 py-1 rounded ${i === current ? 'bg-primary-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'}">${i}</button>`;
+        }
+        container.innerHTML = html;
+    }
+
+    function showRegisterModal() {
+        document.getElementById('register-modal').classList.remove('hidden');
+    }
+
+    function hideRegisterModal() {
+        document.getElementById('register-modal').classList.add('hidden');
+    }
+
+    async function registerAgent(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+
+        const agent = {
+            name: formData.get('name'),
+            external_id: formData.get('external_id'),
+            description: formData.get('description'),
+            trust_level: formData.get('trust_level'),
+            allowed_origins: [],
+            require_localhost_only: true
+        };
+
+        try {
+            const response = await fetch('/api/v1/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(agent)
+            });
+
+            if (response.ok) {
+                hideRegisterModal();
+                form.reset();
+                loadAgents();
+            } else {
+                const error = await response.json();
+                alert('Error: ' + (error.detail || 'Failed to register agent'));
+            }
+        } catch (error) {
+            console.error('Failed to register agent:', error);
+            alert('Failed to register agent');
+        }
+    }
+
+    async function viewAgent(id) {
+        // Could open a modal or navigate to detail page
+        alert('Agent details: ' + id);
+    }
+
+    async function suspendAgent(id) {
+        if (!confirm('Are you sure you want to suspend this agent?')) return;
+
+        try {
+            const response = await fetch(`/api/v1/agents/${id}/suspend`, { method: 'POST' });
+            if (response.ok) {
+                loadAgents(currentPage);
+            } else {
+                alert('Failed to suspend agent');
+            }
+        } catch (error) {
+            console.error('Failed to suspend agent:', error);
+        }
+    }
+
+    async function activateAgent(id) {
+        try {
+            const response = await fetch(`/api/v1/agents/${id}/activate`, { method: 'POST' });
+            if (response.ok) {
+                loadAgents(currentPage);
+            } else {
+                alert('Failed to activate agent');
+            }
+        } catch (error) {
+            console.error('Failed to activate agent:', error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => loadAgents());
+</script>
+{% endblock %}

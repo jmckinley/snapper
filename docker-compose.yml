@@ -1,0 +1,148 @@
+# Snapper - Docker Compose Configuration
+version: "3.8"
+
+services:
+  # FastAPI Application
+  app:
+    build:
+      context: .
+      target: development
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
+      - DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DENY_BY_DEFAULT=true
+      - VALIDATE_WEBSOCKET_ORIGIN=true
+      - REQUIRE_LOCALHOST_ONLY=false  # Disabled for Docker networking
+      - ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+      - ALLOWED_HOSTS=localhost,127.0.0.1,app
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app
+      - ./static:/app/static
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=snapper
+      - POSTGRES_PASSWORD=snapper
+      - POSTGRES_DB=snapper
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snapper -d snapper"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: .
+      target: development
+    command: celery -A app.tasks worker -l INFO
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
+      - DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - postgres
+
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build:
+      context: .
+      target: development
+    command: celery -A app.tasks beat -l INFO
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
+      - DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - celery-worker
+
+  # Flower (Celery monitoring) - optional
+  flower:
+    build:
+      context: .
+      target: development
+    command: celery -A app.tasks flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    depends_on:
+      - redis
+      - celery-worker
+    profiles:
+      - monitoring
+
+  # Snapper Sandbox - Isolated AI agent environment
+  snapper-sandbox:
+    build:
+      context: ./snapper-sandbox
+    environment:
+      - RULES_MANAGER_URL=http://app:8000
+      - SNAPPER_AGENT_ID=${SNAPPER_AGENT_ID:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      # Mount a workspace directory for the sandbox
+      - ./sandbox-workspace:/home/snapper/workspace
+    depends_on:
+      app:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    profiles:
+      - sandbox
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: snapper-network

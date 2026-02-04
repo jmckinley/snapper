@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}Create Rule - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <nav class="flex" aria-label="Breadcrumb">
+            <ol class="flex items-center space-x-4">
+                <li>
+                    <a href="/rules" class="text-gray-400 hover:text-gray-500">Rules</a>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 flex-shrink-0 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
+                        </svg>
+                        <span class="ml-4 text-sm font-medium text-gray-500">Create Rule</span>
+                    </div>
+                </li>
+            </ol>
+        </nav>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900">Create Rule</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl">
+    <form id="create-rule-form" class="space-y-6">
+        <!-- Basic Info -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Rule Name</label>
+                    <input type="text" name="name" id="name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="e.g., Block Malicious Skills">
+                </div>
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea name="description" id="description" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="Describe what this rule does"></textarea>
+                </div>
+                <div>
+                    <label for="agent_id" class="block text-sm font-medium text-gray-700">Agent (optional)</label>
+                    <select name="agent_id" id="agent_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                        <option value="">Global (all agents)</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Leave empty to apply to all agents</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rule Type -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Rule Type</h3>
+            <div>
+                <label for="rule_type" class="block text-sm font-medium text-gray-700">Type</label>
+                <select name="rule_type" id="rule_type" required onchange="updateParameterFields()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    <option value="">Select a rule type</option>
+                    <option value="command_allowlist">Command Allowlist</option>
+                    <option value="command_denylist">Command Denylist</option>
+                    <option value="skill_allowlist">Skill Allowlist</option>
+                    <option value="skill_denylist">Skill Denylist</option>
+                    <option value="rate_limit">Rate Limit</option>
+                    <option value="time_restriction">Time Restriction</option>
+                    <option value="origin_validation">Origin Validation</option>
+                    <option value="credential_protection">Credential Protection</option>
+                    <option value="localhost_restriction">Localhost Restriction</option>
+                    <option value="network_egress">Network Egress</option>
+                    <option value="human_in_loop">Human In Loop</option>
+                    <option value="file_access">File Access</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Action & Priority -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Action & Priority</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="action" class="block text-sm font-medium text-gray-700">Action</label>
+                    <select name="action" id="action" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                        <option value="deny">Deny</option>
+                        <option value="allow">Allow</option>
+                        <option value="require_approval">Require Approval</option>
+                        <option value="log_only">Log Only</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="priority" class="block text-sm font-medium text-gray-700">Priority</label>
+                    <input type="number" name="priority" id="priority" value="0" min="-1000" max="1000" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Higher priority rules are evaluated first</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameters (dynamic based on rule type) -->
+        <div id="parameters-section" class="bg-white shadow rounded-lg p-6 hidden">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Parameters</h3>
+            <div id="parameters-fields">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex justify-end space-x-3">
+            <a href="/rules" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                Cancel
+            </a>
+            <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                Create Rule
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const parameterSchemas = {
+        command_allowlist: {
+            patterns: { type: 'array', label: 'Allowed Command Patterns', placeholder: '.*ls.*' }
+        },
+        command_denylist: {
+            patterns: { type: 'array', label: 'Denied Command Patterns', placeholder: '.*rm -rf.*' }
+        },
+        skill_allowlist: {
+            skills: { type: 'array', label: 'Allowed Skill IDs', placeholder: 'skill-id-123' },
+            allow_verified_only: { type: 'checkbox', label: 'Allow Verified Only', default: true }
+        },
+        skill_denylist: {
+            skills: { type: 'array', label: 'Denied Skill IDs', placeholder: 'malicious-skill' },
+            auto_block_flagged: { type: 'checkbox', label: 'Auto-block Flagged Skills', default: true }
+        },
+        rate_limit: {
+            max_requests: { type: 'number', label: 'Max Requests', default: 100 },
+            window_seconds: { type: 'number', label: 'Window (seconds)', default: 60 },
+            scope: { type: 'select', label: 'Scope', options: ['agent', 'ip', 'user'], default: 'agent' }
+        },
+        time_restriction: {
+            start_hour: { type: 'number', label: 'Start Hour (0-23)', default: 9, min: 0, max: 23 },
+            end_hour: { type: 'number', label: 'End Hour (0-23)', default: 17, min: 0, max: 23 },
+            allowed_days: { type: 'multiselect', label: 'Allowed Days', options: [
+                { value: 0, label: 'Monday' },
+                { value: 1, label: 'Tuesday' },
+                { value: 2, label: 'Wednesday' },
+                { value: 3, label: 'Thursday' },
+                { value: 4, label: 'Friday' },
+                { value: 5, label: 'Saturday' },
+                { value: 6, label: 'Sunday' }
+            ], default: [0,1,2,3,4] }
+        },
+        origin_validation: {
+            allowed_origins: { type: 'array', label: 'Allowed Origins', placeholder: 'http://localhost:8000' },
+            strict_mode: { type: 'checkbox', label: 'Strict Mode (reject missing origin)', default: true }
+        },
+        credential_protection: {
+            protected_patterns: { type: 'array', label: 'Protected Patterns', placeholder: '\\.env$' },
+            block_plaintext_secrets: { type: 'checkbox', label: 'Block Plaintext Secrets', default: true }
+        },
+        localhost_restriction: {
+            enabled: { type: 'checkbox', label: 'Enabled', default: true },
+            allowed_ips: { type: 'array', label: 'Allowed IPs', placeholder: '127.0.0.1' }
+        },
+        network_egress: {
+            allowed_hosts: { type: 'array', label: 'Allowed Hosts', placeholder: 'api.example.com' },
+            denied_hosts: { type: 'array', label: 'Denied Hosts', placeholder: 'malware.com' }
+        },
+        human_in_loop: {
+            require_approval_for: { type: 'multiselect', label: 'Require Approval For', options: [
+                { value: 'file_write', label: 'File Write' },
+                { value: 'network', label: 'Network' },
+                { value: 'shell', label: 'Shell Commands' },
+                { value: 'credential_access', label: 'Credential Access' }
+            ], default: [] },
+            timeout_seconds: { type: 'number', label: 'Timeout (seconds)', default: 300 },
+            auto_deny_on_timeout: { type: 'checkbox', label: 'Auto-deny on Timeout', default: true }
+        },
+        file_access: {
+            allowed_paths: { type: 'array', label: 'Allowed Paths', placeholder: '/home/user/safe/.*' },
+            denied_paths: { type: 'array', label: 'Denied Paths', placeholder: '/etc/.*' }
+        }
+    };
+
+    function updateParameterFields() {
+        const ruleType = document.getElementById('rule_type').value;
+        const section = document.getElementById('parameters-section');
+        const container = document.getElementById('parameters-fields');
+
+        if (!ruleType || !parameterSchemas[ruleType]) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        const schema = parameterSchemas[ruleType];
+        let html = '';
+
+        for (const [key, config] of Object.entries(schema)) {
+            html += `<div class="mb-4">`;
+            html += `<label class="block text-sm font-medium text-gray-700">${config.label}</label>`;
+
+            if (config.type === 'array') {
+                html += `<div id="array-${key}" class="mt-1 space-y-2">`;
+                html += `<div class="flex space-x-2">`;
+                html += `<input type="text" class="flex-1 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="${config.placeholder}" data-array="${key}">`;
+                html += `<button type="button" onclick="addArrayItem('${key}')" class="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Add</button>`;
+                html += `</div>`;
+                html += `<div id="array-items-${key}" class="space-y-1"></div>`;
+                html += `</div>`;
+            } else if (config.type === 'number') {
+                html += `<input type="number" name="param_${key}" value="${config.default || ''}" ${config.min !== undefined ? `min="${config.min}"` : ''} ${config.max !== undefined ? `max="${config.max}"` : ''} class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">`;
+            } else if (config.type === 'checkbox') {
+                html += `<input type="checkbox" name="param_${key}" ${config.default ? 'checked' : ''} class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">`;
+            } else if (config.type === 'select') {
+                html += `<select name="param_${key}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">`;
+                for (const opt of config.options) {
+                    html += `<option value="${opt}" ${opt === config.default ? 'selected' : ''}>${opt}</option>`;
+                }
+                html += `</select>`;
+            } else if (config.type === 'multiselect') {
+                html += `<div class="mt-1 space-y-2">`;
+                for (const opt of config.options) {
+                    const checked = config.default && config.default.includes(opt.value);
+                    html += `<label class="flex items-center">`;
+                    html += `<input type="checkbox" name="param_${key}" value="${opt.value}" ${checked ? 'checked' : ''} class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">`;
+                    html += `<span class="ml-2 text-sm text-gray-700">${opt.label}</span>`;
+                    html += `</label>`;
+                }
+                html += `</div>`;
+            }
+
+            html += `</div>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    const arrayData = {};
+
+    function addArrayItem(key) {
+        const input = document.querySelector(`input[data-array="${key}"]`);
+        const value = input.value.trim();
+        if (!value) return;
+
+        if (!arrayData[key]) arrayData[key] = [];
+        arrayData[key].push(value);
+        input.value = '';
+
+        updateArrayDisplay(key);
+    }
+
+    function removeArrayItem(key, index) {
+        arrayData[key].splice(index, 1);
+        updateArrayDisplay(key);
+    }
+
+    function updateArrayDisplay(key) {
+        const container = document.getElementById(`array-items-${key}`);
+        container.innerHTML = arrayData[key].map((item, index) => `
+            <div class="flex items-center justify-between px-3 py-2 bg-gray-100 rounded text-sm">
+                <span>${item}</span>
+                <button type="button" onclick="removeArrayItem('${key}', ${index})" class="text-red-500 hover:text-red-700">&times;</button>
+            </div>
+        `).join('');
+    }
+
+    // Load agents for dropdown
+    async function loadAgents() {
+        try {
+            const response = await fetch('/api/v1/agents?page_size=100');
+            const data = await response.json();
+            const select = document.getElementById('agent_id');
+            data.items.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent.id;
+                option.textContent = agent.name;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Failed to load agents:', error);
+        }
+    }
+
+    // Form submission
+    document.getElementById('create-rule-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(e.target);
+        const ruleType = formData.get('rule_type');
+
+        // Build parameters
+        const parameters = {};
+        const schema = parameterSchemas[ruleType];
+        if (schema) {
+            for (const [key, config] of Object.entries(schema)) {
+                if (config.type === 'array') {
+                    parameters[key] = arrayData[key] || [];
+                } else if (config.type === 'number') {
+                    parameters[key] = parseInt(formData.get(`param_${key}`)) || config.default;
+                } else if (config.type === 'checkbox') {
+                    parameters[key] = formData.get(`param_${key}`) === 'on';
+                } else if (config.type === 'select') {
+                    parameters[key] = formData.get(`param_${key}`);
+                } else if (config.type === 'multiselect') {
+                    parameters[key] = formData.getAll(`param_${key}`).map(v => isNaN(v) ? v : parseInt(v));
+                }
+            }
+
+            // Handle time restriction special case
+            if (ruleType === 'time_restriction') {
+                parameters.allowed_hours = {
+                    start: parameters.start_hour,
+                    end: parameters.end_hour
+                };
+                delete parameters.start_hour;
+                delete parameters.end_hour;
+            }
+        }
+
+        const rule = {
+            name: formData.get('name'),
+            description: formData.get('description'),
+            agent_id: formData.get('agent_id') || null,
+            rule_type: ruleType,
+            action: formData.get('action'),
+            priority: parseInt(formData.get('priority')) || 0,
+            parameters: parameters,
+            is_active: true,
+            tags: []
+        };
+
+        try {
+            const response = await fetch('/api/v1/rules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rule)
+            });
+
+            if (response.ok) {
+                window.location.href = '/rules';
+            } else {
+                const error = await response.json();
+                alert('Error: ' + (error.detail || 'Failed to create rule'));
+            }
+        } catch (error) {
+            console.error('Failed to create rule:', error);
+            alert('Failed to create rule');
+        }
+    });
+
+    // Check URL params for pre-selected type
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAgents();
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get('type');
+        if (type) {
+            document.getElementById('rule_type').value = type;
+            updateParameterFields();
+        }
+    });
+</script>
+{% endblock %}

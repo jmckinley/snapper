@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Dashboard</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Welcome Banner with Snapper -->
+    <div class="bg-gradient-to-r from-green-600 to-green-700 rounded-lg shadow-lg overflow-hidden">
+        <div class="px-6 py-8 flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <img src="/static/images/snapper-logo.png" alt="Snapper" class="h-24 w-24 rounded-full border-4 border-white/30 shadow-lg">
+                <div class="text-white">
+                    <h2 class="text-2xl font-bold">Welcome to Snapper</h2>
+                    <p class="text-green-100 mt-1">Fine-grained security control for your AI agents</p>
+                    <p class="text-green-200 text-sm mt-2">Decide what your AI can and can't do with your integrations</p>
+                </div>
+            </div>
+            <div class="hidden md:flex flex-col items-end space-y-2">
+                <span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm">Deny by default</span>
+                <span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm">Require approval</span>
+                <span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm">Full audit trail</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Add Integrations - Hero Section -->
+    <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-900">Quick Add Integrations</h2>
+                <p class="text-sm text-gray-500">Click any service to add security rules instantly</p>
+            </div>
+            <a href="/integrations" class="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                View all 30+ integrations →
+            </a>
+        </div>
+        <div class="p-6">
+            <!-- Popular Integrations Grid -->
+            <div id="popular-integrations" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <!-- Loading skeleton -->
+                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-green-100 rounded-lg">
+                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Integrations Active</p>
+                    <p id="stat-integrations" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-primary-100 rounded-lg">
+                    <svg class="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Rules Active</p>
+                    <p id="stat-rules" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-yellow-100 rounded-lg">
+                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Blocked Today</p>
+                    <p id="stat-blocked" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-purple-100 rounded-lg">
+                    <svg class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Approvals Pending</p>
+                    <p id="stat-pending" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Two Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Recently Enabled -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">Active Integrations</h3>
+            </div>
+            <div id="active-integrations" class="divide-y divide-gray-200">
+                <div class="px-6 py-4 text-gray-500 text-sm">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">Recent Activity</h3>
+            </div>
+            <div id="activity-list" class="divide-y divide-gray-200">
+                <div class="px-6 py-4 text-gray-500 text-sm">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Enable Modal -->
+<div id="enable-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 transition-opacity" onclick="closeEnableModal()">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div class="flex items-center mb-4">
+                    <span id="modal-icon" class="text-4xl mr-4"></span>
+                    <div>
+                        <h3 id="modal-name" class="text-xl font-bold text-gray-900"></h3>
+                        <p id="modal-desc" class="text-sm text-gray-500"></p>
+                    </div>
+                </div>
+                <div id="modal-rules-preview" class="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                    <!-- Rules preview will go here -->
+                </div>
+            </div>
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button id="modal-enable-btn" onclick="confirmEnable()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 sm:ml-3 sm:w-auto sm:text-sm">
+                    Enable Integration
+                </button>
+                <button onclick="closeEnableModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Popular integrations to show on dashboard
+    const POPULAR_INTEGRATIONS = [
+        'github', 'gmail', 'slack', 'google_calendar',
+        'vercel', 'supabase', 'notion', 'linear',
+        'aws', 'postgresql', 'openai', 'discord'
+    ];
+
+    let allIntegrations = {};
+    let selectedIntegration = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadIntegrations();
+        loadStats();
+        loadActivity();
+    });
+
+    async function loadIntegrations() {
+        try {
+            const response = await fetch('/api/v1/integrations');
+            const categories = await response.json();
+
+            // Flatten into lookup
+            categories.forEach(cat => {
+                cat.integrations.forEach(int => {
+                    allIntegrations[int.id] = int;
+                });
+            });
+
+            renderPopularIntegrations();
+            renderActiveIntegrations();
+            updateIntegrationStats();
+        } catch (error) {
+            console.error('Failed to load integrations:', error);
+        }
+    }
+
+    function renderPopularIntegrations() {
+        const container = document.getElementById('popular-integrations');
+
+        const html = POPULAR_INTEGRATIONS.map(id => {
+            const int = allIntegrations[id];
+            if (!int) return '';
+
+            const enabledClass = int.enabled
+                ? 'border-green-300 bg-green-50'
+                : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50';
+            const statusDot = int.enabled
+                ? '<span class="absolute top-2 right-2 h-2 w-2 bg-green-500 rounded-full"></span>'
+                : '';
+
+            return `
+                <button onclick="showEnableModal('${id}')"
+                        class="relative flex flex-col items-center justify-center p-4 border-2 ${enabledClass} rounded-lg transition-all cursor-pointer">
+                    ${statusDot}
+                    <span class="text-2xl mb-1">${int.icon}</span>
+                    <span class="text-sm font-medium text-gray-900">${int.name}</span>
+                    ${int.enabled ? '<span class="text-xs text-green-600">Active</span>' : ''}
+                </button>
+            `;
+        }).join('');
+
+        container.innerHTML = html;
+    }
+
+    function renderActiveIntegrations() {
+        const container = document.getElementById('active-integrations');
+        const active = Object.values(allIntegrations).filter(i => i.enabled);
+
+        if (active.length === 0) {
+            container.innerHTML = `
+                <div class="px-6 py-8 text-center">
+                    <p class="text-gray-500">No integrations enabled yet</p>
+                    <p class="text-sm text-gray-400 mt-1">Click any service above to get started</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = active.slice(0, 5).map(int => `
+            <div class="px-6 py-3 flex items-center justify-between hover:bg-gray-50">
+                <div class="flex items-center">
+                    <span class="text-xl mr-3">${int.icon}</span>
+                    <div>
+                        <p class="font-medium text-gray-900">${int.name}</p>
+                        <p class="text-xs text-gray-500">${int.rule_count} rules active</p>
+                    </div>
+                </div>
+                <button onclick="disableIntegration('${int.id}')" class="text-xs text-red-600 hover:text-red-700">
+                    Disable
+                </button>
+            </div>
+        `).join('') + (active.length > 5 ? `
+            <a href="/integrations" class="block px-6 py-3 text-center text-sm text-primary-600 hover:bg-gray-50">
+                View all ${active.length} active integrations →
+            </a>
+        ` : '');
+    }
+
+    function updateIntegrationStats() {
+        const active = Object.values(allIntegrations).filter(i => i.enabled);
+        const totalRules = active.reduce((sum, i) => sum + i.rule_count, 0);
+
+        document.getElementById('stat-integrations').textContent = active.length;
+        document.getElementById('stat-rules').textContent = totalRules;
+    }
+
+    async function loadStats() {
+        // These would come from actual API calls
+        document.getElementById('stat-blocked').textContent = '0';
+        document.getElementById('stat-pending').textContent = '0';
+    }
+
+    async function loadActivity() {
+        try {
+            const response = await fetch('/api/v1/audit/logs?page_size=5');
+            const data = await response.json();
+
+            const container = document.getElementById('activity-list');
+            if (!data.items || data.items.length === 0) {
+                container.innerHTML = '<div class="px-6 py-8 text-center text-gray-500">No recent activity</div>';
+                return;
+            }
+
+            container.innerHTML = data.items.map(log => `
+                <div class="px-6 py-3 hover:bg-gray-50">
+                    <p class="text-sm text-gray-900">${log.message}</p>
+                    <p class="text-xs text-gray-500">${new Date(log.created_at).toLocaleString()}</p>
+                </div>
+            `).join('');
+        } catch (error) {
+            document.getElementById('activity-list').innerHTML = '<div class="px-6 py-4 text-gray-500">No recent activity</div>';
+        }
+    }
+
+    async function showEnableModal(integrationId) {
+        selectedIntegration = allIntegrations[integrationId];
+        if (!selectedIntegration) return;
+
+        // If already enabled, go to integrations page
+        if (selectedIntegration.enabled) {
+            window.location.href = '/integrations';
+            return;
+        }
+
+        document.getElementById('modal-icon').textContent = selectedIntegration.icon;
+        document.getElementById('modal-name').textContent = selectedIntegration.name;
+        document.getElementById('modal-desc').textContent = selectedIntegration.description;
+
+        // Fetch full details for rules preview
+        try {
+            const response = await fetch(`/api/v1/integrations/${integrationId}`);
+            const details = await response.json();
+
+            const rulesHtml = details.rules.map(rule => {
+                const actionColor = rule.action === 'allow' ? 'green' :
+                                   rule.action === 'deny' ? 'red' : 'yellow';
+                const actionIcon = rule.action === 'allow' ? '✓' :
+                                  rule.action === 'deny' ? '✕' : '?';
+
+                // Extract patterns from parameters
+                const patterns = rule.parameters?.patterns || [];
+                const patternsDisplay = patterns.length > 0
+                    ? patterns.slice(0, 3).map(p => `<code class="text-xs bg-gray-200 px-1 rounded">${p}</code>`).join(' ')
+                    + (patterns.length > 3 ? ` <span class="text-gray-400">+${patterns.length - 3}</span>` : '')
+                    : '';
+
+                return `
+                    <div class="py-3 border-b border-gray-200 last:border-0">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-gray-900">${rule.name.replace(selectedIntegration.name + ' - ', '')}</span>
+                            <span class="text-xs px-2 py-1 rounded bg-${actionColor}-100 text-${actionColor}-700">
+                                ${actionIcon} ${rule.action.replace('_', ' ')}
+                            </span>
+                        </div>
+                        ${rule.description ? `<p class="text-xs text-gray-500 mt-1">${rule.description}</p>` : ''}
+                        ${patternsDisplay ? `<div class="mt-2 text-xs text-gray-400">Commands: ${patternsDisplay}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('modal-rules-preview').innerHTML = rulesHtml || '<p class="text-gray-500">No rules</p>';
+        } catch (error) {
+            document.getElementById('modal-rules-preview').innerHTML = '<p class="text-red-500">Failed to load rules</p>';
+        }
+
+        document.getElementById('enable-modal').classList.remove('hidden');
+    }
+
+    function closeEnableModal() {
+        document.getElementById('enable-modal').classList.add('hidden');
+        selectedIntegration = null;
+    }
+
+    async function confirmEnable() {
+        if (!selectedIntegration) return;
+
+        const btn = document.getElementById('modal-enable-btn');
+        btn.disabled = true;
+        btn.textContent = 'Enabling...';
+
+        try {
+            const response = await fetch(`/api/v1/integrations/${selectedIntegration.id}/enable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            if (response.ok) {
+                closeEnableModal();
+                await loadIntegrations();
+                showToast(`${selectedIntegration.name} enabled successfully!`, 'success');
+            } else {
+                const error = await response.json();
+                showToast(error.detail || 'Failed to enable', 'error');
+            }
+        } catch (error) {
+            showToast('Failed to enable integration', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Enable Integration';
+        }
+    }
+
+    async function disableIntegration(integrationId) {
+        if (!confirm('Disable this integration and remove its rules?')) return;
+
+        try {
+            const response = await fetch(`/api/v1/integrations/${integrationId}/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (response.ok) {
+                await loadIntegrations();
+                showToast('Integration disabled', 'success');
+            }
+        } catch (error) {
+            showToast('Failed to disable integration', 'error');
+        }
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+
+        toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg`;
+        toast.textContent = message;
+
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+</script>
+{% endblock %}

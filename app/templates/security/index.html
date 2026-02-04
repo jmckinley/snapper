@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block title %}Security - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Security Intelligence</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Security Score Summary -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-medium text-gray-900">Global Security Score</h2>
+                <div class="mt-2 flex items-baseline">
+                    <span id="security-score" class="text-4xl font-bold text-gray-900">--</span>
+                    <span class="ml-2 text-xl text-gray-500">/100</span>
+                    <span id="security-grade" class="ml-4 px-3 py-1 rounded-full text-sm font-medium bg-gray-100">--</span>
+                </div>
+            </div>
+            <div id="score-breakdown" class="hidden md:block">
+                <!-- Score breakdown chart placeholder -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8">
+            <button onclick="switchTab('vulnerabilities')" class="tab-btn border-primary-500 text-primary-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="vulnerabilities">
+                Vulnerabilities
+            </button>
+            <button onclick="switchTab('skills')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="skills">
+                Malicious Skills
+            </button>
+            <button onclick="switchTab('recommendations')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="recommendations">
+                Recommendations
+            </button>
+            <button onclick="switchTab('threats')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="threats">
+                Threat Feed
+            </button>
+        </nav>
+    </div>
+
+    <!-- Vulnerabilities Tab -->
+    <div id="tab-vulnerabilities" class="tab-content">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CVE</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="vulnerabilities-table" class="bg-white divide-y divide-gray-200">
+                    <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Malicious Skills Tab -->
+    <div id="tab-skills" class="tab-content hidden">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Skill</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Threat Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="skills-table" class="bg-white divide-y divide-gray-200">
+                    <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recommendations Tab -->
+    <div id="tab-recommendations" class="tab-content hidden">
+        <div id="recommendations-list" class="space-y-4">
+            <div class="animate-pulse bg-white shadow rounded-lg p-6">
+                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Threat Feed Tab -->
+    <div id="tab-threats" class="tab-content hidden">
+        <div id="threats-feed" class="space-y-4">
+            <div class="animate-pulse bg-white shadow rounded-lg p-6">
+                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentTab = 'vulnerabilities';
+
+    function switchTab(tab) {
+        currentTab = tab;
+
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if (btn.dataset.tab === tab) {
+                btn.classList.add('border-primary-500', 'text-primary-600');
+                btn.classList.remove('border-transparent', 'text-gray-500');
+            } else {
+                btn.classList.remove('border-primary-500', 'text-primary-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            }
+        });
+
+        // Show/hide content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            if (content.id === `tab-${tab}`) {
+                content.classList.remove('hidden');
+            } else {
+                content.classList.add('hidden');
+            }
+        });
+
+        // Load data for tab
+        loadTabData(tab);
+    }
+
+    function loadTabData(tab) {
+        switch (tab) {
+            case 'vulnerabilities': loadVulnerabilities(); break;
+            case 'skills': loadMaliciousSkills(); break;
+            case 'recommendations': loadRecommendations(); break;
+            case 'threats': loadThreatFeed(); break;
+        }
+    }
+
+    async function loadSecurityScore() {
+        try {
+            const response = await fetch('/api/v1/security/score');
+            const data = await response.json();
+
+            document.getElementById('security-score').textContent = data.score;
+            document.getElementById('security-grade').textContent = data.grade;
+
+            const gradeEl = document.getElementById('security-grade');
+            if (data.score >= 80) {
+                gradeEl.className = 'ml-4 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800';
+            } else if (data.score >= 60) {
+                gradeEl.className = 'ml-4 px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800';
+            } else {
+                gradeEl.className = 'ml-4 px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800';
+            }
+        } catch (error) {
+            console.error('Failed to load security score:', error);
+        }
+    }
+
+    async function loadVulnerabilities() {
+        try {
+            const response = await fetch('/api/v1/security/vulnerabilities');
+            const data = await response.json();
+
+            const tbody = document.getElementById('vulnerabilities-table');
+            if (data.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No vulnerabilities found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.items.map(vuln => `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${vuln.cve_id || 'N/A'}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${vuln.title}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getSeverityColor(vuln.severity)}">${vuln.severity}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(vuln.status)}">${vuln.status}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${vuln.mitigation_rules.length > 0 ?
+                            '<span class="text-green-600">Mitigated</span>' :
+                            `<button onclick="mitigateVuln('${vuln.id}')" class="text-primary-600 hover:text-primary-900">Mitigate</button>`
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load vulnerabilities:', error);
+        }
+    }
+
+    async function loadMaliciousSkills() {
+        try {
+            const response = await fetch('/api/v1/security/clawhub/skills');
+            const data = await response.json();
+
+            const tbody = document.getElementById('skills-table');
+            if (data.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No malicious skills detected</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.items.map(skill => `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">${skill.skill_name}</div>
+                        <div class="text-sm text-gray-500">${skill.skill_id}</div>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${skill.threat_type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getSeverityColor(skill.severity)}">${skill.severity}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${skill.is_blocked ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${skill.is_blocked ? 'Blocked' : 'Active'}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <button onclick="viewSkillDetails('${skill.id}')" class="text-primary-600 hover:text-primary-900">Details</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load malicious skills:', error);
+        }
+    }
+
+    async function loadRecommendations() {
+        try {
+            const response = await fetch('/api/v1/security/recommendations?is_applied=false&is_dismissed=false');
+            const data = await response.json();
+
+            const container = document.getElementById('recommendations-list');
+            if (data.items.length === 0) {
+                container.innerHTML = '<div class="bg-white shadow rounded-lg p-6 text-center text-gray-500">No pending recommendations</div>';
+                return;
+            }
+
+            container.innerHTML = data.items.map(rec => `
+                <div class="bg-white shadow rounded-lg p-6">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="flex items-center">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${getSeverityColor(rec.severity)}">${rec.severity}</span>
+                                <span class="ml-2 text-sm text-gray-500">+${rec.impact_score} points</span>
+                            </div>
+                            <h3 class="mt-2 text-lg font-medium text-gray-900">${rec.title}</h3>
+                            <p class="mt-1 text-sm text-gray-500">${rec.description}</p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="applyRecommendation('${rec.id}')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+                                Apply
+                            </button>
+                            <button onclick="dismissRecommendation('${rec.id}')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load recommendations:', error);
+        }
+    }
+
+    async function loadThreatFeed() {
+        try {
+            const response = await fetch('/api/v1/security/threats/feed?limit=20');
+            const data = await response.json();
+
+            const container = document.getElementById('threats-feed');
+            if (data.entries.length === 0) {
+                container.innerHTML = '<div class="bg-white shadow rounded-lg p-6 text-center text-gray-500">No threats in feed</div>';
+                return;
+            }
+
+            container.innerHTML = data.entries.map(threat => `
+                <div class="bg-white shadow rounded-lg p-4">
+                    <div class="flex items-start">
+                        <span class="flex-shrink-0 inline-block h-3 w-3 mt-1 rounded-full ${threat.severity === 'critical' ? 'bg-red-500' : threat.severity === 'high' ? 'bg-orange-500' : 'bg-yellow-500'}"></span>
+                        <div class="ml-3 flex-1">
+                            <div class="flex items-center justify-between">
+                                <p class="text-sm font-medium text-gray-900">${threat.title}</p>
+                                <span class="text-xs text-gray-500">${new Date(threat.published_at).toLocaleDateString()}</span>
+                            </div>
+                            <p class="mt-1 text-sm text-gray-500">${threat.description}</p>
+                            ${threat.recommended_action ? `<p class="mt-2 text-sm text-primary-600">${threat.recommended_action}</p>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load threat feed:', error);
+        }
+    }
+
+    function getSeverityColor(severity) {
+        switch (severity) {
+            case 'critical': return 'bg-red-100 text-red-800';
+            case 'high': return 'bg-orange-100 text-orange-800';
+            case 'medium': return 'bg-yellow-100 text-yellow-800';
+            case 'low': return 'bg-blue-100 text-blue-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    function getStatusColor(status) {
+        switch (status) {
+            case 'active': return 'bg-red-100 text-red-800';
+            case 'mitigated': return 'bg-yellow-100 text-yellow-800';
+            case 'resolved': return 'bg-green-100 text-green-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    async function applyRecommendation(id) {
+        try {
+            const response = await fetch(`/api/v1/security/recommendations/${id}/apply`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            if (response.ok) {
+                loadRecommendations();
+                loadSecurityScore();
+            } else {
+                alert('Failed to apply recommendation');
+            }
+        } catch (error) {
+            console.error('Failed to apply recommendation:', error);
+        }
+    }
+
+    async function dismissRecommendation(id) {
+        try {
+            await fetch(`/api/v1/security/recommendations/${id}/dismiss`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            loadRecommendations();
+        } catch (error) {
+            console.error('Failed to dismiss recommendation:', error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSecurityScore();
+        loadVulnerabilities();
+    });
+</script>
+{% endblock %}

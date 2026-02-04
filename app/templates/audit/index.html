@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Audit - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Audit & Monitoring</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Tabs -->
+    <div class="border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8">
+            <button onclick="switchTab('logs')" class="tab-btn border-primary-500 text-primary-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="logs">
+                Audit Logs
+            </button>
+            <button onclick="switchTab('violations')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="violations">
+                Violations
+            </button>
+            <button onclick="switchTab('alerts')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="alerts">
+                Alerts
+            </button>
+        </nav>
+    </div>
+
+    <!-- Audit Logs Tab -->
+    <div id="tab-logs" class="tab-content">
+        <!-- Filters -->
+        <div class="bg-white shadow rounded-lg p-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Severity</label>
+                    <select id="filter-severity" onchange="loadAuditLogs()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm">
+                        <option value="">All</option>
+                        <option value="critical">Critical</option>
+                        <option value="error">Error</option>
+                        <option value="warning">Warning</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Action</label>
+                    <select id="filter-action" onchange="loadAuditLogs()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm">
+                        <option value="">All</option>
+                        <option value="request_denied">Request Denied</option>
+                        <option value="request_allowed">Request Allowed</option>
+                        <option value="rule_created">Rule Created</option>
+                        <option value="agent_registered">Agent Registered</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="loadAuditLogs()" class="w-full px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs Table -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                    </tr>
+                </thead>
+                <tbody id="logs-table" class="bg-white divide-y divide-gray-200">
+                    <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Violations Tab -->
+    <div id="tab-violations" class="tab-content hidden">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="violations-table" class="bg-white divide-y divide-gray-200">
+                    <tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Alerts Tab -->
+    <div id="tab-alerts" class="tab-content hidden">
+        <div id="alerts-list" class="space-y-4">
+            <div class="animate-pulse bg-white shadow rounded-lg p-6">
+                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentTab = 'logs';
+
+    function switchTab(tab) {
+        currentTab = tab;
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if (btn.dataset.tab === tab) {
+                btn.classList.add('border-primary-500', 'text-primary-600');
+                btn.classList.remove('border-transparent', 'text-gray-500');
+            } else {
+                btn.classList.remove('border-primary-500', 'text-primary-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            }
+        });
+
+        document.querySelectorAll('.tab-content').forEach(content => {
+            if (content.id === `tab-${tab}`) {
+                content.classList.remove('hidden');
+            } else {
+                content.classList.add('hidden');
+            }
+        });
+
+        loadTabData(tab);
+    }
+
+    function loadTabData(tab) {
+        switch (tab) {
+            case 'logs': loadAuditLogs(); break;
+            case 'violations': loadViolations(); break;
+            case 'alerts': loadAlerts(); break;
+        }
+    }
+
+    async function loadAuditLogs() {
+        const severity = document.getElementById('filter-severity').value;
+        const action = document.getElementById('filter-action').value;
+
+        let url = '/api/v1/audit/logs?page_size=50';
+        if (severity) url += `&severity=${severity}`;
+        if (action) url += `&action=${action}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            const tbody = document.getElementById('logs-table');
+            if (data.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No audit logs found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.items.map(log => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(log.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(log.severity)}">${log.severity}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.action}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500 max-w-md truncate">${log.message}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <button onclick="viewLogDetails('${log.id}')" class="text-primary-600 hover:text-primary-900">View</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load audit logs:', error);
+        }
+    }
+
+    async function loadViolations() {
+        try {
+            const response = await fetch('/api/v1/audit/violations?page_size=50');
+            const data = await response.json();
+
+            const tbody = document.getElementById('violations-table');
+            if (data.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No violations found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.items.map(v => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(v.created_at).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${v.violation_type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(v.severity)}">${v.severity}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500 max-w-md truncate">${v.description}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 text-xs font-medium rounded-full ${v.is_resolved ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${v.is_resolved ? 'Resolved' : 'Open'}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        ${!v.is_resolved ? `<button onclick="resolveViolation('${v.id}')" class="text-primary-600 hover:text-primary-900">Resolve</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load violations:', error);
+        }
+    }
+
+    async function loadAlerts() {
+        try {
+            const response = await fetch('/api/v1/audit/alerts?page_size=50');
+            const data = await response.json();
+
+            const container = document.getElementById('alerts-list');
+            if (data.items.length === 0) {
+                container.innerHTML = '<div class="bg-white shadow rounded-lg p-6 text-center text-gray-500">No alerts</div>';
+                return;
+            }
+
+            container.innerHTML = data.items.map(alert => `
+                <div class="bg-white shadow rounded-lg p-4 ${!alert.is_acknowledged ? 'border-l-4 border-' + (alert.severity === 'critical' ? 'red' : alert.severity === 'error' ? 'orange' : 'yellow') + '-500' : ''}">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="flex items-center">
+                                <span class="px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(alert.severity)}">${alert.severity}</span>
+                                <span class="ml-2 text-sm text-gray-500">${new Date(alert.created_at).toLocaleString()}</span>
+                            </div>
+                            <h4 class="mt-2 text-sm font-medium text-gray-900">${alert.title}</h4>
+                            <p class="mt-1 text-sm text-gray-500">${alert.message}</p>
+                        </div>
+                        ${!alert.is_acknowledged ? `
+                            <button onclick="acknowledgeAlert('${alert.id}')" class="px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                Acknowledge
+                            </button>
+                        ` : '<span class="text-xs text-green-600">Acknowledged</span>'}
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load alerts:', error);
+        }
+    }
+
+    function getSeverityColor(severity) {
+        switch (severity) {
+            case 'critical': return 'bg-red-100 text-red-800';
+            case 'error': return 'bg-red-100 text-red-800';
+            case 'warning': return 'bg-yellow-100 text-yellow-800';
+            case 'info': return 'bg-blue-100 text-blue-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    async function resolveViolation(id) {
+        try {
+            await fetch(`/api/v1/audit/violations/${id}/resolve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            loadViolations();
+        } catch (error) {
+            console.error('Failed to resolve violation:', error);
+        }
+    }
+
+    async function acknowledgeAlert(id) {
+        try {
+            await fetch(`/api/v1/audit/alerts/${id}/acknowledge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            loadAlerts();
+        } catch (error) {
+            console.error('Failed to acknowledge alert:', error);
+        }
+    }
+
+    function viewLogDetails(id) {
+        alert('Log details: ' + id);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => loadAuditLogs());
+</script>
+{% endblock %}
