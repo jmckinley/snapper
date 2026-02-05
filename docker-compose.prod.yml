@@ -4,26 +4,26 @@ services:
   app:
     build:
       target: production
-    ports:
+    ports: !override
       - "127.0.0.1:8000:8000"
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO
       - ENVIRONMENT=production
-    volumes: []
+    volumes: !reset []
 
   postgres:
-    ports: []
+    ports: !reset []
 
   redis:
-    ports: []
+    ports: !reset []
 
   celery-worker:
     build:
       target: production
-    volumes: []
+    volumes: !reset []
 
   celery-beat:
     build:
       target: production
-    volumes: []
+    volumes: !reset []
