@@ -15,31 +15,38 @@
 <div class="max-w-4xl mx-auto">
     <!-- Progress Steps -->
     <nav class="mb-8">
-        <ol class="flex items-center justify-center">
+        <ol class="flex items-center justify-center flex-wrap gap-y-2">
             <li class="flex items-center">
-                <span id="step1-indicator" class="flex items-center justify-center w-10 h-10 bg-primary-600 rounded-full text-white font-medium">1</span>
-                <span class="ml-2 text-sm font-medium text-gray-900 hidden sm:inline">Discover</span>
+                <span id="step1-indicator" class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-primary-600 rounded-full text-white font-medium text-sm">1</span>
+                <span class="ml-1 sm:ml-2 text-xs sm:text-sm font-medium text-gray-900 hidden sm:inline">Discover</span>
             </li>
-            <li class="flex items-center ml-4 sm:ml-8">
-                <div class="w-8 sm:w-16 h-0.5 bg-gray-300" id="progress-1-2"></div>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <div class="w-4 sm:w-8 h-0.5 bg-gray-300" id="progress-1-2"></div>
             </li>
-            <li class="flex items-center ml-4 sm:ml-8">
-                <span id="step2-indicator" class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium">2</span>
-                <span class="ml-2 text-sm font-medium text-gray-500 hidden sm:inline">Register</span>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <span id="step2-indicator" class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full text-gray-600 font-medium text-sm">2</span>
+                <span class="ml-1 sm:ml-2 text-xs sm:text-sm font-medium text-gray-500 hidden sm:inline">Register</span>
             </li>
-            <li class="flex items-center ml-4 sm:ml-8">
-                <div class="w-8 sm:w-16 h-0.5 bg-gray-300" id="progress-2-3"></div>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <div class="w-4 sm:w-8 h-0.5 bg-gray-300" id="progress-2-3"></div>
             </li>
-            <li class="flex items-center ml-4 sm:ml-8">
-                <span id="step3-indicator" class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium">3</span>
-                <span class="ml-2 text-sm font-medium text-gray-500 hidden sm:inline">Secure</span>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <span id="step3-indicator" class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full text-gray-600 font-medium text-sm">3</span>
+                <span class="ml-1 sm:ml-2 text-xs sm:text-sm font-medium text-gray-500 hidden sm:inline">Secure</span>
             </li>
-            <li class="flex items-center ml-4 sm:ml-8">
-                <div class="w-8 sm:w-16 h-0.5 bg-gray-300" id="progress-3-4"></div>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <div class="w-4 sm:w-8 h-0.5 bg-gray-300" id="progress-3-4"></div>
             </li>
-            <li class="flex items-center ml-4 sm:ml-8">
-                <span id="step4-indicator" class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium">4</span>
-                <span class="ml-2 text-sm font-medium text-gray-500 hidden sm:inline">Connect</span>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <span id="step4-indicator" class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full text-gray-600 font-medium text-sm">4</span>
+                <span class="ml-1 sm:ml-2 text-xs sm:text-sm font-medium text-gray-500 hidden sm:inline">Notify</span>
+            </li>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <div class="w-4 sm:w-8 h-0.5 bg-gray-300" id="progress-4-5"></div>
+            </li>
+            <li class="flex items-center ml-2 sm:ml-4">
+                <span id="step5-indicator" class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full text-gray-600 font-medium text-sm">5</span>
+                <span class="ml-1 sm:ml-2 text-xs sm:text-sm font-medium text-gray-500 hidden sm:inline">Connect</span>
             </li>
         </ol>
     </nav>
@@ -224,8 +231,117 @@
         </div>
     </div>
 
-    <!-- Step 4: Success & Config -->
+    <!-- Step 4: Notifications -->
     <div id="step4" class="step-content hidden">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full mb-3">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-900">Get Notified</h2>
+                    <p class="mt-1 text-gray-600">How should we alert you when actions need approval?</p>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Telegram Option -->
+                    <label class="block p-4 border-2 rounded-lg cursor-pointer hover:border-blue-400 transition-colors notification-option" data-channel="telegram">
+                        <div class="flex items-start">
+                            <input type="checkbox" id="notify-telegram" class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                            <div class="ml-3 flex-1">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <svg class="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                                        </svg>
+                                        <span class="text-lg font-semibold text-gray-900">Telegram</span>
+                                    </div>
+                                    <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded">Popular</span>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Get instant alerts with approve/deny buttons right in Telegram
+                                </p>
+                                <div id="telegram-fields" class="mt-3 space-y-2 hidden">
+                                    <input type="text" id="wizard-telegram-token" placeholder="Bot Token from @BotFather"
+                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 font-mono">
+                                    <input type="text" id="wizard-telegram-chat" placeholder="Chat ID from @userinfobot"
+                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 font-mono">
+                                    <p class="text-xs text-gray-500">
+                                        <a href="https://t.me/BotFather" target="_blank" class="text-blue-600">Create bot</a> ·
+                                        <a href="https://t.me/userinfobot" target="_blank" class="text-blue-600">Get chat ID</a>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Slack Option -->
+                    <label class="block p-4 border-2 rounded-lg cursor-pointer hover:border-purple-400 transition-colors notification-option" data-channel="slack">
+                        <div class="flex items-start">
+                            <input type="checkbox" id="notify-slack" class="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded">
+                            <div class="ml-3 flex-1">
+                                <div class="flex items-center">
+                                    <svg class="h-5 w-5 text-purple-500 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                                    </svg>
+                                    <span class="text-lg font-semibold text-gray-900">Slack</span>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Send alerts to a Slack channel via webhook
+                                </p>
+                                <div id="slack-fields" class="mt-3 hidden">
+                                    <input type="text" id="wizard-slack-webhook" placeholder="https://hooks.slack.com/services/..."
+                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 font-mono">
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        <a href="https://api.slack.com/messaging/webhooks" target="_blank" class="text-purple-600">Create webhook</a>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Email Option -->
+                    <label class="block p-4 border-2 rounded-lg cursor-pointer hover:border-gray-400 transition-colors notification-option" data-channel="email">
+                        <div class="flex items-start">
+                            <input type="checkbox" id="notify-email" class="mt-1 h-4 w-4 text-gray-600 focus:ring-gray-500 border-gray-300 rounded">
+                            <div class="ml-3 flex-1">
+                                <div class="flex items-center">
+                                    <svg class="h-5 w-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                    </svg>
+                                    <span class="text-lg font-semibold text-gray-900">Email</span>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Receive email alerts (configure SMTP in Settings later)
+                                </p>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Skip Option -->
+                    <div class="text-center pt-2">
+                        <button onclick="skipNotifications()" class="text-sm text-gray-500 hover:text-gray-700">
+                            Skip for now (you can set this up later in Settings)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-between">
+                    <button onclick="prevStep(3)" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                        Back
+                    </button>
+                    <button onclick="saveNotifications()" id="notify-btn" class="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium">
+                        Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 5: Success & Config -->
+    <div id="step5" class="step-content hidden">
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="p-6 sm:p-8">
                 <div class="text-center mb-8">
@@ -441,27 +557,126 @@ rules_manager:
         btn.textContent = 'Apply Security Rules';
     }
 
+    // Notification channel toggle
+    document.querySelectorAll('.notification-option').forEach(option => {
+        option.addEventListener('click', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
+
+            const checkbox = this.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+
+            const channel = this.dataset.channel;
+            const fields = document.getElementById(`${channel}-fields`);
+            if (fields) {
+                fields.classList.toggle('hidden', !checkbox.checked);
+            }
+
+            this.classList.toggle('border-blue-500', checkbox.checked && channel === 'telegram');
+            this.classList.toggle('border-purple-500', checkbox.checked && channel === 'slack');
+            this.classList.toggle('border-gray-500', checkbox.checked && channel === 'email');
+        });
+
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        checkbox.addEventListener('change', function() {
+            const channel = option.dataset.channel;
+            const fields = document.getElementById(`${channel}-fields`);
+            if (fields) {
+                fields.classList.toggle('hidden', !this.checked);
+            }
+        });
+    });
+
+    function skipNotifications() {
+        showFinalStep();
+    }
+
+    async function saveNotifications() {
+        const telegramEnabled = document.getElementById('notify-telegram').checked;
+        const slackEnabled = document.getElementById('notify-slack').checked;
+
+        // Build env config for display
+        let envLines = [];
+
+        if (telegramEnabled) {
+            const token = document.getElementById('wizard-telegram-token').value;
+            const chatId = document.getElementById('wizard-telegram-chat').value;
+            if (token) envLines.push(`TELEGRAM_BOT_TOKEN=${token}`);
+            if (chatId) envLines.push(`TELEGRAM_CHAT_ID=${chatId}`);
+
+            // Test Telegram if configured
+            if (token && chatId) {
+                try {
+                    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: chatId,
+                            text: '🐢 *Snapper Connected!*\n\nYou will receive security alerts here.',
+                            parse_mode: 'Markdown'
+                        })
+                    });
+                    const data = await response.json();
+                    if (!data.ok) {
+                        console.warn('Telegram test failed:', data.description);
+                    }
+                } catch (e) {
+                    console.warn('Telegram test error:', e);
+                }
+            }
+        }
+
+        if (slackEnabled) {
+            const webhook = document.getElementById('wizard-slack-webhook').value;
+            if (webhook) envLines.push(`SLACK_WEBHOOK_URL=${webhook}`);
+        }
+
+        // Store for display in final step
+        window.notificationEnvConfig = envLines.join('\n');
+
+        showFinalStep();
+    }
+
+    function showFinalStep() {
+        document.getElementById('display-agent-id').textContent = registeredAgentId;
+
+        let configText = `# Add to your agent's config
+rules_manager:
+  enabled: true
+  url: http://localhost:8000
+  agent_id: ${registeredAgentId}
+  api_key: ${registeredApiKey}
+  enforce_rules: true`;
+
+        if (window.notificationEnvConfig) {
+            configText += `\n\n# Add to Snapper's .env file
+${window.notificationEnvConfig}`;
+        }
+
+        document.getElementById('config-snippet').textContent = configText;
+        nextStep(5);
+    }
+
     function nextStep(step) {
         // Hide all steps
         document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
         document.getElementById(`step${step}`).classList.remove('hidden');
 
         // Update progress indicators
-        for (let i = 1; i <= 4; i++) {
+        for (let i = 1; i <= 5; i++) {
             const indicator = document.getElementById(`step${i}-indicator`);
             const progressBar = document.getElementById(`progress-${i-1}-${i}`);
 
             if (i < step) {
-                indicator.className = 'flex items-center justify-center w-10 h-10 bg-green-500 rounded-full text-white font-medium';
-                indicator.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
-                if (progressBar) progressBar.className = 'w-8 sm:w-16 h-0.5 bg-green-500';
+                indicator.className = 'flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-full text-white font-medium text-sm';
+                indicator.innerHTML = '<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+                if (progressBar) progressBar.className = 'w-4 sm:w-8 h-0.5 bg-green-500';
             } else if (i === step) {
-                indicator.className = 'flex items-center justify-center w-10 h-10 bg-primary-600 rounded-full text-white font-medium';
+                indicator.className = 'flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-primary-600 rounded-full text-white font-medium text-sm';
                 indicator.textContent = i;
             } else {
-                indicator.className = 'flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full text-gray-600 font-medium';
+                indicator.className = 'flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gray-300 rounded-full text-gray-600 font-medium text-sm';
                 indicator.textContent = i;
-                if (progressBar) progressBar.className = 'w-8 sm:w-16 h-0.5 bg-gray-300';
+                if (progressBar) progressBar.className = 'w-4 sm:w-8 h-0.5 bg-gray-300';
             }
         }
     }
