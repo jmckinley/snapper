@@ -1,19 +1,15 @@
 # Snapper - Production Docker Compose Override
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# All environment variables are now read from .env via ${VAR:-default} in the
+# base compose. This file only overrides structural differences for production:
+# build target, port binding, and volume mounts.
 services:
   app:
     build:
       target: production
     ports: !override
       - "127.0.0.1:8000:8000"
-    environment:
-      - DEBUG=false
-      - LOG_LEVEL=INFO
-      - ENVIRONMENT=production
-      - ALLOWED_ORIGINS=https://76.13.127.76:8443
-      - ALLOWED_HOSTS=76.13.127.76,localhost,app
-      - CORS_ORIGINS=https://76.13.127.76:8443
-      - REQUIRE_LOCALHOST_ONLY=false
     volumes: !reset []
 
   postgres:

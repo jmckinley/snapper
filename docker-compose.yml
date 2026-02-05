@@ -6,20 +6,23 @@ services:
       context: .
       target: development
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     environment:
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
-      - DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - DENY_BY_DEFAULT=true
-      - VALIDATE_WEBSOCKET_ORIGIN=true
-      - REQUIRE_LOCALHOST_ONLY=false  # Disabled for Docker networking
-      - ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
-      - ALLOWED_HOSTS=localhost,127.0.0.1,app
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://snapper:snapper@postgres:5432/snapper}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      - DENY_BY_DEFAULT=${DENY_BY_DEFAULT:-true}
+      - VALIDATE_WEBSOCKET_ORIGIN=${VALIDATE_WEBSOCKET_ORIGIN:-true}
+      - REQUIRE_LOCALHOST_ONLY=${REQUIRE_LOCALHOST_ONLY:-false}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,app}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      - DEBUG=${DEBUG:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
     volumes:
       - .:/app
       - ./static:/app/static
@@ -39,11 +42,11 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_USER=snapper
-      - POSTGRES_PASSWORD=snapper
-      - POSTGRES_DB=snapper
+      - POSTGRES_USER=${POSTGRES_USER:-snapper}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-snapper}
+      - POSTGRES_DB=${POSTGRES_DB:-snapper}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -56,7 +59,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -74,10 +77,10 @@ services:
     command: celery -A app.tasks worker -l INFO
     environment:
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
-      - DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://snapper:snapper@postgres:5432/snapper}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     volumes:
       - .:/app
     depends_on:
@@ -98,10 +101,10 @@ services:
     command: celery -A app.tasks beat -l INFO
     environment:
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
-      - DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://snapper:snapper@postgres:5432/snapper}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     volumes:
       - .:/app
     depends_on:
@@ -123,7 +126,7 @@ services:
     ports:
       - "5555:5555"
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
     depends_on:
       - redis
       - celery-worker

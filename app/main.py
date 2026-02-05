@@ -41,8 +41,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Connecting to Redis...")
     await redis_client.connect()
 
-    # Initialize database
-    logger.info("Initializing database...")
+    # Verify database connectivity (migrations handled by Alembic)
+    logger.info("Verifying database connection...")
     await init_db()
 
     logger.info("Snapper started successfully")

@@ -1,4 +1,8 @@
-"""Async SQLAlchemy database setup with PostgreSQL."""
+"""Async SQLAlchemy database setup with PostgreSQL.
+
+@module database
+@description Database engine, session factory, and connection management for async PostgreSQL.
+"""
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -78,9 +82,15 @@ async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
+    """Verify database connectivity on startup.
+
+    Table creation is handled exclusively by Alembic migrations
+    (alembic upgrade head) which must be run before starting the app.
+    This avoids race conditions when multiple gunicorn workers start
+    simultaneously and each try to create tables.
+    """
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("SELECT 1"))
 
 
 async def check_db_health() -> bool:
