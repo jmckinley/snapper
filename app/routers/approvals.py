@@ -88,7 +88,7 @@ async def create_approval_request(
 
     # Store in Redis with TTL
     key = f"{APPROVAL_PREFIX}{approval_id}"
-    await redis.set(key, approval.model_dump_json(), ex=timeout_seconds + 60)  # Extra buffer for status checks
+    await redis.set(key, approval.model_dump_json(), expire=timeout_seconds + 60)  # Extra buffer for status checks
 
     logger.info(f"Created approval request {approval_id} for agent {agent_name}")
     return approval_id
@@ -120,7 +120,7 @@ async def update_approval_status(
 
     key = f"{APPROVAL_PREFIX}{approval_id}"
     # Keep for a bit longer so status can be retrieved
-    await redis.set(key, approval.model_dump_json(), ex=300)
+    await redis.set(key, approval.model_dump_json(), expire=300)
 
     logger.info(f"Approval {approval_id} {status} by {decided_by}")
     return True
