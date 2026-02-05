@@ -1,4 +1,8 @@
-"""FastAPI application entry point with lifespan management."""
+"""FastAPI application entry point with lifespan management.
+
+@module main
+@description Core application setup including routes, middleware, lifespan, and template rendering.
+"""
 
 import logging
 from contextlib import asynccontextmanager
@@ -251,5 +255,14 @@ async def help_page(request: Request):
     """Help and FAQ page."""
     return templates.TemplateResponse(
         "help/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/docs", tags=["dashboard"])
+async def docs_page(request: Request):
+    """API documentation page."""
+    return templates.TemplateResponse(
+        "docs/index.html",
         {"request": request, "settings": settings},
     )

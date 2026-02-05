@@ -1,0 +1,963 @@
+{% extends "base.html" %}
+
+{% block title %}API Documentation - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between">
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900">API Documentation</h1>
+            <a href="/api/docs" target="_blank" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+                Open Swagger UI
+                <svg class="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="flex gap-8">
+    <!-- Sidebar Navigation -->
+    <nav class="hidden lg:block w-56 flex-shrink-0">
+        <div class="sticky top-6 space-y-1 text-sm">
+            <a href="#quick-start" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Quick Start</a>
+            <a href="#rules-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Rules API</a>
+            <a href="#agents-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Agents API</a>
+            <a href="#approvals-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Approvals API</a>
+            <a href="#security-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Security API</a>
+            <a href="#audit-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Audit API</a>
+            <a href="#integrations-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Integrations API</a>
+            <a href="#setup-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Setup API</a>
+            <a href="#errors" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Error Handling</a>
+            <div class="border-t my-2"></div>
+            <a href="/api/docs" target="_blank" class="block px-3 py-2 rounded-md text-primary-600 hover:bg-gray-200 font-medium">Swagger UI &rarr;</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="flex-1 min-w-0 space-y-8">
+
+        <!-- Quick Start -->
+        <div id="quick-start" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Quick Start</h2>
+            <div class="space-y-4 text-sm text-gray-600">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Base URL</h3>
+                    <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>http://localhost:8000/api/v1</code></pre>
+                </div>
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Common Headers</h3>
+                    <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>Content-Type: application/json
+Accept: application/json</code></pre>
+                </div>
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Rate Limiting</h3>
+                    <p>API requests are rate-limited using a sliding window algorithm. When you exceed the limit, you'll receive a <code class="bg-gray-100 px-1 rounded">429</code> response with a <code class="bg-gray-100 px-1 rounded">Retry-After</code> header indicating how long to wait. The <code class="bg-gray-100 px-1 rounded">X-RateLimit-Remaining</code> response header shows your remaining quota.</p>
+                </div>
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Health Check</h3>
+                    <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>curl http://localhost:8000/health</code></pre>
+                    <p class="mt-2">Response:</p>
+                    <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>{
+  "status": "healthy",
+  "version": "1.0.0"
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rules API -->
+        <div id="rules-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Rules API</h2>
+            <p class="text-sm text-gray-600 mb-6">Create, manage, and evaluate security rules that control agent behavior.</p>
+
+            <div class="space-y-6">
+                <!-- Evaluate -->
+                <details class="group border rounded-lg" open>
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/evaluate</code>
+                        <span class="text-sm text-gray-500 ml-auto">Evaluate a request against rules</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">The primary hook integration point. Sends a tool invocation to be evaluated against all active rules for the given agent.</p>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example request:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "claude-code-macbook",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "rm -rf /tmp/test"
+    }
+  }'</code></pre>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>{
+  "decision": "deny",
+  "rule_id": "rule_abc123",
+  "rule_name": "Dangerous Commands Denylist",
+  "reason": "Command matches denied pattern: rm -rf"
+}</code></pre>
+                        </div>
+                        <p class="text-gray-500">Possible decisions: <code class="bg-gray-100 px-1 rounded">allow</code>, <code class="bg-gray-100 px-1 rounded">deny</code>, <code class="bg-gray-100 px-1 rounded">require_approval</code></p>
+                    </div>
+                </details>
+
+                <!-- List Rules -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules</code>
+                        <span class="text-sm text-gray-500 ml-auto">List all rules</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Retrieve rules with optional filtering by agent, type, and active status.</p>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example request:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl "http://localhost:8000/api/v1/rules?agent_id=claude-code-macbook&is_active=true&skip=0&limit=20"</code></pre>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>[
+  {
+    "id": "rule_abc123",
+    "name": "Credential Protection",
+    "agent_id": "claude-code-macbook",
+    "rule_type": "credential_protection",
+    "parameters": {
+      "patterns": [".env", "*.pem", "id_rsa"]
+    },
+    "is_active": true,
+    "priority": 100
+  }
+]</code></pre>
+                        </div>
+                        <p class="text-gray-500">Query params: <code class="bg-gray-100 px-1 rounded">agent_id</code>, <code class="bg-gray-100 px-1 rounded">rule_type</code>, <code class="bg-gray-100 px-1 rounded">is_active</code>, <code class="bg-gray-100 px-1 rounded">skip</code>, <code class="bg-gray-100 px-1 rounded">limit</code></p>
+                    </div>
+                </details>
+
+                <!-- Create Rule -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules</code>
+                        <span class="text-sm text-gray-500 ml-auto">Create a new rule</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Create a rule to control agent behavior. Rules are evaluated in priority order (highest first).</p>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example request:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Block env files",
+    "agent_id": "claude-code-macbook",
+    "rule_type": "credential_protection",
+    "parameters": {
+      "patterns": [".env", ".env.*", "*.pem"]
+    },
+    "is_active": true,
+    "priority": 100
+  }'</code></pre>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Get Rule -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/{rule_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get rule by ID</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/rules/rule_abc123</code></pre>
+                    </div>
+                </details>
+
+                <!-- Update Rule -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">PUT</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/{rule_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Update a rule</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X PUT http://localhost:8000/api/v1/rules/rule_abc123 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "is_active": false,
+    "priority": 50
+  }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Delete Rule -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">DELETE</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/{rule_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Delete a rule</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Soft-deletes a rule by default. Add <code class="bg-gray-100 px-1 rounded">?permanent=true</code> for hard delete.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X DELETE http://localhost:8000/api/v1/rules/rule_abc123</code></pre>
+                    </div>
+                </details>
+
+                <!-- Validate -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/validate</code>
+                        <span class="text-sm text-gray-500 ml-auto">Validate a rule (dry run)</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Validate a rule definition without creating it. Returns validation errors if any.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test rule",
+    "rule_type": "command_denylist",
+    "parameters": { "commands": ["rm -rf /"] }
+  }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Templates -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/templates</code>
+                        <span class="text-sm text-gray-500 ml-auto">List rule templates</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Get pre-built rule templates for common security scenarios.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/rules/templates</code></pre>
+                    </div>
+                </details>
+
+                <!-- Apply Template -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/templates/{template_id}/apply</code>
+                        <span class="text-sm text-gray-500 ml-auto">Apply a rule template</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules/templates/credential-protection/apply \
+  -H "Content-Type: application/json" \
+  -d '{ "agent_id": "claude-code-macbook" }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Export -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/export</code>
+                        <span class="text-sm text-gray-500 ml-auto">Export rules</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Export rules as JSON or YAML for backup or sharing.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules/export \
+  -H "Content-Type: application/json" \
+  -d '{ "format": "json", "agent_id": "claude-code-macbook" }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Import -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/rules/import</code>
+                        <span class="text-sm text-gray-500 ml-auto">Import rules</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Import rules from a JSON payload.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules/import \
+  -H "Content-Type: application/json" \
+  -d '{ "rules": [ ... ] }'</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Agents API -->
+        <div id="agents-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Agents API</h2>
+            <p class="text-sm text-gray-600 mb-6">Register and manage AI agents. Each agent has a unique ID and can have rules applied to it.</p>
+
+            <div class="space-y-6">
+                <!-- List Agents -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents</code>
+                        <span class="text-sm text-gray-500 ml-auto">List all agents</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl "http://localhost:8000/api/v1/agents?skip=0&limit=20"</code></pre>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>[
+  {
+    "id": "claude-code-macbook",
+    "name": "Claude Code (MacBook)",
+    "agent_type": "claude_code",
+    "status": "active",
+    "last_seen": "2026-02-04T12:00:00Z"
+  }
+]</code></pre>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Register Agent -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents</code>
+                        <span class="text-sm text-gray-500 ml-auto">Register a new agent</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "claude-code-macbook",
+    "name": "Claude Code (MacBook)",
+    "agent_type": "claude_code",
+    "description": "Primary development agent"
+  }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Get Agent -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents/{agent_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get agent details</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/agents/claude-code-macbook</code></pre>
+                    </div>
+                </details>
+
+                <!-- Update Agent -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">PUT</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents/{agent_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Update an agent</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X PUT http://localhost:8000/api/v1/agents/claude-code-macbook \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Claude Code (Work MacBook)" }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Delete Agent -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">DELETE</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents/{agent_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Delete an agent</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X DELETE http://localhost:8000/api/v1/agents/claude-code-macbook</code></pre>
+                    </div>
+                </details>
+
+                <!-- Agent Status -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents/{agent_id}/status</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get real-time agent status</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/agents/claude-code-macbook/status</code></pre>
+                    </div>
+                </details>
+
+                <!-- Bulk Register -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents/bulk</code>
+                        <span class="text-sm text-gray-500 ml-auto">Bulk register agents</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/agents/bulk \
+  -H "Content-Type: application/json" \
+  -d '{ "agents": [
+    { "id": "agent-1", "name": "Agent 1", "agent_type": "claude_code" },
+    { "id": "agent-2", "name": "Agent 2", "agent_type": "claude_code" }
+  ]}'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Suspend / Activate / Quarantine -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/agents/{agent_id}/suspend | activate | quarantine</code>
+                        <span class="text-sm text-gray-500 ml-auto">Lifecycle management</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Control agent lifecycle: suspend pauses rule evaluation, activate resumes it, and quarantine locks down an agent due to security concerns.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># Suspend an agent
+curl -X POST http://localhost:8000/api/v1/agents/claude-code-macbook/suspend
+
+# Activate an agent
+curl -X POST http://localhost:8000/api/v1/agents/claude-code-macbook/activate
+
+# Quarantine an agent
+curl -X POST http://localhost:8000/api/v1/agents/claude-code-macbook/quarantine</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Approvals API -->
+        <div id="approvals-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Approvals API</h2>
+            <p class="text-sm text-gray-600 mb-6">Manage approval requests for actions that require human authorization before proceeding.</p>
+
+            <div class="space-y-6">
+                <!-- Get Approval Status -->
+                <details class="group border rounded-lg" open>
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/approvals/{approval_id}/status</code>
+                        <span class="text-sm text-gray-500 ml-auto">Check approval status</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Polled by the hook script while waiting for a human decision.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/approvals/appr_xyz789/status</code></pre>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>{
+  "approval_id": "appr_xyz789",
+  "status": "pending",
+  "agent_id": "claude-code-macbook",
+  "tool_name": "Bash",
+  "command": "pip install requests",
+  "created_at": "2026-02-04T12:00:00Z",
+  "expires_at": "2026-02-04T12:05:00Z"
+}</code></pre>
+                        </div>
+                        <p class="text-gray-500">Possible statuses: <code class="bg-gray-100 px-1 rounded">pending</code>, <code class="bg-gray-100 px-1 rounded">approved</code>, <code class="bg-gray-100 px-1 rounded">denied</code>, <code class="bg-gray-100 px-1 rounded">expired</code></p>
+                    </div>
+                </details>
+
+                <!-- Decide -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/approvals/{approval_id}/decide</code>
+                        <span class="text-sm text-gray-500 ml-auto">Approve or deny a request</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/approvals/appr_xyz789/decide \
+  -H "Content-Type: application/json" \
+  -d '{ "decision": "approved", "reason": "Safe package install" }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- List Pending -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/approvals/pending</code>
+                        <span class="text-sm text-gray-500 ml-auto">List pending approvals</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/approvals/pending</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Security API -->
+        <div id="security-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Security API</h2>
+            <p class="text-sm text-gray-600 mb-6">Access vulnerability data, threat intelligence, security recommendations, and agent security scores.</p>
+
+            <div class="space-y-6">
+                <!-- Vulnerabilities -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/vulnerabilities</code>
+                        <span class="text-sm text-gray-500 ml-auto">List known vulnerabilities</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/security/vulnerabilities</code></pre>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>[
+  {
+    "id": "CVE-2026-25253",
+    "title": "WebSocket Hijacking in AI Coding Assistants",
+    "severity": "critical",
+    "affected_tools": ["claude_code", "cursor"],
+    "mitigation_available": true
+  }
+]</code></pre>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Vulnerability Detail -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/vulnerabilities/{issue_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get vulnerability details</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/security/vulnerabilities/CVE-2026-25253</code></pre>
+                    </div>
+                </details>
+
+                <!-- Malicious Skills -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/clawhub/skills</code>
+                        <span class="text-sm text-gray-500 ml-auto">List flagged malicious skills</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/security/clawhub/skills</code></pre>
+                    </div>
+                </details>
+
+                <!-- Analyze Skill -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/clawhub/skills/{skill_id}/analyze</code>
+                        <span class="text-sm text-gray-500 ml-auto">Analyze a skill for threats</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/security/clawhub/skills/skill_abc/analyze</code></pre>
+                    </div>
+                </details>
+
+                <!-- Recommendations -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/recommendations</code>
+                        <span class="text-sm text-gray-500 ml-auto">List security recommendations</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/security/recommendations</code></pre>
+                    </div>
+                </details>
+
+                <!-- Apply / Dismiss Recommendation -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/recommendations/{id}/apply | dismiss</code>
+                        <span class="text-sm text-gray-500 ml-auto">Apply or dismiss a recommendation</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># Apply
+curl -X POST http://localhost:8000/api/v1/security/recommendations/rec_123/apply
+
+# Dismiss
+curl -X POST http://localhost:8000/api/v1/security/recommendations/rec_123/dismiss</code></pre>
+                    </div>
+                </details>
+
+                <!-- Security Score -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/score</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get global or per-agent security score</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># Global score
+curl http://localhost:8000/api/v1/security/score
+
+# Per-agent score
+curl http://localhost:8000/api/v1/security/score/claude-code-macbook</code></pre>
+                    </div>
+                </details>
+
+                <!-- Threat Feed -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/threats/feed</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get threat intelligence feed</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/security/threats/feed</code></pre>
+                    </div>
+                </details>
+
+                <!-- Weekly Digest -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/security/digest/weekly</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get weekly security digest</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/security/digest/weekly</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Audit API -->
+        <div id="audit-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Audit API</h2>
+            <p class="text-sm text-gray-600 mb-6">Access audit logs, policy violations, security alerts, and compliance reports.</p>
+
+            <div class="space-y-6">
+                <!-- Audit Logs -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/logs</code>
+                        <span class="text-sm text-gray-500 ml-auto">List audit logs</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Filter logs by agent, decision, time range, and more.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl "http://localhost:8000/api/v1/audit/logs?agent_id=claude-code-macbook&decision=deny&limit=50"</code></pre>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>[
+  {
+    "id": "log_abc123",
+    "agent_id": "claude-code-macbook",
+    "tool_name": "Bash",
+    "command": "cat .env",
+    "decision": "deny",
+    "rule_id": "rule_xyz",
+    "timestamp": "2026-02-04T12:00:00Z"
+  }
+]</code></pre>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Log Stream -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/logs/stream</code>
+                        <span class="text-sm text-gray-500 ml-auto">Stream logs via SSE</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Server-Sent Events stream for real-time log monitoring.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -N http://localhost:8000/api/v1/audit/logs/stream</code></pre>
+                    </div>
+                </details>
+
+                <!-- Violations -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/violations</code>
+                        <span class="text-sm text-gray-500 ml-auto">List policy violations</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/audit/violations</code></pre>
+                    </div>
+                </details>
+
+                <!-- Resolve Violation -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/violations/{violation_id}/resolve</code>
+                        <span class="text-sm text-gray-500 ml-auto">Resolve a violation</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/audit/violations/viol_123/resolve</code></pre>
+                    </div>
+                </details>
+
+                <!-- Alerts -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/alerts</code>
+                        <span class="text-sm text-gray-500 ml-auto">List security alerts</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/audit/alerts</code></pre>
+                    </div>
+                </details>
+
+                <!-- Acknowledge Alert -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/alerts/{alert_id}/acknowledge</code>
+                        <span class="text-sm text-gray-500 ml-auto">Acknowledge an alert</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/audit/alerts/alert_123/acknowledge</code></pre>
+                    </div>
+                </details>
+
+                <!-- Compliance Report -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/reports/compliance</code>
+                        <span class="text-sm text-gray-500 ml-auto">Generate compliance report</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/audit/reports/compliance</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Integrations API -->
+        <div id="integrations-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Integrations API</h2>
+            <p class="text-sm text-gray-600 mb-6">Manage integration templates that bundle pre-configured security rules.</p>
+
+            <div class="space-y-6">
+                <!-- List Integrations -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations</code>
+                        <span class="text-sm text-gray-500 ml-auto">List all integrations</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations</code></pre>
+                    </div>
+                </details>
+
+                <!-- Get Integration -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/{integration_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get integration details</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations/credential-protection</code></pre>
+                    </div>
+                </details>
+
+                <!-- Enable / Disable -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/{integration_id}/enable | disable</code>
+                        <span class="text-sm text-gray-500 ml-auto">Enable or disable an integration</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># Enable
+curl -X POST "http://localhost:8000/api/v1/integrations/credential-protection/enable?agent_id=claude-code-macbook"
+
+# Disable
+curl -X POST "http://localhost:8000/api/v1/integrations/credential-protection/disable?agent_id=claude-code-macbook"</code></pre>
+                    </div>
+                </details>
+
+                <!-- Categories Summary -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/categories/summary</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get category summary</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations/categories/summary</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Setup API -->
+        <div id="setup-api" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Setup API</h2>
+            <p class="text-sm text-gray-600 mb-6">First-run setup, auto-discovery, and quick-registration for AI agents.</p>
+
+            <div class="space-y-6">
+                <!-- Setup Status -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/status</code>
+                        <span class="text-sm text-gray-500 ml-auto">Check setup status</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/setup/status</code></pre>
+                    </div>
+                </details>
+
+                <!-- Discover -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/discover</code>
+                        <span class="text-sm text-gray-500 ml-auto">Auto-discover running agents</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Scans the local machine for running AI agent instances.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/setup/discover</code></pre>
+                    </div>
+                </details>
+
+                <!-- Quick Register -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/quick-register</code>
+                        <span class="text-sm text-gray-500 ml-auto">Quick-register a discovered agent</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/setup/quick-register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_type": "claude_code",
+    "profile": "standard"
+  }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Profiles -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/profiles</code>
+                        <span class="text-sm text-gray-500 ml-auto">List security profiles</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/setup/profiles</code></pre>
+                    </div>
+                </details>
+
+                <!-- Agent Config -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/config/{agent_id}</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get agent config snippet</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Returns the hook configuration snippet for a specific agent.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/setup/config/claude-code-macbook</code></pre>
+                    </div>
+                </details>
+
+                <!-- Complete Setup -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/complete</code>
+                        <span class="text-sm text-gray-500 ml-auto">Mark setup as complete</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/setup/complete</code></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Error Handling -->
+        <div id="errors" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Error Handling</h2>
+            <p class="text-sm text-gray-600 mb-6">All error responses follow a consistent JSON format with a <code class="bg-gray-100 px-1 rounded">detail</code> field.</p>
+
+            <div class="space-y-4">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="text-left py-2 pr-4 font-medium text-gray-900">Code</th>
+                                <th class="text-left py-2 pr-4 font-medium text-gray-900">Meaning</th>
+                                <th class="text-left py-2 font-medium text-gray-900">Common Cause</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-600">
+                            <tr class="border-b">
+                                <td class="py-2 pr-4"><code>400</code></td>
+                                <td class="py-2 pr-4">Bad Request</td>
+                                <td class="py-2">Invalid JSON or missing required fields</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2 pr-4"><code>404</code></td>
+                                <td class="py-2 pr-4">Not Found</td>
+                                <td class="py-2">Rule, agent, or resource does not exist</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2 pr-4"><code>409</code></td>
+                                <td class="py-2 pr-4">Conflict</td>
+                                <td class="py-2">Resource already exists (e.g., duplicate agent ID)</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2 pr-4"><code>422</code></td>
+                                <td class="py-2 pr-4">Validation Error</td>
+                                <td class="py-2">Request body fails schema validation</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2 pr-4"><code>429</code></td>
+                                <td class="py-2 pr-4">Too Many Requests</td>
+                                <td class="py-2">Rate limit exceeded; check <code>Retry-After</code> header</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4"><code>500</code></td>
+                                <td class="py-2 pr-4">Internal Error</td>
+                                <td class="py-2">Unexpected server error</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <p class="font-medium text-sm text-gray-700 mb-2">Example error response:</p>
+                    <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>{
+  "detail": "Rule not found: rule_abc123"
+}</code></pre>
+                </div>
+
+                <div>
+                    <p class="font-medium text-sm text-gray-700 mb-2">Validation error response (422):</p>
+                    <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>{
+  "detail": [
+    {
+      "loc": ["body", "rule_type"],
+      "msg": "field required",
+      "type": "value_error.missing"
+    }
+  ]
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Swagger Link -->
+        <div class="bg-white shadow rounded-lg p-6 text-center">
+            <h2 class="text-lg font-medium text-gray-900 mb-2">Interactive API Explorer</h2>
+            <p class="text-sm text-gray-600 mb-4">Try out endpoints directly in the browser with Swagger UI.</p>
+            <a href="/api/docs" target="_blank" class="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+                Open Swagger UI
+                <svg class="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

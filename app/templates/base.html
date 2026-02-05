@@ -63,7 +63,7 @@
                         <div class="ml-4 flex items-center md:ml-6">
                             <a href="/settings" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Settings</a>
                             <a href="/help" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Help</a>
-                            <a href="/api/docs" target="_blank" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">API Docs</a>
+                            <a href="/docs" class="{% if request.url.path == '/docs' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">API Docs</a>
                         </div>
                     </div>
                 </div>
