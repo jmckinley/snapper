@@ -1,6 +1,6 @@
 # Snapper
 
-**Security rules manager for AI agents** - Give yourself fine-grained control over what AI assistants can do.
+**Security rules manager for AI agents** — Fine-grained control over what AI assistants can do.
 
 ![Snapper Dashboard](https://img.shields.io/badge/status-beta-yellow) ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -14,62 +14,75 @@ Snapper sits between your AI coding assistants (OpenClaw, Claude Code, Cursor, G
 
 Think of it as a firewall for AI agents.
 
-## For OpenClaw Users
+## Installation
 
-**One command. That's it.**
+There are two paths: **local development** (any OS with Docker) and **production deployment** (Ubuntu VPS).
+
+### Local Development
+
+Works on macOS, Linux, or Windows with Docker Desktop.
+
+```bash
+git clone https://github.com/jmckinley/snapper.git
+cd snapper
+docker compose up -d
+```
+
+That's it. Dashboard at http://localhost:8000, API docs at http://localhost:8000/api/docs.
+
+To customize settings, copy `.env.example` to `.env` and edit — defaults work out of the box.
+
+### Production (Ubuntu VPS)
+
+One command on a fresh Ubuntu server with Docker installed:
+
+```bash
+git clone https://github.com/jmckinley/snapper.git /opt/snapper
+cd /opt/snapper
+./deploy.sh
+```
+
+The script handles everything:
+- Generates a production `.env` with a random `SECRET_KEY`
+- Builds containers with gunicorn (4 workers)
+- Runs database migrations
+- Configures Caddy reverse proxy with self-signed TLS
+- Opens the firewall port
+
+Result: Snapper at `https://your-server-ip:8443`
+
+**Prerequisites:** `git`, `docker` with compose plugin, `caddy`, `ufw` (all standard on Ubuntu 24.04).
+
+**To update a running deployment:**
+```bash
+cd /opt/snapper
+git pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm app alembic upgrade head
+```
+
+## Agent Setup
+
+### OpenClaw
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash
 ```
 
-This automatically:
-- Installs and starts Snapper
-- Registers your OpenClaw instance
-- Applies recommended security rules
-- Installs the PreToolUse hook
+Options: `--strict` (require approval for sensitive actions) or `--permissive` (logging only).
 
-Your OpenClaw is protected against CVE-2026-25253, credential exposure, and malicious skills.
-
-**Options:**
-```bash
-# Strict mode (requires approval for sensitive actions)
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash -s -- --strict
-
-# Permissive mode (logging only, no blocking)
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash -s -- --permissive
-```
-
-## For Claude Code Users
-
-**One command. That's it.**
+### Claude Code
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash
 ```
 
-This automatically:
-- Installs and starts Snapper
-- Registers your Claude Code instance
-- Applies recommended security rules
-- Installs the PreToolUse hook in `~/.claude/hooks/`
-- Updates your `~/.claude/settings.json`
+Restart Claude Code after setup for hooks to take effect.
 
-**Note:** Restart Claude Code after setup for hooks to take effect.
+<details>
+<summary>Manual Claude Code setup</summary>
 
-**Options:**
-```bash
-# Strict mode (requires approval for sensitive actions)
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash -s -- --strict
-
-# Permissive mode (logging only, no blocking)
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash -s -- --permissive
-```
-
-### Manual Claude Code Setup
-
-If you prefer manual installation:
-
-1. Copy the hook script:
+1. Install the hook:
 ```bash
 mkdir -p ~/.claude/hooks
 curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-hook.sh \
@@ -96,39 +109,12 @@ chmod +x ~/.claude/hooks/pre_tool_use.sh
 }
 ```
 
-3. Set environment variables (optional):
+3. Optionally set environment variables:
 ```bash
 export SNAPPER_URL=http://localhost:8000
 export SNAPPER_AGENT_ID=claude-code-$(hostname)
 ```
-
-## Quick Start (General)
-
-### One-Command Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/install.sh | bash
-```
-
-This will:
-1. Check for Docker & Docker Compose
-2. Pull and start all services
-3. Apply default security rules
-4. Open the dashboard at http://localhost:8000
-
-### Manual Install
-
-```bash
-# Clone the repository
-git clone https://github.com/jmckinley/snapper.git
-cd snapper
-
-# Start services
-docker compose up -d
-
-# Open dashboard
-open http://localhost:8000
-```
+</details>
 
 ## Features
 
@@ -145,131 +131,91 @@ open http://localhost:8000
 | **Network Egress** | Control outbound network access |
 | **Human-in-Loop** | Require approval for sensitive actions (via Telegram/Slack) |
 
-### Integrations
+### Security
 
-Snapper works with any MCP-compatible AI assistant:
-
-- **OpenClaw** - Full integration with setup wizard
-- **Claude Code** - Via MCP server configuration
-- **Cursor** - Via MCP server configuration
-- **GitHub Copilot** - Via custom integration
-- **Custom MCP Servers** - Build your own
-
-### Security Features
-
-- **Deny-by-default** - Nothing is allowed unless explicitly permitted
-- **Origin validation** - Prevents WebSocket hijacking (CVE-2026-25253)
-- **Rate limiting** - Sliding window algorithm with circuit breaker
-- **Audit logging** - Every action is logged for review
+- **Deny-by-default** — Nothing is allowed unless explicitly permitted
+- **Origin validation** — Prevents WebSocket hijacking (CVE-2026-25253)
+- **Rate limiting** — Sliding window algorithm with circuit breaker
+- **Audit logging** — Every action is logged for review
 
 ### Notifications & Approvals
 
 Get alerts and approve/deny requests from your phone:
 
-- **Telegram** - Popular with OpenClaw users, with inline approve/deny buttons
-- **Slack** - Webhook notifications
-- **Email** - SMTP alerts
-- **PagerDuty** - For critical incidents
-- **Webhooks** - Custom integrations
-
-**Telegram Quick Setup:**
-1. Message [@BotFather](https://t.me/BotFather) to create a bot
-2. Get your chat ID from [@userinfobot](https://t.me/userinfobot)
-3. Add to `.env`: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+- **Telegram** — Inline approve/deny buttons
+- **Slack** — Webhook notifications
+- **Email** — SMTP alerts
+- **PagerDuty** — Critical incidents
+- **Webhooks** — Custom integrations
 
 ## Dashboard
-
-Access the dashboard at http://localhost:8000 after installation.
 
 | Page | Description |
 |------|-------------|
 | **Dashboard** | Overview, security score, quick actions |
 | **Agents** | Connect and manage AI assistants |
-| **Integrations** | Configure Slack, GitHub, and more |
 | **Rules** | Create and manage security rules |
 | **Security** | Vulnerability tracking, threat feed |
 | **Audit** | Review all agent actions |
+| **Integrations** | Configure Slack, GitHub, and more |
 | **Settings** | Configure alerts and notifications |
 
 ## API
 
-Full REST API available at http://localhost:8000/api/docs
+Swagger docs at `/api/docs`. Key endpoints:
 
-### Key Endpoints
-
-```bash
-# List agents
-GET /api/v1/agents
-
-# Create a rule
-POST /api/v1/rules
-
-# Evaluate a request (used by MCP servers)
-POST /api/v1/rules/evaluate
-
-# Get audit logs
-GET /api/v1/audit/logs
+```
+GET    /api/v1/agents          # List agents
+POST   /api/v1/rules           # Create a rule
+POST   /api/v1/rules/evaluate  # Evaluate a request (used by hooks)
+GET    /api/v1/audit/logs      # Get audit logs
+GET    /health                 # Health check
+GET    /health/ready           # Readiness check (DB + Redis)
 ```
 
 ## Configuration
 
-Environment variables (set in `.env`):
+All settings are environment variables. Copy `.env.example` to `.env` to customize.
 
-```bash
-# Security (required)
-SECRET_KEY=your-secret-key-here
+Key settings:
 
-# Database
-DATABASE_URL=postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET_KEY` | *required* | Session signing key (`openssl rand -hex 32`) |
+| `DENY_BY_DEFAULT` | `true` | Deny unknown requests (fail-safe) |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1,app` | Accepted Host headers |
+| `ALLOWED_ORIGINS` | `http://localhost:8000` | CORS/WebSocket origins |
+| `REQUIRE_LOCALHOST_ONLY` | `false` | Reject non-localhost requests |
+| `DEBUG` | `true` | Debug mode (set `false` in production) |
 
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-# Security settings
-DENY_BY_DEFAULT=true          # Fail-safe: deny unknown requests
-VALIDATE_WEBSOCKET_ORIGIN=true # CVE-2026-25253 mitigation
-
-# Optional
-DEBUG=false
-LOG_LEVEL=INFO
-```
+See `.env.example` for the full list including database, Redis, Celery, alerting, and notification settings.
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   AI Assistant  │────▶│  MCP Server     │────▶│    Snapper      │
-│  (Claude Code)  │     │  (Slack, etc.)  │     │  Rule Engine    │
+│   AI Assistant  │────▶│  PreToolUse     │────▶│    Snapper      │
+│  (Claude Code)  │     │  Hook           │     │  Rule Engine    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                                         │
                                                         ▼
-                                               ┌─────────────────┐
-                                               │   Allow/Deny/   │
-                                               │ Require Approval│
-                                               └─────────────────┘
+                                                ┌─────────────────┐
+                                                │   Allow / Deny  │
+                                                │ / Ask Approval  │
+                                                └─────────────────┘
 ```
 
-## Development
+**Stack:** FastAPI, PostgreSQL, Redis, Celery, Gunicorn, Docker Compose.
+
+**Containers (5):** app, postgres, redis, celery-worker, celery-beat.
+
+## Common Commands
 
 ```bash
-# Run locally (without Docker)
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# Run tests
-docker compose exec app python -m pytest tests/ -v
-
-# Database migrations
-docker compose exec app alembic upgrade head
-```
-
-## Commands
-
-```bash
-# View logs
+# Logs
 docker compose logs -f app
 
-# Stop services
+# Stop
 docker compose down
 
 # Restart
@@ -277,31 +223,29 @@ docker compose restart
 
 # Reset database
 docker compose down -v && docker compose up -d
+
+# Run migrations
+docker compose exec app alembic upgrade head
+
+# Run tests
+docker compose exec app python -m pytest tests/ -v
 ```
+
+For production, prefix with `-f docker-compose.yml -f docker-compose.prod.yml`.
 
 ## Troubleshooting
 
-### "Connection refused" on port 8000
-Services may still be starting. Wait 30 seconds and try again, or check:
-```bash
-docker compose logs app
-```
+**"Connection refused" on port 8000** — Services may still be starting. Wait 30 seconds, then check `docker compose logs app`.
 
-### Rate limit errors (429)
-You're hitting the rate limiter. Wait a few seconds or adjust limits in Settings.
+**403 on dashboard** — Your server's IP/hostname isn't in `ALLOWED_HOSTS`. Add it to `.env`.
 
-### Agent not connecting
-1. Verify the agent is registered in Snapper
-2. Check the agent's `SNAPPER_URL` environment variable
-3. Ensure the agent ID matches
+**Rate limit errors (429)** — You're hitting the rate limiter. Wait a few seconds or adjust limits in Settings.
 
-## Contributing
-
-Contributions welcome! Please read our contributing guidelines first.
+**Agent not connecting** — Verify the agent is registered, check `SNAPPER_URL`, and ensure the agent ID matches.
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License — see LICENSE file for details.
 
 ## Support
 

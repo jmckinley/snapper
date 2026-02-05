@@ -60,27 +60,29 @@ snapper/
 
 ## Commands
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+Snapper runs exclusively in Docker — no bare-metal installs.
 
-# Development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```bash
+# Local development
+docker compose up -d
+
+# Production deployment (Ubuntu VPS)
+./deploy.sh
+
+# Production compose (manual)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 # Database migrations
-alembic upgrade head
-alembic revision --autogenerate -m "description"
+docker compose exec app alembic upgrade head
+docker compose exec app alembic revision --autogenerate -m "description"
 
 # Run tests
-pytest tests/ -v
+docker compose exec app pytest tests/ -v
 
-# Linting
-black app/ tests/
-flake8 app/ tests/
-mypy app/
-
-# Docker development
-docker compose up -d
+# Linting (inside container)
+docker compose exec app black app/ tests/
+docker compose exec app flake8 app/ tests/
+docker compose exec app mypy app/
 ```
 
 ## Code Patterns
