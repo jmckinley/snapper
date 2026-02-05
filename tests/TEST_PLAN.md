@@ -375,22 +375,25 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 ### Prerequisites
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
+
+# Run database migrations
+docker compose exec app alembic upgrade head
 
 # Verify services healthy
 curl http://localhost:8000/health/ready
 
 # Start sandbox for hook tests
-docker-compose --profile sandbox up -d
+docker compose --profile sandbox up -d
 ```
 
 ### Run Automated Tests
 ```bash
 # Run pytest suite
-pytest tests/ -v --tb=short
+docker compose exec app pytest tests/ -v --tb=short
 
 # Run with coverage
-pytest tests/ --cov=app --cov-report=html
+docker compose exec app pytest tests/ --cov=app --cov-report=html
 ```
 
 ### Manual Test Checklist
