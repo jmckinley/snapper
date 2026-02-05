@@ -1,0 +1,29 @@
+# Snapper - Production Docker Compose Override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  app:
+    build:
+      target: production
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+    volumes: []
+
+  postgres:
+    ports: []
+
+  redis:
+    ports: []
+
+  celery-worker:
+    build:
+      target: production
+    volumes: []
+
+  celery-beat:
+    build:
+      target: production
+    volumes: []
