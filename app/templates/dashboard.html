@@ -23,10 +23,19 @@
                     <p class="text-green-200 text-sm mt-2">Decide what your AI can and can't do with your integrations</p>
                 </div>
             </div>
-            <div class="hidden md:flex flex-col items-end space-y-2">
-                <span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm">Deny by default</span>
-                <span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm">Require approval</span>
-                <span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm">Full audit trail</span>
+            <div class="hidden md:flex flex-col items-end space-y-2 text-sm">
+                <div class="flex items-center gap-2 text-green-100">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                    <span>Blocks unknown actions by default</span>
+                </div>
+                <div class="flex items-center gap-2 text-green-100">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                    <span>Asks you before sensitive actions run</span>
+                </div>
+                <div class="flex items-center gap-2 text-green-100">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span>Logs every action for review</span>
+                </div>
             </div>
         </div>
     </div>
@@ -379,33 +388,56 @@
             }
 
             container.innerHTML = data.items.map(log => {
-                // Parse details from new_value
                 const details = log.new_value || {};
                 const command = details.command || '';
                 const filePath = details.file_path || '';
                 const toolName = details.tool_name || '';
-                const requestType = details.request_type || '';
 
-                // What was blocked
-                let actionDesc = command || filePath || toolName || requestType || 'Unknown action';
-                if (actionDesc.length > 50) {
-                    actionDesc = actionDesc.substring(0, 47) + '...';
+                // Build a human-readable description of what was attempted
+                let whatLabel = '';
+                let whatValue = '';
+                if (command) {
+                    whatLabel = 'Command';
+                    whatValue = command.length > 60 ? command.substring(0, 57) + '...' : command;
+                } else if (filePath) {
+                    whatLabel = 'File access';
+                    whatValue = filePath.length > 60 ? '...' + filePath.slice(-57) : filePath;
+                } else if (toolName) {
+                    whatLabel = 'Tool call';
+                    whatValue = toolName;
+                } else {
+                    whatLabel = 'Action';
+                    whatValue = details.request_type || 'Unknown';
                 }
 
-                // Time ago
+                // Extract the reason (strip the "DENY: " prefix)
+                const reason = log.message.replace(/^DENY:\s*/i, '');
+
+                // Tool badge (e.g. "Bash", "Write")
+                const tool = toolName ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">${escapeHtml(toolName)}</span>` : '';
+
                 const timeAgo = getTimeAgo(new Date(log.created_at));
 
                 return `
-                    <div class="px-6 py-4 hover:bg-red-25 border-l-2 border-transparent hover:border-red-400 transition-colors">
-                        <div class="flex items-start justify-between">
+                    <div class="px-6 py-4 hover:bg-red-50 transition-colors">
+                        <div class="flex items-start gap-3">
+                            <div class="flex-shrink-0 mt-0.5">
+                                <span class="inline-flex items-center justify-center h-8 w-8 rounded-full bg-red-100">
+                                    <svg class="h-4 w-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                                    </svg>
+                                </span>
+                            </div>
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center">
-                                    <span class="text-red-500 font-medium text-sm">BLOCKED</span>
-                                    <span class="mx-2 text-gray-300">•</span>
-                                    <span class="text-xs text-gray-500">${timeAgo}</span>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    ${tool}
+                                    <span class="text-sm font-medium text-gray-900">${escapeHtml(whatLabel)} blocked</span>
+                                    <span class="ml-auto text-xs text-gray-400 flex-shrink-0">${timeAgo}</span>
                                 </div>
-                                <p class="text-sm text-gray-900 mt-1 truncate font-mono bg-gray-100 px-2 py-1 rounded">${escapeHtml(actionDesc)}</p>
-                                <p class="text-xs text-gray-500 mt-1">${log.message.replace('DENY: ', '')}</p>
+                                <p class="text-sm text-gray-900 mt-1.5 truncate font-mono bg-gray-100 px-2 py-1 rounded text-xs">${escapeHtml(whatValue)}</p>
+                                <p class="text-xs text-gray-500 mt-1.5">
+                                    <span class="font-medium text-gray-600">Reason:</span> ${escapeHtml(reason)}
+                                </p>
                             </div>
                         </div>
                     </div>
