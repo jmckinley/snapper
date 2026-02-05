@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None  # Can be user ID or group chat ID
 
+    # Notification preferences
+    NOTIFY_ON_BLOCK: bool = True  # Send notification when action is blocked
+    NOTIFY_ON_APPROVAL_REQUEST: bool = True  # Send notification for approval requests
+    NOTIFY_ON_ALLOW: bool = False  # Send notification when action is allowed (verbose)
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

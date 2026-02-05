@@ -1198,6 +1198,70 @@ async def evaluate_request(
         if blocking_rule:
             matched_rule_name = blocking_rule.name
 
+    # Log to audit trail
+    if result.decision.value in ("deny", "require_approval"):
+        audit_log = AuditLog(
+            action=AuditAction.REQUEST_DENIED if result.decision.value == "deny" else AuditAction.REQUEST_PENDING_APPROVAL,
+            severity=AuditSeverity.WARNING if result.decision.value == "deny" else AuditSeverity.INFO,
+            agent_id=agent.id,
+            rule_id=result.blocking_rule,
+            message=f"{result.decision.value.upper()}: {result.reason}",
+            old_value=None,
+            new_value={
+                "request_type": request.request_type,
+                "command": request.command,
+                "file_path": request.file_path,
+                "tool_name": request.tool_name,
+                "decision": result.decision.value,
+            },
+        )
+        db.add(audit_log)
+        await db.commit()
+
+        # Send notification for blocked events (async, don't wait)
+        try:
+            from app.tasks.alerts import send_alert
+            from app.config import get_settings
+            notify_settings = get_settings()
+
+            # Build notification message
+            action_desc = request.command or request.file_path or request.tool_name or request.request_type
+
+            if result.decision.value == "deny" and notify_settings.NOTIFY_ON_BLOCK:
+                send_alert.delay(
+                    title=f"Action Blocked: {matched_rule_name or 'Security Rule'}",
+                    message=f"Agent `{agent.name}` attempted: `{action_desc}`\n\nBlocked by: {result.reason}",
+                    severity="warning",
+                    metadata={
+                        "agent_id": request.agent_id,
+                        "agent_name": agent.name,
+                        "command": request.command,
+                        "file_path": request.file_path,
+                        "tool_name": request.tool_name,
+                        "rule_name": matched_rule_name,
+                    },
+                )
+            elif result.decision.value == "require_approval" and notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
+                import uuid
+                approval_request_id = str(uuid.uuid4())
+                send_alert.delay(
+                    title=f"Approval Required: {matched_rule_name or 'Security Rule'}",
+                    message=f"Agent `{agent.name}` wants to: `{action_desc}`\n\nRule: {result.reason}",
+                    severity="warning",
+                    metadata={
+                        "agent_id": request.agent_id,
+                        "agent_name": agent.name,
+                        "command": request.command,
+                        "file_path": request.file_path,
+                        "tool_name": request.tool_name,
+                        "rule_name": matched_rule_name,
+                        "request_id": approval_request_id,
+                        "requires_approval": True,
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Failed to send alert notification: {e}")
+
     return EvaluateResponse(
         decision=result.decision.value,  # EvaluationDecision enum to string
         reason=result.reason,

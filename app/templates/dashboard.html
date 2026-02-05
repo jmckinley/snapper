@@ -277,9 +277,21 @@
     }
 
     async function loadStats() {
-        // These would come from actual API calls
-        document.getElementById('stat-blocked').textContent = '0';
-        document.getElementById('stat-pending').textContent = '0';
+        try {
+            // Fetch today's blocked count
+            const blockedResponse = await fetch('/api/v1/audit/logs?action=request_denied&page_size=1');
+            const blockedData = await blockedResponse.json();
+            document.getElementById('stat-blocked').textContent = blockedData.total || '0';
+
+            // Fetch pending approvals
+            const pendingResponse = await fetch('/api/v1/audit/logs?action=request_pending_approval&page_size=1');
+            const pendingData = await pendingResponse.json();
+            document.getElementById('stat-pending').textContent = pendingData.total || '0';
+        } catch (error) {
+            console.error('Failed to load stats:', error);
+            document.getElementById('stat-blocked').textContent = '0';
+            document.getElementById('stat-pending').textContent = '0';
+        }
     }
 
     async function loadActivity() {
@@ -293,12 +305,37 @@
                 return;
             }
 
-            container.innerHTML = data.items.map(log => `
-                <div class="px-6 py-3 hover:bg-gray-50">
-                    <p class="text-sm text-gray-900">${log.message}</p>
-                    <p class="text-xs text-gray-500">${new Date(log.created_at).toLocaleString()}</p>
-                </div>
-            `).join('');
+            container.innerHTML = data.items.map(log => {
+                // Icon and color based on action type
+                let icon = 'ℹ️';
+                let bgColor = 'bg-gray-100';
+                if (log.action === 'request_denied') {
+                    icon = '🚫';
+                    bgColor = 'bg-red-50';
+                } else if (log.action === 'request_pending_approval') {
+                    icon = '⏳';
+                    bgColor = 'bg-yellow-50';
+                } else if (log.action === 'request_allowed') {
+                    icon = '✅';
+                    bgColor = 'bg-green-50';
+                } else if (log.action.includes('rule')) {
+                    icon = '📋';
+                } else if (log.action.includes('agent')) {
+                    icon = '🤖';
+                }
+
+                return `
+                    <div class="px-6 py-3 hover:bg-gray-50 ${bgColor}">
+                        <div class="flex items-start">
+                            <span class="text-lg mr-3">${icon}</span>
+                            <div class="flex-1">
+                                <p class="text-sm text-gray-900">${log.message}</p>
+                                <p class="text-xs text-gray-500">${new Date(log.created_at).toLocaleString()}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         } catch (error) {
             document.getElementById('activity-list').innerHTML = '<div class="px-6 py-4 text-gray-500">No recent activity</div>';
         }
