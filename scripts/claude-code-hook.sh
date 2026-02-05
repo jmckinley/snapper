@@ -8,7 +8,17 @@
 # 3. Add to ~/.claude/settings.json:
 #    {
 #      "hooks": {
-#        "preToolUse": "~/.claude/hooks/pre_tool_use.sh"
+#        "PreToolUse": [
+#          {
+#            "matcher": "",
+#            "hooks": [
+#              {
+#                "type": "command",
+#                "command": "~/.claude/hooks/pre_tool_use.sh"
+#              }
+#            ]
+#          }
+#        ]
 #      }
 #    }
 #

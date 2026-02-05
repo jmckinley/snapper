@@ -157,11 +157,12 @@ chmod +x "$HOOK_PATH"
 
 # Create/update settings.json
 SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+HOOK_CONFIG='[{"matcher":"","hooks":[{"type":"command","command":"~/.claude/hooks/pre_tool_use.sh"}]}]'
 if [ -f "$SETTINGS_FILE" ]; then
     # Update existing settings with jq if available
     if command -v jq &> /dev/null; then
         TMP_FILE=$(mktemp)
-        jq '.hooks.preToolUse = "~/.claude/hooks/pre_tool_use.sh"' "$SETTINGS_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$SETTINGS_FILE"
+        jq --argjson hook "$HOOK_CONFIG" '.hooks.PreToolUse = $hook' "$SETTINGS_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$SETTINGS_FILE"
     else
         echo -e "${YELLOW}Note: Please manually add the hook to $SETTINGS_FILE${NC}"
     fi
@@ -170,7 +171,17 @@ else
     cat > "$SETTINGS_FILE" << 'EOF'
 {
   "hooks": {
-    "preToolUse": "~/.claude/hooks/pre_tool_use.sh"
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre_tool_use.sh"
+          }
+        ]
+      }
+    ]
   }
 }
 EOF
