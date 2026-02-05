@@ -14,7 +14,32 @@ Snapper sits between your AI coding assistants (OpenClaw, Claude Code, Cursor, G
 
 Think of it as a firewall for AI agents.
 
-## Quick Start
+## For OpenClaw Users
+
+**One command. That's it.**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash
+```
+
+This automatically:
+- Installs and starts Snapper
+- Registers your OpenClaw instance
+- Applies recommended security rules
+- Installs the PreToolUse hook
+
+Your OpenClaw is protected against CVE-2026-25253, credential exposure, and malicious skills.
+
+**Options:**
+```bash
+# Strict mode (requires approval for sensitive actions)
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash -s -- --strict
+
+# Permissive mode (logging only, no blocking)
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash -s -- --permissive
+```
+
+## Quick Start (General)
 
 ### One-Command Install
 
