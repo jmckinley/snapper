@@ -55,7 +55,7 @@ open http://localhost:8000
 | **Time Restrictions** | Only allow operations during work hours |
 | **Skill Allow/Deny** | Control which MCP tools can be used |
 | **Network Egress** | Control outbound network access |
-| **Human-in-Loop** | Require approval for sensitive actions |
+| **Human-in-Loop** | Require approval for sensitive actions (via Telegram/Slack) |
 
 ### Integrations
 
@@ -73,6 +73,21 @@ Snapper works with any MCP-compatible AI assistant:
 - **Origin validation** - Prevents WebSocket hijacking (CVE-2026-25253)
 - **Rate limiting** - Sliding window algorithm with circuit breaker
 - **Audit logging** - Every action is logged for review
+
+### Notifications & Approvals
+
+Get alerts and approve/deny requests from your phone:
+
+- **Telegram** - Popular with OpenClaw users, with inline approve/deny buttons
+- **Slack** - Webhook notifications
+- **Email** - SMTP alerts
+- **PagerDuty** - For critical incidents
+- **Webhooks** - Custom integrations
+
+**Telegram Quick Setup:**
+1. Message [@BotFather](https://t.me/BotFather) to create a bot
+2. Get your chat ID from [@userinfobot](https://t.me/userinfobot)
+3. Add to `.env`: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 
 ## Dashboard
 

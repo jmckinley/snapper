@@ -69,6 +69,51 @@
         </div>
     </div>
 
+    <!-- Telegram Integration -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center">
+                <svg class="h-6 w-6 text-blue-500 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                </svg>
+                <h2 class="text-lg font-medium text-gray-900">Telegram Integration</h2>
+            </div>
+            <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">Popular with OpenClaw</span>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">
+            Get instant notifications and approve/deny requests directly from Telegram.
+        </p>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Bot Token</label>
+                <input type="password" id="telegram-token" placeholder="123456789:ABCdefGHI..." class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono">
+                <p class="mt-1 text-xs text-gray-500">Get this from <a href="https://t.me/BotFather" target="_blank" class="text-primary-600">@BotFather</a></p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Chat ID</label>
+                <input type="text" id="telegram-chat-id" placeholder="-1001234567890" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono">
+                <p class="mt-1 text-xs text-gray-500">Your user ID or group chat ID. Message <a href="https://t.me/userinfobot" target="_blank" class="text-primary-600">@userinfobot</a> to get yours.</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-gray-900 mb-2">Quick Setup</h4>
+                <ol class="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                    <li>Message <a href="https://t.me/BotFather" target="_blank" class="text-primary-600">@BotFather</a> and create a new bot</li>
+                    <li>Copy the bot token and paste above</li>
+                    <li>Message <a href="https://t.me/userinfobot" target="_blank" class="text-primary-600">@userinfobot</a> to get your chat ID</li>
+                    <li>Start a chat with your bot, then click "Test Connection"</li>
+                </ol>
+            </div>
+        </div>
+        <div class="mt-4 flex space-x-3">
+            <button onclick="testTelegram()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Test Connection
+            </button>
+            <button onclick="saveTelegram()" class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 text-sm font-medium">
+                Save Telegram Settings
+            </button>
+        </div>
+    </div>
+
     <!-- API Access -->
     <div class="bg-white shadow rounded-lg p-6">
         <h2 class="text-lg font-medium text-gray-900 mb-4">API Access</h2>
@@ -139,6 +184,57 @@
             console.error('Failed to generate report:', error);
             alert('Failed to generate report');
         }
+    }
+
+    async function testTelegram() {
+        const token = document.getElementById('telegram-token').value;
+        const chatId = document.getElementById('telegram-chat-id').value;
+
+        if (!token || !chatId) {
+            alert('Please enter both Bot Token and Chat ID');
+            return;
+        }
+
+        try {
+            // Test by sending a message directly via Telegram API
+            const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    text: '🐢 *Snapper Connected!*\n\nYour Telegram integration is working. You will receive alerts and approval requests here.',
+                    parse_mode: 'Markdown'
+                })
+            });
+
+            const data = await response.json();
+            if (data.ok) {
+                alert('✅ Success! Check your Telegram for the test message.');
+            } else {
+                alert('❌ Error: ' + (data.description || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Telegram test failed:', error);
+            alert('❌ Failed to connect to Telegram. Check your settings.');
+        }
+    }
+
+    async function saveTelegram() {
+        const token = document.getElementById('telegram-token').value;
+        const chatId = document.getElementById('telegram-chat-id').value;
+
+        // In a real implementation, this would save to the backend
+        // For now, show instructions to add to .env
+        const envConfig = `# Add to your .env file:
+TELEGRAM_BOT_TOKEN=${token}
+TELEGRAM_CHAT_ID=${chatId}`;
+
+        alert('To save Telegram settings, add these to your .env file:\n\n' + envConfig);
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(envConfig).then(() => {
+            console.log('Config copied to clipboard');
+        });
     }
 </script>
 {% endblock %}

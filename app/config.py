@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     PAGERDUTY_API_KEY: Optional[str] = None
     GENERIC_WEBHOOK_URL: Optional[str] = None
 
+    # Telegram - Popular with OpenClaw users
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
+    TELEGRAM_CHAT_ID: Optional[str] = None  # Can be user ID or group chat ID
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

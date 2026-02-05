@@ -15,7 +15,7 @@ from app.database import check_db_health, close_db, init_db
 from app.redis_client import redis_client
 
 # Import routers
-from app.routers import agents, audit, integrations, rules, security, setup
+from app.routers import agents, audit, integrations, rules, security, setup, telegram
 
 settings = get_settings()
 
@@ -103,6 +103,7 @@ app.include_router(integrations.router, prefix=settings.API_V1_PREFIX, tags=["in
 app.include_router(security.router, prefix=settings.API_V1_PREFIX, tags=["security"])
 app.include_router(audit.router, prefix=settings.API_V1_PREFIX, tags=["audit"])
 app.include_router(setup.router, tags=["setup"])
+app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
 
 
 # Global exception handler

@@ -36,11 +36,11 @@ def send_alert(
     if channels is None:
         # Default channels based on severity
         if severity == "critical":
-            channels = ["email", "slack", "pagerduty"]
+            channels = ["email", "slack", "telegram", "pagerduty"]
         elif severity in ("error", "high"):
-            channels = ["email", "slack"]
+            channels = ["email", "slack", "telegram"]
         else:
-            channels = ["slack"]
+            channels = ["slack", "telegram"]
 
     logger.info(f"Sending alert: {title} (severity: {severity}) to {channels}")
 
@@ -52,6 +52,8 @@ def send_alert(
                 _send_email_alert(title, message, severity)
             elif channel == "slack":
                 _send_slack_alert(title, message, severity)
+            elif channel == "telegram":
+                _send_telegram_alert(title, message, severity, metadata)
             elif channel == "pagerduty":
                 _send_pagerduty_alert(title, message, severity, metadata)
             elif channel == "webhook":
@@ -193,6 +195,72 @@ def _send_slack_alert(title: str, message: str, severity: str):
         logger.info(f"Slack alert sent: {title}")
     except Exception as e:
         logger.exception(f"Failed to send Slack alert: {e}")
+        raise
+
+
+def _send_telegram_alert(
+    title: str,
+    message: str,
+    severity: str,
+    metadata: Optional[dict] = None,
+):
+    """Send alert via Telegram bot."""
+    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+        logger.warning("Telegram not configured, skipping Telegram alert")
+        return
+
+    # Severity emojis for Telegram
+    severity_emojis = {
+        "critical": "🚨",
+        "error": "❌",
+        "warning": "⚠️",
+        "info": "ℹ️",
+    }
+    emoji = severity_emojis.get(severity, "📢")
+
+    # Build Telegram message with Markdown
+    text = f"{emoji} *{severity.upper()}: {title}*\n\n{message}"
+
+    # Add approval buttons if this is an approval request
+    reply_markup = None
+    if metadata and metadata.get("request_id") and metadata.get("requires_approval"):
+        request_id = metadata["request_id"]
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
+                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
+                ]
+            ]
+        }
+
+    # Add metadata footer
+    if metadata:
+        agent = metadata.get("agent_id", "Unknown")
+        command = metadata.get("command", "")
+        if command:
+            text += f"\n\n📋 *Agent:* `{agent}`\n🔧 *Command:* `{command[:100]}`"
+
+    text += "\n\n_Snapper Security_"
+
+    # Send via Telegram Bot API
+    url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": settings.TELEGRAM_CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown",
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    try:
+        with httpx.Client() as client:
+            response = client.post(url, json=payload, timeout=30.0)
+            response.raise_for_status()
+        logger.info(f"Telegram alert sent: {title}")
+    except Exception as e:
+        logger.exception(f"Failed to send Telegram alert: {e}")
         raise
 
 
