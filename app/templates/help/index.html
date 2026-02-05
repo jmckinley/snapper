@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}Help & FAQ - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Help & FAQ</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl space-y-8">
+    <!-- Quick Links -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Quick Links</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <a href="#getting-started" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
+                <svg class="h-8 w-8 text-primary-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                <span class="text-sm font-medium">Getting Started</span>
+            </a>
+            <a href="#claude-code" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
+                <svg class="h-8 w-8 text-primary-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                <span class="text-sm font-medium">Claude Code Setup</span>
+            </a>
+            <a href="#rules" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
+                <svg class="h-8 w-8 text-primary-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+                <span class="text-sm font-medium">Creating Rules</span>
+            </a>
+            <a href="#troubleshooting" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
+                <svg class="h-8 w-8 text-primary-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="text-sm font-medium">Troubleshooting</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Getting Started -->
+    <div id="getting-started" class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Getting Started</h2>
+        <div class="prose prose-sm max-w-none text-gray-600">
+            <p>Snapper is a security rules manager for AI agents. It sits between your AI coding assistant and the actions it takes, allowing you to:</p>
+            <ul class="list-disc pl-5 space-y-1">
+                <li><strong>Allow</strong> specific commands, tools, or integrations</li>
+                <li><strong>Deny</strong> dangerous operations (like <code>rm -rf /</code> or accessing <code>.env</code> files)</li>
+                <li><strong>Require approval</strong> for sensitive actions before they execute</li>
+            </ul>
+            <p class="mt-4">The quickest way to get started is with the one-command setup:</p>
+            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash</code></pre>
+        </div>
+    </div>
+
+    <!-- Claude Code Setup -->
+    <div id="claude-code" class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Claude Code Integration</h2>
+        <div class="space-y-6">
+            <div>
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Automatic Setup</h3>
+                <p class="text-sm text-gray-600 mb-3">Run this command to automatically install and configure Snapper for Claude Code:</p>
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash</code></pre>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Manual Setup</h3>
+                <p class="text-sm text-gray-600 mb-3">If you prefer manual installation:</p>
+
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">1. Install the hook script:</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>mkdir -p ~/.claude/hooks
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-hook.sh \
+  -o ~/.claude/hooks/pre_tool_use.sh
+chmod +x ~/.claude/hooks/pre_tool_use.sh</code></pre>
+                    </div>
+
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">2. Add to <code class="bg-gray-100 px-1 rounded">~/.claude/settings.json</code>:</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre_tool_use.sh"
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+                        <p class="text-xs text-gray-500 mt-1">Note: The key must be <code>PreToolUse</code> (PascalCase), not <code>preToolUse</code>.</p>
+                    </div>
+
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">3. Set environment variables (optional):</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>export SNAPPER_URL=http://localhost:8000
+export SNAPPER_AGENT_ID=claude-code-$(hostname)</code></pre>
+                    </div>
+
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">4. Restart Claude Code for hooks to take effect.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Hook Configuration Options</h3>
+                <p class="text-sm text-gray-600 mb-3">You can customize which tools trigger the hook using the <code>matcher</code> field:</p>
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }]
+      }
+    ]
+  }
+}</code></pre>
+                <p class="text-xs text-gray-500 mt-2">Common matchers: <code>Bash</code>, <code>Read</code>, <code>Write</code>, <code>Edit</code>, <code>Glob</code>, <code>Grep</code>, <code>WebFetch</code>, <code>Task</code></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Creating Rules -->
+    <div id="rules" class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Creating Rules</h2>
+        <div class="space-y-4">
+            <div>
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Rule Types</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="text-left py-2 font-medium text-gray-900">Type</th>
+                                <th class="text-left py-2 font-medium text-gray-900">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-600">
+                            <tr class="border-b">
+                                <td class="py-2"><code>command_allowlist</code></td>
+                                <td class="py-2">Only allow specific shell commands</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>command_denylist</code></td>
+                                <td class="py-2">Block dangerous commands (rm -rf, etc.)</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>credential_protection</code></td>
+                                <td class="py-2">Block access to .env, .pem, SSH keys</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>rate_limit</code></td>
+                                <td class="py-2">Prevent runaway agents</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>time_restriction</code></td>
+                                <td class="py-2">Only allow operations during work hours</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>skill_denylist</code></td>
+                                <td class="py-2">Block specific MCP tools</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2"><code>human_approval</code></td>
+                                <td class="py-2">Require approval for sensitive actions</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="border-t pt-4">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Rule Templates</h3>
+                <p class="text-sm text-gray-600 mb-3">Snapper includes pre-built templates for common security scenarios:</p>
+                <ul class="text-sm text-gray-600 space-y-1">
+                    <li><strong>CVE-2026-25253 Mitigation</strong> - Blocks WebSocket hijacking attacks</li>
+                    <li><strong>Credential Protection</strong> - Prevents access to sensitive files</li>
+                    <li><strong>Malicious Skill Blocker</strong> - Blocks known malicious ClawHub skills</li>
+                    <li><strong>Rate Limit Standard</strong> - Prevents runaway agent abuse</li>
+                </ul>
+                <p class="text-sm text-gray-600 mt-3">Apply templates from <a href="/integrations" class="text-primary-600 hover:text-primary-500">Integrations</a> or via API.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- FAQ -->
+    <div id="faq" class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Frequently Asked Questions</h2>
+        <div class="space-y-4">
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3 border-b">
+                    <span class="text-sm font-medium text-gray-900">What is "deny by default"?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">When no rules match a request, Snapper denies it by default. This is the safest approach - you explicitly allow what you want, and everything else is blocked. This prevents unknown or unexpected actions from executing.</p>
+            </details>
+
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3 border-b">
+                    <span class="text-sm font-medium text-gray-900">Why is everything being blocked?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">Check your active rules in the <a href="/integrations" class="text-primary-600">Integrations</a> page. You may have a broad deny rule (like CVE-2026-25253 Mitigation) that's catching more than expected. You can disable rules temporarily or create allow rules with higher priority.</p>
+            </details>
+
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3 border-b">
+                    <span class="text-sm font-medium text-gray-900">How do I allow a specific command?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">Create a new rule with type <code>command_allowlist</code> and add the command pattern to the parameters. Set a higher priority than your deny rules. Go to <a href="/rules/create" class="text-primary-600">Create Rule</a> to get started.</p>
+            </details>
+
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3 border-b">
+                    <span class="text-sm font-medium text-gray-900">What is CVE-2026-25253?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">CVE-2026-25253 is a critical vulnerability affecting AI coding assistants that allows WebSocket hijacking. Malicious websites can connect to your local assistant and execute commands. Snapper's mitigation rule validates WebSocket origins to prevent this attack.</p>
+            </details>
+
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3 border-b">
+                    <span class="text-sm font-medium text-gray-900">How do approvals work?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">When a rule returns <code>require_approval</code>, the hook script pauses and polls Snapper for a decision. You can approve or deny from Telegram (with inline buttons), the Snapper dashboard, or via API. The request times out after 5 minutes by default.</p>
+            </details>
+
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3 border-b">
+                    <span class="text-sm font-medium text-gray-900">Can I use Snapper with multiple agents?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">Yes! Each agent registers with a unique ID. You can create rules that apply to all agents, or target specific agents. Manage agents from the <a href="/agents" class="text-primary-600">Agents</a> page.</p>
+            </details>
+
+            <details class="group">
+                <summary class="flex justify-between items-center cursor-pointer list-none py-3">
+                    <span class="text-sm font-medium text-gray-900">Where are the logs?</span>
+                    <svg class="h-5 w-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <p class="text-sm text-gray-600 py-3">All rule evaluations are logged in the <a href="/audit" class="text-primary-600">Audit</a> page. You can filter by agent, rule, decision, and time range. For container logs, run <code>docker compose logs -f app</code>.</p>
+            </details>
+        </div>
+    </div>
+
+    <!-- Troubleshooting -->
+    <div id="troubleshooting" class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Troubleshooting</h2>
+        <div class="space-y-6">
+            <div>
+                <h3 class="text-sm font-medium text-gray-900 mb-2">"Invalid key in record" error in settings.json</h3>
+                <p class="text-sm text-gray-600 mb-2">This usually means the hook key is misconfigured. Make sure you use <code>PreToolUse</code> (PascalCase), not <code>preToolUse</code>:</p>
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>// Wrong
+"hooks": { "preToolUse": "..." }
+
+// Correct
+"hooks": { "PreToolUse": [...] }</code></pre>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">"Snapper unreachable" error</h3>
+                <p class="text-sm text-gray-600 mb-2">The hook can't connect to Snapper. Check that:</p>
+                <ul class="text-sm text-gray-600 list-disc pl-5 space-y-1">
+                    <li>Snapper is running: <code>curl http://localhost:8000/health</code></li>
+                    <li>Docker containers are up: <code>docker compose ps</code></li>
+                    <li><code>SNAPPER_URL</code> is set correctly (default: <code>http://localhost:8000</code>)</li>
+                </ul>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Hook not triggering</h3>
+                <p class="text-sm text-gray-600 mb-2">If the hook doesn't seem to run:</p>
+                <ul class="text-sm text-gray-600 list-disc pl-5 space-y-1">
+                    <li>Restart Claude Code after changing settings.json</li>
+                    <li>Verify the hook script is executable: <code>chmod +x ~/.claude/hooks/pre_tool_use.sh</code></li>
+                    <li>Test the hook manually: <code>echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | ~/.claude/hooks/pre_tool_use.sh</code></li>
+                </ul>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Rate limit (429) errors</h3>
+                <p class="text-sm text-gray-600">You're hitting the rate limiter. This protects against runaway agents. Wait a few seconds, or adjust the rate limit rules in <a href="/integrations" class="text-primary-600">Integrations</a>.</p>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Getting more help</h3>
+                <p class="text-sm text-gray-600">
+                    <a href="https://github.com/jmckinley/snapper/issues" target="_blank" class="text-primary-600 hover:text-primary-500">Open an issue on GitHub</a> or check the
+                    <a href="/api/docs" target="_blank" class="text-primary-600 hover:text-primary-500">API documentation</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

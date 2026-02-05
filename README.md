@@ -65,6 +65,43 @@ curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/clau
 curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash -s -- --permissive
 ```
 
+### Manual Claude Code Setup
+
+If you prefer manual installation:
+
+1. Copy the hook script:
+```bash
+mkdir -p ~/.claude/hooks
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-hook.sh \
+  -o ~/.claude/hooks/pre_tool_use.sh
+chmod +x ~/.claude/hooks/pre_tool_use.sh
+```
+
+2. Add to `~/.claude/settings.json`:
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre_tool_use.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+3. Set environment variables (optional):
+```bash
+export SNAPPER_URL=http://localhost:8000
+export SNAPPER_AGENT_ID=claude-code-$(hostname)
+```
+
 ## Quick Start (General)
 
 ### One-Command Install

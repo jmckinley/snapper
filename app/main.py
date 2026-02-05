@@ -244,3 +244,12 @@ async def settings_page(request: Request):
         "settings/index.html",
         {"request": request, "settings": settings},
     )
+
+
+@app.get("/help", tags=["dashboard"])
+async def help_page(request: Request):
+    """Help and FAQ page."""
+    return templates.TemplateResponse(
+        "help/index.html",
+        {"request": request, "settings": settings},
+    )
