@@ -10,6 +10,10 @@ services:
       - DEBUG=false
       - LOG_LEVEL=INFO
       - ENVIRONMENT=production
+      - ALLOWED_ORIGINS=https://76.13.127.76:8443
+      - ALLOWED_HOSTS=76.13.127.76,localhost,app
+      - CORS_ORIGINS=https://76.13.127.76:8443
+      - REQUIRE_LOCALHOST_ONLY=false
     volumes: !reset []
 
   postgres:
