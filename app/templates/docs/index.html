@@ -22,6 +22,7 @@
     <nav class="hidden lg:block w-56 flex-shrink-0">
         <div class="sticky top-6 space-y-1 text-sm">
             <a href="#quick-start" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Quick Start</a>
+            <a href="#how-it-works" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">How It Works</a>
             <a href="#rules-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Rules API</a>
             <a href="#agents-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Agents API</a>
             <a href="#approvals-api" class="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-200 font-medium">Approvals API</a>
@@ -67,6 +68,115 @@ Accept: application/json</code></pre>
             </div>
         </div>
 
+        <!-- How It Works -->
+        <div id="how-it-works" class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">How It Works</h2>
+            <div class="space-y-6 text-sm text-gray-600">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-3">Request flow</h3>
+                    <p class="mb-3">When an AI agent (like Claude Code) tries to use a tool, the hook intercepts the request and sends it to Snapper for evaluation before it executes:</p>
+                    <div class="bg-gray-50 rounded-lg p-4 font-mono text-xs space-y-2">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-5 h-5 rounded-full bg-gray-300 text-gray-700 text-center leading-5 font-bold flex-shrink-0">1</span>
+                            <span>Agent wants to run <code class="bg-gray-200 px-1 rounded">rm -rf /tmp/test</code></span>
+                        </div>
+                        <div class="flex items-center gap-2 text-gray-400 pl-2">&darr;</div>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-5 h-5 rounded-full bg-gray-300 text-gray-700 text-center leading-5 font-bold flex-shrink-0">2</span>
+                            <span>Hook calls <code class="bg-gray-200 px-1 rounded">POST /api/v1/rules/evaluate</code> with the tool name and input</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-gray-400 pl-2">&darr;</div>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-5 h-5 rounded-full bg-gray-300 text-gray-700 text-center leading-5 font-bold flex-shrink-0">3</span>
+                            <span>Snapper checks the request against all active rules (highest priority first)</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-gray-400 pl-2">&darr;</div>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-5 h-5 rounded-full bg-gray-300 text-gray-700 text-center leading-5 font-bold flex-shrink-0">4</span>
+                            <span>Snapper returns a <strong>decision</strong> &mdash; the hook acts on it</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-3">Decisions explained</h3>
+                    <p class="mb-3">Every evaluate call returns one of three decisions. Here's what each one means for the agent:</p>
+                    <div class="space-y-3">
+                        <div class="border rounded-lg p-4">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-800">allow</span>
+                                <span class="font-medium text-gray-900">Action proceeds normally</span>
+                            </div>
+                            <p>The hook returns an empty response (exit code 0) and the agent's tool call executes as if Snapper wasn't there. This happens when the request matches an allow rule, or when no deny rules match.</p>
+                        </div>
+                        <div class="border rounded-lg p-4 border-red-200 bg-red-50">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">deny</span>
+                                <span class="font-medium text-gray-900">Action is blocked immediately</span>
+                            </div>
+                            <p class="text-gray-700">The hook returns an error message and the agent sees "Snapper blocked this action: &lt;reason&gt;". The tool call never executes. The agent can see the reason and may try an alternative approach. The block is logged in the <a href="/audit" class="text-primary-600 hover:text-primary-500">Audit</a> page.</p>
+                        </div>
+                        <div class="border rounded-lg p-4 border-yellow-200 bg-yellow-50">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-yellow-100 text-yellow-800">require_approval</span>
+                                <span class="font-medium text-gray-900">Action pauses and waits for a human</span>
+                            </div>
+                            <p class="text-gray-700">The hook pauses the agent and polls <code class="bg-yellow-100 px-1 rounded">GET /api/v1/approvals/{id}/status</code> every few seconds. You get a notification (via Telegram or the dashboard) to approve or deny. If you approve, the tool call executes. If you deny or it times out (default: 5 minutes), the action is blocked.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-3">What triggers a block?</h3>
+                    <p class="mb-3">Blocks come from your active rules. Common reasons you'll see in the audit log:</p>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="text-left py-2 pr-4 font-medium text-gray-900">Rule Type</th>
+                                    <th class="text-left py-2 pr-4 font-medium text-gray-900">What It Blocks</th>
+                                    <th class="text-left py-2 font-medium text-gray-900">Example Block Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-gray-600">
+                                <tr class="border-b">
+                                    <td class="py-2 pr-4"><code>command_denylist</code></td>
+                                    <td class="py-2 pr-4">Shell commands matching denied patterns</td>
+                                    <td class="py-2">"Command matches denied pattern: rm -rf"</td>
+                                </tr>
+                                <tr class="border-b">
+                                    <td class="py-2 pr-4"><code>credential_protection</code></td>
+                                    <td class="py-2 pr-4">Access to sensitive files (.env, keys, certs)</td>
+                                    <td class="py-2">"File matches protected pattern: .env"</td>
+                                </tr>
+                                <tr class="border-b">
+                                    <td class="py-2 pr-4"><code>skill_denylist</code></td>
+                                    <td class="py-2 pr-4">Specific MCP tools flagged as malicious</td>
+                                    <td class="py-2">"Skill blocked: malicious-skill-name"</td>
+                                </tr>
+                                <tr class="border-b">
+                                    <td class="py-2 pr-4"><code>rate_limit</code></td>
+                                    <td class="py-2 pr-4">Too many requests in a time window</td>
+                                    <td class="py-2">"Rate limit exceeded: 10/60s"</td>
+                                </tr>
+                                <tr class="border-b">
+                                    <td class="py-2 pr-4"><code>time_restriction</code></td>
+                                    <td class="py-2 pr-4">Actions outside allowed hours</td>
+                                    <td class="py-2">"Outside allowed hours: 09:00-17:00"</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2 pr-4"><code>human_approval</code></td>
+                                    <td class="py-2 pr-4">Sensitive actions (returns <code>require_approval</code>)</td>
+                                    <td class="py-2">"Requires human approval for: pip install"</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="mt-3">If no rules match a request, Snapper <strong>denies by default</strong> (fail-safe). To allow an action, create an explicit allow rule. See <a href="/help#rules" class="text-primary-600 hover:text-primary-500">Creating Rules</a> for details.</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Rules API -->
         <div id="rules-api" class="bg-white shadow rounded-lg p-6">
             <h2 class="text-lg font-medium text-gray-900 mb-4">Rules API</h2>
@@ -81,7 +191,7 @@ Accept: application/json</code></pre>
                         <span class="text-sm text-gray-500 ml-auto">Evaluate a request against rules</span>
                     </summary>
                     <div class="border-t p-4 space-y-3 text-sm">
-                        <p class="text-gray-600">The primary hook integration point. Sends a tool invocation to be evaluated against all active rules for the given agent.</p>
+                        <p class="text-gray-600">The primary hook integration point. The hook script calls this endpoint every time the agent tries to use a tool. Snapper evaluates the request against all active rules and returns a decision (<code class="bg-gray-100 px-1 rounded">allow</code>, <code class="bg-gray-100 px-1 rounded">deny</code>, or <code class="bg-gray-100 px-1 rounded">require_approval</code>). See <a href="#how-it-works" class="text-primary-600 hover:text-primary-500">How It Works</a> for what each decision does.</p>
                         <div>
                             <p class="font-medium text-gray-700 mb-1">Example request:</p>
                             <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/rules/evaluate \
