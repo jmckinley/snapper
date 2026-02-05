@@ -116,11 +116,38 @@ async def telegram_webhook(request: Request):
             text="✅ *Snapper is connected and running!*\n\nI'll notify you when actions need approval.",
         )
     elif text.startswith("/pending"):
-        # TODO: Fetch pending approvals from database
-        await _send_message(
-            chat_id=chat_id,
-            text="📋 *Pending Approvals:*\n\nNo pending approvals at this time.",
-        )
+        # Fetch pending approvals from Redis
+        from app.redis_client import redis_client
+        from app.routers.approvals import APPROVAL_PREFIX, ApprovalRequest
+        from datetime import datetime
+
+        pending_list = []
+        cursor = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor, match=f"{APPROVAL_PREFIX}*", count=100)
+            for key in keys:
+                data = await redis_client.get(key)
+                if data:
+                    approval = ApprovalRequest.model_validate_json(data)
+                    if approval.status == "pending":
+                        expires_at = datetime.fromisoformat(approval.expires_at)
+                        if datetime.utcnow() <= expires_at:
+                            pending_list.append(approval)
+            if cursor == 0:
+                break
+
+        if not pending_list:
+            await _send_message(
+                chat_id=chat_id,
+                text="📋 *Pending Approvals:*\n\nNo pending approvals at this time.",
+            )
+        else:
+            lines = ["📋 *Pending Approvals:*\n"]
+            for p in pending_list[:10]:  # Limit to 10
+                action_desc = p.command or p.file_path or p.tool_name or p.request_type
+                lines.append(f"• `{p.id[:8]}` - {p.agent_name}: {action_desc[:30]}")
+            lines.append(f"\n_Total: {len(pending_list)}_")
+            await _send_message(chat_id=chat_id, text="\n".join(lines))
     elif text.startswith("/approve ") or text.startswith("/deny "):
         parts = text.split(" ", 1)
         if len(parts) == 2:
@@ -144,13 +171,29 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
     """Process an approval or denial request."""
     logger.info(f"Processing {action} for request {request_id} by {approved_by}")
 
+    # Update the approval status in Redis
+    from app.redis_client import redis_client
+    from app.routers.approvals import update_approval_status
+
+    new_status = "approved" if action == "approve" else "denied"
+    success = await update_approval_status(
+        redis=redis_client,
+        approval_id=request_id,
+        status=new_status,
+        decided_by=approved_by,
+    )
+
+    if not success:
+        logger.warning(f"Could not update approval {request_id} - may be expired")
+
     # Log the approval action
     async with async_session_factory() as db:
         audit_log = AuditLog(
             action=AuditAction.APPROVAL_GRANTED if action == "approve" else AuditAction.APPROVAL_DENIED,
             severity=AuditSeverity.INFO,
             message=f"Request {request_id} {action}d via Telegram by {approved_by}",
-            metadata={
+            old_value=None,
+            new_value={
                 "request_id": request_id,
                 "action": action,
                 "approved_by": approved_by,
@@ -159,8 +202,6 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
         )
         db.add(audit_log)
         await db.commit()
-
-    # TODO: Update the pending request in database and notify the waiting agent
 
     return {"status": "processed", "action": action, "request_id": request_id}
 

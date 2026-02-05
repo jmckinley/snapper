@@ -39,6 +39,32 @@ curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quic
 curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash -s -- --permissive
 ```
 
+## For Claude Code Users
+
+**One command. That's it.**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash
+```
+
+This automatically:
+- Installs and starts Snapper
+- Registers your Claude Code instance
+- Applies recommended security rules
+- Installs the PreToolUse hook in `~/.claude/hooks/`
+- Updates your `~/.claude/settings.json`
+
+**Note:** Restart Claude Code after setup for hooks to take effect.
+
+**Options:**
+```bash
+# Strict mode (requires approval for sensitive actions)
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash -s -- --strict
+
+# Permissive mode (logging only, no blocking)
+curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash -s -- --permissive
+```
+
 ## Quick Start (General)
 
 ### One-Command Install

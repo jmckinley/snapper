@@ -314,6 +314,22 @@ class RedisClient:
 
         return await self._circuit_breaker.call(_sismember)
 
+    async def scan(self, cursor: int = 0, match: str = None, count: int = 100) -> tuple:
+        """Scan keys matching pattern."""
+
+        async def _scan():
+            return await self._client.scan(cursor=cursor, match=match, count=count)
+
+        return await self._circuit_breaker.call(_scan)
+
+    async def keys(self, pattern: str) -> list:
+        """Get keys matching pattern."""
+
+        async def _keys():
+            return await self._client.keys(pattern)
+
+        return await self._circuit_breaker.call(_keys)
+
     @property
     def circuit_state(self) -> CircuitState:
         """Get current circuit breaker state."""

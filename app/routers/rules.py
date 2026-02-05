@@ -155,6 +155,95 @@ RULE_TEMPLATES = {
         "is_recommended": False,
     },
     # =========================================================================
+    # ALLOW RULES - Explicitly permit specific actions
+    # =========================================================================
+    "command-allowlist-safe": {
+        "id": "command-allowlist-safe",
+        "name": "Safe Commands Allowlist",
+        "description": "Explicitly allow common safe commands (git, npm, python, etc.)",
+        "category": "allowlist",
+        "severity": "low",
+        "rule_type": RuleType.COMMAND_ALLOWLIST,
+        "default_action": RuleAction.ALLOW,
+        "default_parameters": {
+            "patterns": [
+                r"^git\s+(status|log|diff|branch|show|ls-files)",
+                r"^npm\s+(list|ls|outdated|audit)",
+                r"^python\s+--version",
+                r"^python\s+-c\s+['\"]print",
+                r"^node\s+--version",
+                r"^ls\s",
+                r"^pwd$",
+                r"^whoami$",
+                r"^date$",
+                r"^echo\s",
+                r"^cat\s+[^|;&]*$",  # cat without pipes or command chaining
+                r"^head\s",
+                r"^tail\s",
+                r"^wc\s",
+                r"^grep\s+[^|;&]*$",  # grep without pipes
+            ],
+        },
+        "tags": ["allowlist", "commands", "safe"],
+        "is_recommended": False,
+    },
+    "command-allowlist-dev": {
+        "id": "command-allowlist-dev",
+        "name": "Development Commands Allowlist",
+        "description": "Allow common development commands (build, test, lint)",
+        "category": "allowlist",
+        "severity": "low",
+        "rule_type": RuleType.COMMAND_ALLOWLIST,
+        "default_action": RuleAction.ALLOW,
+        "default_parameters": {
+            "patterns": [
+                r"^npm\s+(run|test|build|start|install)",
+                r"^yarn\s+(run|test|build|start|install|add)",
+                r"^pnpm\s+(run|test|build|start|install|add)",
+                r"^python\s+(-m\s+)?(pytest|unittest|pip)",
+                r"^pip\s+(install|list|freeze|show)",
+                r"^poetry\s+(install|add|show|run)",
+                r"^cargo\s+(build|test|run|check)",
+                r"^go\s+(build|test|run|mod)",
+                r"^make\s+",
+                r"^docker\s+(ps|images|logs)",
+                r"^docker-compose\s+(ps|logs)",
+            ],
+        },
+        "tags": ["allowlist", "commands", "development"],
+        "is_recommended": False,
+    },
+    "file-allowlist-project": {
+        "id": "file-allowlist-project",
+        "name": "Project Files Allowlist",
+        "description": "Allow access to common project files (code, configs, docs)",
+        "category": "allowlist",
+        "severity": "low",
+        "rule_type": RuleType.FILE_ACCESS,
+        "default_action": RuleAction.ALLOW,
+        "default_parameters": {
+            "allowed_paths": [
+                r".*\.(js|ts|jsx|tsx|py|rb|go|rs|java|kt|swift|c|cpp|h)$",
+                r".*\.(json|yaml|yml|toml|ini|cfg)$",
+                r".*\.(md|txt|rst|html|css|scss)$",
+                r".*(README|LICENSE|CHANGELOG|CONTRIBUTING).*",
+                r".*package\.json$",
+                r".*tsconfig\.json$",
+                r".*pyproject\.toml$",
+                r".*Cargo\.toml$",
+                r".*go\.mod$",
+                r".*/src/.*",
+                r".*/lib/.*",
+                r".*/app/.*",
+                r".*/components/.*",
+                r".*/tests/.*",
+                r".*/docs/.*",
+            ],
+        },
+        "tags": ["allowlist", "files", "project"],
+        "is_recommended": False,
+    },
+    # =========================================================================
     # MCP SERVER / INTEGRATION TEMPLATES
     # =========================================================================
     "gmail-protection": {
@@ -1122,6 +1211,8 @@ class EvaluateResponse(BaseModel):
     reason: str
     matched_rule_id: Optional[str] = None
     matched_rule_name: Optional[str] = None
+    approval_request_id: Optional[str] = None  # For require_approval decisions
+    approval_timeout_seconds: Optional[int] = None  # How long until approval expires
 
 
 @router.post("/evaluate", response_model=EvaluateResponse)
@@ -1241,30 +1332,51 @@ async def evaluate_request(
                         "rule_name": matched_rule_name,
                     },
                 )
-            elif result.decision.value == "require_approval" and notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
-                import uuid
-                approval_request_id = str(uuid.uuid4())
-                send_alert.delay(
-                    title=f"Approval Required: {matched_rule_name or 'Security Rule'}",
-                    message=f"Agent `{agent.name}` wants to: `{action_desc}`\n\nRule: {result.reason}",
-                    severity="warning",
-                    metadata={
-                        "agent_id": request.agent_id,
-                        "agent_name": agent.name,
-                        "command": request.command,
-                        "file_path": request.file_path,
-                        "tool_name": request.tool_name,
-                        "rule_name": matched_rule_name,
-                        "request_id": approval_request_id,
-                        "requires_approval": True,
-                    },
+            elif result.decision.value == "require_approval":
+                # Create approval request in Redis
+                from app.routers.approvals import create_approval_request
+                approval_request_id = await create_approval_request(
+                    redis=redis,
+                    agent_id=request.agent_id,
+                    agent_name=agent.name,
+                    request_type=request.request_type,
+                    rule_id=str(result.blocking_rule) if result.blocking_rule else "",
+                    rule_name=matched_rule_name or "Security Rule",
+                    command=request.command,
+                    file_path=request.file_path,
+                    tool_name=request.tool_name,
                 )
+
+                if notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
+                    send_alert.delay(
+                        title=f"Approval Required: {matched_rule_name or 'Security Rule'}",
+                        message=f"Agent `{agent.name}` wants to: `{action_desc}`\n\nRule: {result.reason}",
+                        severity="warning",
+                        metadata={
+                            "agent_id": request.agent_id,
+                            "agent_name": agent.name,
+                            "command": request.command,
+                            "file_path": request.file_path,
+                            "tool_name": request.tool_name,
+                            "rule_name": matched_rule_name,
+                            "request_id": approval_request_id,
+                            "requires_approval": True,
+                        },
+                    )
         except Exception as e:
             logger.warning(f"Failed to send alert notification: {e}")
 
-    return EvaluateResponse(
-        decision=result.decision.value,  # EvaluationDecision enum to string
+    # Build response
+    response = EvaluateResponse(
+        decision=result.decision.value,
         reason=result.reason,
         matched_rule_id=str(result.blocking_rule) if result.blocking_rule else None,
         matched_rule_name=matched_rule_name,
     )
+
+    # Add approval info if applicable
+    if result.decision.value == "require_approval" and 'approval_request_id' in dir():
+        response.approval_request_id = approval_request_id
+        response.approval_timeout_seconds = 300  # 5 minutes
+
+    return response

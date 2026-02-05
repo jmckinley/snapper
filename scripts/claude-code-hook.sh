@@ -1,28 +1,37 @@
 #!/bin/bash
-# Snapper PreToolUse Hook for OpenClaw
+# Snapper PreToolUse Hook for Claude Code
 # This hook checks with Snapper before allowing any tool execution
 #
-# Install: Copy to ~/.openclaw/hooks/pre_tool_use.sh
-# Or run: snapper integrate openclaw
+# Installation:
+# 1. Copy this script to ~/.claude/hooks/pre_tool_use.sh
+# 2. Make it executable: chmod +x ~/.claude/hooks/pre_tool_use.sh
+# 3. Add to ~/.claude/settings.json:
+#    {
+#      "hooks": {
+#        "preToolUse": "~/.claude/hooks/pre_tool_use.sh"
+#      }
+#    }
+#
+# Or run: snapper integrate claude-code
 
 SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
-SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-openclaw-$(hostname)}"
-APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"  # 5 minutes default
+SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-claude-code-$(hostname)}"
+APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"
 
-# Read hook input from stdin
+# Read hook input from stdin (JSON format)
 INPUT=$(cat)
 
-# Extract tool info from JSON input
+# Extract tool info - Claude Code format
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // .name // "unknown"')
 TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // .input // {}')
 
 # Determine request type based on tool
 case "$TOOL_NAME" in
-    Bash|bash|shell|execute)
+    Bash|bash|shell|execute|computer)
         REQUEST_TYPE="command"
         COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // ""')
         ;;
-    Read|read|cat)
+    Read|read|str_replace_editor)
         REQUEST_TYPE="file_access"
         FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // ""')
         FILE_OP="read"
@@ -32,9 +41,17 @@ case "$TOOL_NAME" in
         FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // ""')
         FILE_OP="write"
         ;;
-    WebFetch|fetch|curl|http)
+    WebFetch|fetch|curl|http|web_search)
         REQUEST_TYPE="network"
         URL=$(echo "$TOOL_INPUT" | jq -r '.url // ""')
+        ;;
+    Glob|glob|Grep|grep|LSP|lsp)
+        REQUEST_TYPE="file_access"
+        FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.path // .pattern // ""')
+        FILE_OP="read"
+        ;;
+    Task|task|Agent|agent)
+        REQUEST_TYPE="tool"
         ;;
     *)
         REQUEST_TYPE="tool"
@@ -71,7 +88,6 @@ RESPONSE=$(curl -sf -X POST "$SNAPPER_URL/api/v1/rules/evaluate" \
 
 # Check response
 if [ $? -ne 0 ]; then
-    # Snapper unreachable - fail closed (deny by default)
     echo "🚫 BLOCKED: Snapper unreachable - failing closed for security" >&2
     exit 1
 fi
@@ -86,7 +102,6 @@ case "$DECISION" in
         ;;
 
     deny)
-        # Clear error message with rule name
         echo "" >&2
         echo "🚫 BLOCKED by Snapper" >&2
         echo "   Rule: $RULE_NAME" >&2
@@ -124,12 +139,10 @@ case "$DECISION" in
                 exit 1
             fi
 
-            # Check approval status
             STATUS_RESPONSE=$(curl -sf "$SNAPPER_URL/api/v1/approvals/$APPROVAL_ID/status" \
                 -H "Origin: http://localhost:8000" 2>/dev/null)
 
             if [ $? -ne 0 ]; then
-                echo "⚠️  Warning: Could not check approval status" >&2
                 sleep $POLL_INTERVAL
                 continue
             fi
@@ -151,12 +164,10 @@ case "$DECISION" in
                     exit 1
                     ;;
                 pending)
-                    # Get wait time from response, default to POLL_INTERVAL
                     WAIT=$(echo "$STATUS_RESPONSE" | jq -r '.wait_seconds // 5')
                     sleep $WAIT
                     ;;
                 *)
-                    echo "⚠️  Unknown status: $STATUS" >&2
                     sleep $POLL_INTERVAL
                     ;;
             esac

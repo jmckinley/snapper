@@ -112,6 +112,25 @@
         </div>
     </div>
 
+    <!-- Recent Blocks Section -->
+    <div class="bg-white rounded-lg shadow-lg border-l-4 border-red-500">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div class="flex items-center">
+                <span class="text-2xl mr-3">🚫</span>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Recent Blocks</h3>
+                    <p class="text-sm text-gray-500">Actions blocked by security rules</p>
+                </div>
+            </div>
+            <a href="/audit?filter=blocked" class="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                View all →
+            </a>
+        </div>
+        <div id="recent-blocks" class="divide-y divide-gray-200">
+            <div class="px-6 py-4 text-gray-500 text-sm">Loading...</div>
+        </div>
+    </div>
+
     <!-- Two Column Layout -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Recently Enabled -->
@@ -184,6 +203,7 @@
         await loadIntegrations();
         loadStats();
         loadActivity();
+        loadRecentBlocks();
     });
 
     async function loadIntegrations() {
@@ -339,6 +359,79 @@
         } catch (error) {
             document.getElementById('activity-list').innerHTML = '<div class="px-6 py-4 text-gray-500">No recent activity</div>';
         }
+    }
+
+    async function loadRecentBlocks() {
+        try {
+            const response = await fetch('/api/v1/audit/logs?action=request_denied&page_size=5');
+            const data = await response.json();
+
+            const container = document.getElementById('recent-blocks');
+            if (!data.items || data.items.length === 0) {
+                container.innerHTML = `
+                    <div class="px-6 py-8 text-center">
+                        <div class="text-4xl mb-2">✅</div>
+                        <p class="text-gray-500">No blocked actions</p>
+                        <p class="text-sm text-gray-400 mt-1">Your security rules haven't blocked anything yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = data.items.map(log => {
+                // Parse details from new_value
+                const details = log.new_value || {};
+                const command = details.command || '';
+                const filePath = details.file_path || '';
+                const toolName = details.tool_name || '';
+                const requestType = details.request_type || '';
+
+                // What was blocked
+                let actionDesc = command || filePath || toolName || requestType || 'Unknown action';
+                if (actionDesc.length > 50) {
+                    actionDesc = actionDesc.substring(0, 47) + '...';
+                }
+
+                // Time ago
+                const timeAgo = getTimeAgo(new Date(log.created_at));
+
+                return `
+                    <div class="px-6 py-4 hover:bg-red-25 border-l-2 border-transparent hover:border-red-400 transition-colors">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center">
+                                    <span class="text-red-500 font-medium text-sm">BLOCKED</span>
+                                    <span class="mx-2 text-gray-300">•</span>
+                                    <span class="text-xs text-gray-500">${timeAgo}</span>
+                                </div>
+                                <p class="text-sm text-gray-900 mt-1 truncate font-mono bg-gray-100 px-2 py-1 rounded">${escapeHtml(actionDesc)}</p>
+                                <p class="text-xs text-gray-500 mt-1">${log.message.replace('DENY: ', '')}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Failed to load recent blocks:', error);
+            document.getElementById('recent-blocks').innerHTML = '<div class="px-6 py-4 text-gray-500">Could not load recent blocks</div>';
+        }
+    }
+
+    function getTimeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        return `${days}d ago`;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     async function showEnableModal(integrationId) {
