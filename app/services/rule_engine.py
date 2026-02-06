@@ -230,7 +230,11 @@ class RuleEngine:
     async def _evaluate_command_denylist(
         self, rule: Rule, context: EvaluationContext
     ) -> tuple[bool, RuleAction]:
-        """Evaluate command denylist rule."""
+        """Evaluate command denylist rule.
+
+        Returns the rule's configured action (deny, require_approval, etc.)
+        when a pattern matches, allowing for approval workflows.
+        """
         if context.request_type != "command" or not context.command:
             return False, rule.action
 
@@ -238,7 +242,7 @@ class RuleEngine:
         for pattern in patterns:
             try:
                 if re.match(pattern, context.command, re.IGNORECASE):
-                    return True, RuleAction.DENY  # Denylist always denies on match
+                    return True, rule.action  # Return rule's action (deny, require_approval, etc.)
             except re.error:
                 logger.warning(f"Invalid regex pattern in rule {rule.id}: {pattern}")
 
@@ -334,7 +338,7 @@ class RuleEngine:
         auto_block_flagged = params.get("auto_block_flagged", True)
 
         if context.skill_id in denied_skills:
-            return True, RuleAction.DENY
+            return True, rule.action  # Respect rule's action
 
         # Check if skill is flagged as malicious (would query malicious_skills table)
         if auto_block_flagged:
