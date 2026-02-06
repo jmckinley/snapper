@@ -104,9 +104,30 @@ Result: ALLOWED (if you have a rule permitting `ls`)
 Result: BLOCKED (dangerous command denied)
 
 When a test is blocked, you'll see inline buttons:
-- **Allow Once** — Pass this time only (no rule created)
-- **Allow Always** — Create a permanent allow rule
+- **Allow Once** — Allow this specific command for 5 minutes (no permanent rule)
+- **Allow Always** — Create a permanent allow rule for this command
 - **View Rule** — See which rule blocked it
+
+## Block Notifications
+
+When an agent's command is blocked in production, Snapper sends a Telegram notification with quick-action buttons:
+
+```
+⚠️ WARNING: Action Blocked: Block Dangerous Commands
+
+Agent `OpenClaw` attempted: `rm -rf /tmp/test`
+
+Blocked by: Denied by rule: Block Dangerous Commands
+
+📋 Agent: openclaw-main
+🔧 Command: rm -rf /tmp/test
+
+[✅ Allow Once] [📝 Allow Always]
+```
+
+**Button actions:**
+- **Allow Once** — Stores a one-time approval in Redis (5 min TTL). The next time the agent tries this exact command, it will be allowed once, then the approval expires.
+- **Allow Always** — Creates a permanent ALLOW rule for this command pattern, so it will always be allowed going forward.
 
 ## Emergency Controls
 

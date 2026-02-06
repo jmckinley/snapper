@@ -140,15 +140,31 @@ async def telegram_webhook(request: Request):
                 return {"ok": True, "action": action, "request_id": data}
 
             elif action == "once":
-                # Allow once - just acknowledge, no persistent rule created
-                await _answer_callback(callback_id=callback_id, text="✅ Allowed once (no rule created)")
+                # Allow once - store temporary approval in Redis (5 min TTL)
+                from app.redis_client import redis_client
+                context_json = await redis_client.get(f"tg_ctx:{data}")
+                if not context_json:
+                    await _answer_callback(callback_id=callback_id, text="❌ Context expired")
+                    return {"ok": False, "error": "context_expired"}
+
+                # Store one-time approval with 5 minute TTL
+                # Key format: once_allow:{agent_id}:{command_hash}
+                import hashlib
+                context = json.loads(context_json)
+                cmd = context.get("value", "")
+                agent_id = context.get("agent_id", "")
+                cmd_hash = hashlib.sha256(cmd.encode()).hexdigest()[:16]
+                approval_key = f"once_allow:{agent_id}:{cmd_hash}"
+                await redis_client.set(approval_key, "1", expire=300)  # 5 minutes
+
+                await _answer_callback(callback_id=callback_id, text="✅ Allowed once (5 min)")
                 if cb_chat_id and cb_message_id:
                     await _edit_message(
                         chat_id=cb_chat_id,
                         message_id=cb_message_id,
-                        text=f"✅ *ALLOWED ONCE* by @{username}\n\n_No permanent rule created. This action would be allowed this time only._",
+                        text=f"✅ ALLOWED ONCE by @{username}\n\nCommand: {cmd[:50]}...\nValid for 5 minutes.",
                     )
-                return {"ok": True, "action": "allow_once"}
+                return {"ok": True, "action": "allow_once", "expires_in": 300}
 
             elif action == "always":
                 # Allow always - create a persistent allow rule

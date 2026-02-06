@@ -328,6 +328,57 @@ If you get 401 errors, verify:
 1. API key is correct in the shell wrapper
 2. `REQUIRE_API_KEY` setting in Snapper matches your setup
 
+### Telegram notifications not appearing
+
+1. Check `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set:
+   ```bash
+   docker exec snapper-celery-worker-1 env | grep TELEGRAM
+   ```
+
+2. Verify celery-worker has the env vars (check docker-compose.yml):
+   ```yaml
+   celery-worker:
+     environment:
+       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+   ```
+
+3. Check celery logs for notification errors:
+   ```bash
+   docker compose logs celery-worker --tail 50 | grep -i telegram
+   ```
+
+4. Restart with `--force-recreate` to pick up env changes.
+
+### rclone/sync permissions
+
+If sync commands fail with "read-only file system":
+
+1. Check volume mounts aren't `:ro`:
+   ```bash
+   grep rclone docker-compose.yml
+   # Should NOT have :ro at the end
+   ```
+
+2. Fix ownership on host:
+   ```bash
+   chown -R 1000:1000 /opt/openclaw/rclone-mount
+   ```
+
+3. Recreate containers:
+   ```bash
+   docker compose up -d --force-recreate
+   ```
+
+### Sync filter excluding files
+
+If files aren't syncing, check the filter file:
+```bash
+cat /opt/openclaw/rclone-mount/gdrive-sync-filters.txt
+```
+
+Add `+ *.md` or other patterns as needed. The `- *` at the end excludes everything not explicitly included.
+
 ## Architecture Diagram
 
 ```

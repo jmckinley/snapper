@@ -695,6 +695,112 @@ RULE_TEMPLATES = {
         "tags": ["confluence", "wiki", "mcp", "atlassian"],
         "is_recommended": True,
     },
+    # =========================================================================
+    # OPENCLAW / CLAUDE CODE AGENT TEMPLATES
+    # =========================================================================
+    "openclaw-safe-commands": {
+        "id": "openclaw-safe-commands",
+        "name": "OpenClaw Safe Commands",
+        "description": "Allow common safe commands for OpenClaw agents (ls, cat, grep, git status, etc.)",
+        "category": "openclaw",
+        "severity": "low",
+        "rule_type": RuleType.COMMAND_ALLOWLIST,
+        "default_action": RuleAction.ALLOW,
+        "default_parameters": {
+            "patterns": [
+                r"^ls(\s|$)",
+                r"^cat\s+[^|;&]*$",
+                r"^head\s",
+                r"^tail\s",
+                r"^grep\s+[^|;&]*$",
+                r"^find\s+[^|;&]*$",
+                r"^pwd$",
+                r"^whoami$",
+                r"^date$",
+                r"^echo\s",
+                r"^wc\s",
+                r"^git\s+(status|log|diff|branch|show|ls-files)",
+                r"^node\s+--version",
+                r"^npm\s+(list|ls|outdated)",
+                r"^python3?\s+--version",
+                r"^rclone\s+(version|lsd|ls|lsl)",
+            ],
+        },
+        "tags": ["openclaw", "allowlist", "safe-commands"],
+        "is_recommended": True,
+    },
+    "openclaw-sync-operations": {
+        "id": "openclaw-sync-operations",
+        "name": "OpenClaw Sync Operations",
+        "description": "Allow file sync operations (rclone, rsync) for OpenClaw workspace management",
+        "category": "openclaw",
+        "severity": "medium",
+        "rule_type": RuleType.COMMAND_ALLOWLIST,
+        "default_action": RuleAction.ALLOW,
+        "default_parameters": {
+            "patterns": [
+                r"^sync-to-gdrive",
+                r"^rclone\s+(copy|sync)\s+/home/node/",
+                r"^rsync\s+-[a-z]+\s+/home/node/",
+            ],
+        },
+        "tags": ["openclaw", "sync", "gdrive", "rclone"],
+        "is_recommended": True,
+    },
+    "openclaw-block-dangerous": {
+        "id": "openclaw-block-dangerous",
+        "name": "OpenClaw Block Dangerous",
+        "description": "Block dangerous commands that could harm the system or exfiltrate data",
+        "category": "openclaw",
+        "severity": "critical",
+        "rule_type": RuleType.COMMAND_DENYLIST,
+        "default_action": RuleAction.DENY,
+        "default_parameters": {
+            "patterns": [
+                r"rm\s+-rf\s+/",
+                r"rm\s+-rf\s+~",
+                r"rm\s+-rf\s+\*",
+                r"mkfs\.",
+                r"dd\s+if=.*of=/dev/",
+                r"chmod\s+-R\s+777\s+/",
+                r"curl.*\|\s*(bash|sh)",
+                r"wget.*\|\s*(bash|sh)",
+                r">\s*/etc/",
+                r"nc\s+-[el]",
+                r"ncat\s+-[el]",
+                r"/dev/tcp/",
+                r"base64\s+-d.*\|\s*(bash|sh)",
+                r"eval\s+\$\(",
+            ],
+        },
+        "tags": ["openclaw", "denylist", "security", "critical"],
+        "is_recommended": True,
+    },
+    "openclaw-require-approval": {
+        "id": "openclaw-require-approval",
+        "name": "OpenClaw Approval Required",
+        "description": "Require human approval for sensitive operations like installs and config changes",
+        "category": "openclaw",
+        "severity": "high",
+        "rule_type": RuleType.HUMAN_IN_LOOP,
+        "default_action": RuleAction.REQUIRE_APPROVAL,
+        "default_parameters": {
+            "patterns": [
+                r"^(apt|apt-get|yum|dnf|pacman)\s+install",
+                r"^pip\s+install",
+                r"^npm\s+install\s+-g",
+                r"^sudo\s+",
+                r"^chmod\s+[0-7]*[75][0-7]*\s+",
+                r"^chown\s+",
+                r">\s*\.(bashrc|zshrc|profile|env)",
+                r"crontab\s+",
+            ],
+            "timeout_seconds": 300,
+            "auto_deny_on_timeout": True,
+        },
+        "tags": ["openclaw", "approval", "install", "sensitive"],
+        "is_recommended": True,
+    },
 }
 
 
@@ -1309,6 +1415,24 @@ async def evaluate_request(
             target_host = parsed.netloc or parsed.hostname
         except Exception:
             pass
+
+    # Check for one-time approval (from "Allow Once" button)
+    if request.command:
+        import hashlib
+        cmd_hash = hashlib.sha256(request.command.encode()).hexdigest()[:16]
+        # Check both by agent name and external_id
+        approval_keys = [
+            f"once_allow:{agent.name}:{cmd_hash}",
+            f"once_allow:{request.agent_id}:{cmd_hash}",
+        ]
+        for approval_key in approval_keys:
+            if await redis.get(approval_key):
+                # One-time approval found - delete it and allow
+                await redis.delete(approval_key)
+                return EvaluateResponse(
+                    decision="allow",
+                    reason="One-time approval granted via Telegram",
+                )
 
     # Build evaluation context
     context = EvaluationContext(
