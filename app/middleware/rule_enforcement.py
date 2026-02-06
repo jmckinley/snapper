@@ -44,11 +44,12 @@ class RuleEnforcementMiddleware(BaseHTTPMiddleware):
     # Path prefixes exempt from enforcement
     EXEMPT_PREFIXES = [
         "/static/",
-        "/api/v1/security/",  # Security endpoints need to work
-        "/api/v1/audit/",  # Audit endpoints need to work
-        "/api/v1/agents/",  # Agent management needs to work
-        "/api/v1/rules/",  # Rule management needs to work
-        "/api/v1/integrations/",  # Integration management needs to work
+        "/api/v1/security",  # Security endpoints need to work
+        "/api/v1/audit",  # Audit endpoints need to work
+        "/api/v1/agents",  # Agent management needs to work
+        "/api/v1/rules",  # Rule management needs to work
+        "/api/v1/integrations",  # Integration management needs to work
+        "/api/v1/approvals",  # Approval endpoints need to work
     ]
 
     async def dispatch(

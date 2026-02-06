@@ -1200,6 +1200,8 @@ class EvaluateRequest(BaseModel):
     file_operation: Optional[str] = None  # "read" or "write"
     # For network requests
     url: Optional[str] = None
+    # For origin validation (CVE-2026-25253 mitigation)
+    origin: Optional[str] = None
     # For generic tool requests
     tool_name: Optional[str] = None
     tool_input: Optional[Dict[str, Any]] = None
@@ -1274,6 +1276,7 @@ async def evaluate_request(
         file_path=request.file_path,
         file_operation=request.file_operation,
         target_host=target_host,
+        origin=request.origin,
         metadata={"tool_name": request.tool_name, "tool_input": request.tool_input} if request.tool_name else {},
     )
 

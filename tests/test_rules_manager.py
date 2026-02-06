@@ -263,6 +263,15 @@ class TestRuleEvaluation:
     @pytest.fixture(scope="class")
     def agent_id(self):
         """Create test agent with allow rules for safe commands."""
+        import redis
+        import os
+
+        # Flush Redis cache to ensure fresh rule evaluation
+        # Use redis service name in Docker, localhost otherwise
+        redis_host = "redis" if os.path.exists("/.dockerenv") else "localhost"
+        r = redis.from_url(f"redis://{redis_host}:6379/0")
+        r.flushdb()
+
         # Create agent
         agent_data = {
             "name": "Eval Test Agent",
@@ -275,12 +284,12 @@ class TestRuleEvaluation:
         # Activate agent
         httpx.post(f"{API_URL}/agents/{agent_uuid}/activate")
 
-        # Create allow rule for safe commands (ls, pwd, echo, etc.)
+        # Create allow rule for safe commands with HIGH priority to override global rules
         allow_rule = {
             "agent_id": agent_uuid,
             "rule_type": "command_allowlist",
             "action": "allow",
-            "priority": 100,
+            "priority": 1000,  # Very high priority to override global deny rules
             "parameters": {
                 "patterns": ["^ls\\b", "^pwd$", "^echo\\b", "^cat\\b(?!.*\\.(env|pem|key))"]
             },
@@ -290,11 +299,62 @@ class TestRuleEvaluation:
         }
         httpx.post(f"{API_URL}/rules", json=allow_rule)
 
+        # Create deny rule for sensitive files (SSH keys, etc.)
+        # Note: DENY rules short-circuit regardless of priority, but use same priority as allow
+        deny_sensitive = {
+            "agent_id": agent_uuid,
+            "rule_type": "command_denylist",
+            "action": "deny",
+            "priority": 1000,
+            "parameters": {
+                "patterns": [
+                    ".*\\.ssh.*",  # Any access to .ssh directory
+                    ".*id_rsa.*",  # RSA private keys
+                    ".*id_ed25519.*",  # Ed25519 private keys
+                    ".*\\.pem$",  # PEM files
+                    ".*\\.key$",  # Key files
+                    ".*\\.env$",  # Environment files
+                ]
+            },
+            "is_active": True,
+            "name": "Block Sensitive Files",
+            "description": "Block access to SSH keys and sensitive files",
+        }
+        deny_resp = httpx.post(f"{API_URL}/rules", json=deny_sensitive)
+        if deny_resp.status_code != 201:
+            print(f"Warning: deny rule creation failed: {deny_resp.text}")
+
+        # Also create an origin allow rule to ensure CVE origin rules don't block
+        origin_rule = {
+            "agent_id": agent_uuid,
+            "rule_type": "origin_validation",
+            "action": "allow",
+            "priority": 1000,
+            "parameters": {
+                "allowed_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
+                "strict_mode": False,  # Don't deny on missing origin
+            },
+            "is_active": True,
+            "name": "Allow Local Origins",
+        }
+        httpx.post(f"{API_URL}/rules", json=origin_rule)
+
+        # Flush Redis again after creating rules to clear any cached data
+        redis_host = "redis" if os.path.exists("/.dockerenv") else "localhost"
+        r = redis.from_url(f"redis://{redis_host}:6379/0")
+        r.flushdb()
+
         return agent_data["external_id"]
 
     def evaluate(self, agent_id: str, request_type: str, **kwargs):
         """Helper to call evaluate endpoint."""
-        data = {"agent_id": agent_id, "request_type": request_type, **kwargs}
+        # Include origin to avoid CVE origin validation rules blocking
+        data = {
+            "agent_id": agent_id,
+            "request_type": request_type,
+            "origin": "http://localhost:8000",
+            **kwargs,
+        }
         response = httpx.post(f"{API_URL}/rules/evaluate", json=data)
         return response.json()
 

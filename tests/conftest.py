@@ -7,14 +7,28 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
+# Detect Docker environment (inside container, use service names; outside, use localhost)
+def _get_db_host():
+    """Get database host based on environment."""
+    # If running inside Docker container
+    if os.path.exists("/.dockerenv"):
+        return "postgres"
+    return "localhost"
+
+def _get_redis_host():
+    """Get Redis host based on environment."""
+    if os.path.exists("/.dockerenv"):
+        return "redis"
+    return "localhost"
+
 # Set test environment
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only-32chars!"
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://snapper:snapper@localhost:5432/snapper_test"
-os.environ["REDIS_URL"] = "redis://localhost:6379/15"
+os.environ["DATABASE_URL"] = f"postgresql+asyncpg://snapper:snapper@{_get_db_host()}:5432/snapper_test"
+os.environ["REDIS_URL"] = f"redis://{_get_redis_host()}:6379/15"
 os.environ["DENY_BY_DEFAULT"] = "true"
 os.environ["VALIDATE_WEBSOCKET_ORIGIN"] = "false"
 os.environ["REQUIRE_LOCALHOST_ONLY"] = "false"
@@ -24,9 +38,10 @@ os.environ["ALLOWED_HOSTS"] = "testserver,localhost"
 from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
-from app.redis_client import redis_client, RedisClient
+from app.redis_client import redis_client, RedisClient, get_redis
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.rules import Rule, RuleAction, RuleType
+from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity, PolicyViolation, Alert
 
 
 settings = get_settings()
@@ -71,15 +86,20 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Create a test client with database session override."""
+async def client(db_session: AsyncSession, redis: RedisClient) -> AsyncGenerator[AsyncClient, None]:
+    """Create a test client with database session and redis overrides."""
 
     async def override_get_db():
         yield db_session
 
-    app.dependency_overrides[get_db] = override_get_db
+    async def override_get_redis():
+        return redis
 
-    async with AsyncClient(app=app, base_url="http://testserver") as ac:
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = override_get_redis
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
 
     app.dependency_overrides.clear()
@@ -155,3 +175,57 @@ async def global_rule(db_session: AsyncSession) -> Rule:
     await db_session.commit()
     await db_session.refresh(rule)
     return rule
+
+
+@pytest_asyncio.fixture
+async def sample_audit_log(db_session: AsyncSession, sample_agent: Agent) -> AuditLog:
+    """Create a sample audit log entry for testing."""
+    log = AuditLog(
+        id=uuid4(),
+        action=AuditAction.REQUEST_DENIED,
+        severity=AuditSeverity.WARNING,
+        agent_id=sample_agent.id,
+        message="Test audit log entry",
+        details={"test": True},
+    )
+    db_session.add(log)
+    await db_session.commit()
+    await db_session.refresh(log)
+    return log
+
+
+@pytest_asyncio.fixture
+async def sample_violation(db_session: AsyncSession, sample_agent: Agent) -> PolicyViolation:
+    """Create a sample policy violation for testing."""
+    violation = PolicyViolation(
+        id=uuid4(),
+        violation_type="rate_limit_exceeded",
+        severity=AuditSeverity.WARNING,
+        agent_id=sample_agent.id,
+        description="Test policy violation",
+        context={"test": True},
+        is_resolved=False,
+    )
+    db_session.add(violation)
+    await db_session.commit()
+    await db_session.refresh(violation)
+    return violation
+
+
+@pytest_asyncio.fixture
+async def sample_alert(db_session: AsyncSession, sample_agent: Agent) -> Alert:
+    """Create a sample alert for testing."""
+    alert = Alert(
+        id=uuid4(),
+        alert_type="security_violation",
+        severity=AuditSeverity.ERROR,
+        agent_id=sample_agent.id,
+        title="Test Alert",
+        message="Test alert message",
+        details={"test": True},
+        is_acknowledged=False,
+    )
+    db_session.add(alert)
+    await db_session.commit()
+    await db_session.refresh(alert)
+    return alert

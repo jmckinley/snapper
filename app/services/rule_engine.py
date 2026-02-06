@@ -75,11 +75,13 @@ class RuleEngine:
     Security rule evaluation engine.
 
     Implements deny-by-default semantics with priority-based rule evaluation.
-    Rules are cached in Redis for performance.
+    Rules are always loaded fresh from the database to ensure changes take
+    effect immediately (caching disabled for security).
     """
 
-    CACHE_PREFIX = "rules:"
-    CACHE_TTL = 300  # 5 minutes
+    # Rule caching disabled for security - rules must always be evaluated fresh
+    # to ensure changes take effect immediately
+    CACHE_ENABLED = False
 
     def __init__(self, db: AsyncSession, redis: RedisClient):
         self.db = db
@@ -187,29 +189,9 @@ class RuleEngine:
         return result
 
     async def _load_rules(self, agent_id: UUID) -> List[Rule]:
-        """Load rules for agent with caching and inheritance."""
-        cache_key = f"{self.CACHE_PREFIX}{agent_id}"
-
-        # Try cache first
-        cached = await self.redis.get(cache_key)
-        if cached:
-            try:
-                rule_ids = json.loads(cached)
-                # Load rules by IDs
-                stmt = select(Rule).where(
-                    Rule.id.in_(rule_ids),
-                    Rule.is_deleted == False,
-                    Rule.is_active == True,
-                )
-                result = await self.db.execute(stmt)
-                rules = list(result.scalars().all())
-                # Re-sort by priority
-                rules.sort(key=lambda r: r.priority, reverse=True)
-                return rules
-            except Exception:
-                pass  # Fall through to database
-
-        # Load from database: global rules + agent-specific rules
+        """Load rules for agent with inheritance (global + agent-specific)."""
+        # Always load fresh from database - caching disabled for security
+        # This ensures rule changes take effect immediately
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.is_active == True,
@@ -219,19 +201,12 @@ class RuleEngine:
         result = await self.db.execute(stmt)
         rules = list(result.scalars().all())
 
-        # Cache rule IDs
-        if rules:
-            rule_ids = [str(r.id) for r in rules]
-            await self.redis.set(cache_key, json.dumps(rule_ids), expire=self.CACHE_TTL)
-
         return rules
 
     async def invalidate_cache(self, agent_id: Optional[UUID] = None):
-        """Invalidate rule cache for agent or all agents."""
-        if agent_id:
-            cache_key = f"{self.CACHE_PREFIX}{agent_id}"
-            await self.redis.delete(cache_key)
-        # Note: Full cache invalidation would need pattern matching
+        """No-op: Rule caching is disabled for security."""
+        # Caching disabled - rules are always loaded fresh from database
+        pass
 
     # --- Rule Type Evaluators ---
 
@@ -438,6 +413,10 @@ class RuleEngine:
         """
         Evaluate origin validation rule.
         Mitigates CVE-2026-25253 WebSocket RCE.
+
+        Note: This rule type acts as a gate - it can DENY requests with invalid
+        origins but does NOT grant ALLOW for valid origins. The actual ALLOW
+        must come from other rules (e.g., command_allowlist).
         """
         params = rule.parameters
         allowed_origins = params.get("allowed_origins", [])
@@ -447,13 +426,16 @@ class RuleEngine:
         if not context.origin:
             if strict_mode:
                 return True, RuleAction.DENY
+            # Not strict mode - origin check passes, continue evaluation
             return False, rule.action
 
         # Check if origin is allowed
         if context.origin in allowed_origins:
-            return True, RuleAction.ALLOW
+            # Origin is valid - rule passes but doesn't grant access
+            # Other rules must still explicitly ALLOW the request
+            return False, rule.action
 
-        # Origin not in allowed list
+        # Origin not in allowed list - DENY the request
         return True, RuleAction.DENY
 
     async def _evaluate_human_in_loop(
