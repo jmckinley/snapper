@@ -1,4 +1,7 @@
-"""Core rule engine for security policy evaluation."""
+"""
+@module rule_engine
+@description Core rule engine for security policy evaluation.
+"""
 
 import json
 import re
@@ -526,6 +529,16 @@ class RuleEngine:
         """Evaluate human-in-the-loop approval rule."""
         params = rule.parameters
         require_approval_for = params.get("require_approval_for", [])
+
+        # Check command patterns (used by OpenClaw templates)
+        patterns = params.get("patterns", [])
+        if patterns and context.command:
+            for pattern in patterns:
+                try:
+                    if re.search(pattern, context.command):
+                        return True, RuleAction.REQUIRE_APPROVAL
+                except re.error:
+                    continue
 
         # Map request types to approval categories
         type_mapping = {
