@@ -138,11 +138,29 @@ export SNAPPER_AGENT_ID=claude-code-$(hostname)
 - **Rate limiting** — Sliding window algorithm with circuit breaker
 - **Audit logging** — Every action is logged for review
 
+### Telegram Bot
+
+Control Snapper from your phone with the Telegram bot:
+
+**Commands:**
+- `/test run <command>` — Test if a command would be allowed
+- `/rules` — View active security rules
+- `/pending` — List pending approvals
+- `/block` — Emergency block ALL agent actions
+- `/unblock` — Resume normal operation
+
+**Quick actions:** When a test is blocked, tap inline buttons to:
+- **Allow Once** — One-time pass (no rule created)
+- **Allow Always** — Create a persistent allow rule
+- **View Rule** — See rule details
+
+See [Telegram Setup Guide](docs/TELEGRAM_SETUP.md) for configuration.
+
 ### Notifications & Approvals
 
 Get alerts and approve/deny requests from your phone:
 
-- **Telegram** — Inline approve/deny buttons
+- **Telegram** — Test rules, manage approvals, emergency controls
 - **Slack** — Webhook notifications
 - **Email** — SMTP alerts
 - **PagerDuty** — Critical incidents
