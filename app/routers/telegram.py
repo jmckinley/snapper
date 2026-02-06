@@ -84,7 +84,7 @@ async def telegram_webhook(request: Request):
 
                 return {"ok": True, "action": action, "request_id": data}
 
-            elif action == "allow_once":
+            elif action == "once":
                 # Allow once - just acknowledge, no persistent rule created
                 await _answer_callback(callback_id=callback_id, text="✅ Allowed once (no rule created)")
                 if cb_chat_id and cb_message_id:
@@ -95,9 +95,16 @@ async def telegram_webhook(request: Request):
                     )
                 return {"ok": True, "action": "allow_once"}
 
-            elif action == "allow_always":
+            elif action == "always":
                 # Allow always - create a persistent allow rule
-                result = await _create_allow_rule_from_context(data, username)
+                # Retrieve context from Redis
+                from app.redis_client import redis_client
+                context_json = await redis_client.get(f"tg_ctx:{data}")
+                if not context_json:
+                    await _answer_callback(callback_id=callback_id, text="❌ Context expired")
+                    return {"ok": False, "error": "context_expired"}
+
+                result = await _create_allow_rule_from_context(context_json, username)
                 await _answer_callback(callback_id=callback_id, text="✅ Rule created!")
                 if cb_chat_id and cb_message_id:
                     await _edit_message(
@@ -107,8 +114,8 @@ async def telegram_webhook(request: Request):
                     )
                 return {"ok": True, "action": "allow_always", "rule_id": result.get("rule_id")}
 
-            elif action == "view_rule":
-                # View rule details
+            elif action == "rule":
+                # View rule details - data is first 12 chars of UUID
                 rule_info = await _get_rule_info(data)
                 await _answer_callback(callback_id=callback_id, text="📋 Rule details shown")
                 if cb_chat_id:
@@ -446,29 +453,31 @@ async def _handle_test_command(chat_id: int, text: str, message: dict):
     # Add inline keyboard for blocked results
     reply_markup = None
     if result.decision == EvaluationDecision.DENY:
-        # Encode context for allow_always callback
+        # Store context in Redis with short key for callback_data (64 byte limit)
+        import hashlib
         context_data = json.dumps({
             "type": subcommand,
             "value": arg,
             "agent_id": str(agent_id),
         })
-        # Base64-ish encode to fit in callback_data (max 64 bytes)
-        import base64
-        encoded_context = base64.urlsafe_b64encode(context_data.encode()).decode()[:60]
+        # Create a short hash key for the context
+        context_key = hashlib.sha256(context_data.encode()).hexdigest()[:12]
 
-        reply_markup = {
-            "inline_keyboard": [
-                [
-                    {"text": "✅ Allow Once", "callback_data": f"allow_once:{encoded_context}"},
-                    {"text": "📝 Allow Always", "callback_data": f"allow_always:{encoded_context}"},
-                ],
-                [
-                    {"text": "📋 View Rule", "callback_data": f"view_rule:{result.blocking_rule}"},
-                ] if result.blocking_rule else [],
-            ]
-        }
-        # Clean up empty rows
-        reply_markup["inline_keyboard"] = [row for row in reply_markup["inline_keyboard"] if row]
+        # Store context in Redis with 1 hour expiry
+        await redis_client.set(f"tg_ctx:{context_key}", context_data, ex=3600)
+
+        buttons = [
+            [
+                {"text": "✅ Allow Once", "callback_data": f"once:{context_key}"},
+                {"text": "📝 Allow Always", "callback_data": f"always:{context_key}"},
+            ],
+        ]
+
+        if result.blocking_rule:
+            rule_id_short = str(result.blocking_rule)[:12]
+            buttons.append([{"text": "📋 View Rule", "callback_data": f"rule:{rule_id_short}"}])
+
+        reply_markup = {"inline_keyboard": buttons}
 
     await _send_message_with_keyboard(
         chat_id=chat_id,
@@ -700,20 +709,13 @@ async def _activate_emergency_block(chat_id: int, username: str) -> dict:
     return {"rule_id": str(rule_id), "status": "activated"}
 
 
-async def _create_allow_rule_from_context(encoded_context: str, username: str) -> dict:
-    """Create an allow rule from encoded context data."""
-    import base64
-
+async def _create_allow_rule_from_context(context_json: str, username: str) -> dict:
+    """Create an allow rule from context JSON string."""
     try:
-        # Decode context - may be truncated, so be lenient
-        padding = 4 - len(encoded_context) % 4
-        if padding != 4:
-            encoded_context += "=" * padding
-        context_json = base64.urlsafe_b64decode(encoded_context.encode()).decode()
         context = json.loads(context_json)
     except Exception as e:
-        logger.warning(f"Failed to decode context: {e}")
-        return {"message": "Failed to decode context", "rule_id": None}
+        logger.warning(f"Failed to parse context: {e}")
+        return {"message": "Failed to parse context", "rule_id": None}
 
     test_type = context.get("type", "run")
     value = context.get("value", "")
@@ -778,20 +780,22 @@ async def _create_allow_rule_from_context(encoded_context: str, username: str) -
     }
 
 
-async def _get_rule_info(rule_id: str) -> str:
-    """Get detailed information about a rule."""
-    try:
-        rule_uuid = UUID(rule_id)
-    except ValueError:
-        return "❓ Invalid rule ID format"
+async def _get_rule_info(rule_id_partial: str) -> str:
+    """Get detailed information about a rule by partial ID."""
+    from sqlalchemy import cast, String
 
     async with async_session_factory() as db:
-        stmt = select(Rule).where(Rule.id == rule_uuid)
+        # Search for rule where ID starts with the partial
+        stmt = select(Rule).where(
+            cast(Rule.id, String).like(f"{rule_id_partial}%")
+        ).limit(1)
         result = await db.execute(stmt)
         rule = result.scalar_one_or_none()
 
     if not rule:
-        return f"❓ Rule `{rule_id[:8]}...` not found"
+        return f"❓ Rule `{rule_id_partial}...` not found"
+
+    rule_id = str(rule.id)
 
     emoji = "🔴" if rule.action == RuleAction.DENY else "🟢" if rule.action == RuleAction.ALLOW else "🟡"
     scope = "Global" if rule.agent_id is None else "Agent-specific"
