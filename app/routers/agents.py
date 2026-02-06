@@ -496,14 +496,9 @@ async def purge_agent_pii(
         )
 
     # PII patterns to search for and redact
-    pii_patterns = {
-        "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
-        "credit_card": r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b",
-        "phone": r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",
-        "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-        "address": r"\b\d+\s+[\w\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln)\b",
-        "zip_code": r"\b\d{5}(?:-\d{4})?\b",
-    }
+    # Use comprehensive PII patterns (US, UK, Canada, Australia)
+    from app.utils.pii_patterns import PII_PATTERNS_FULL
+    pii_patterns = PII_PATTERNS_FULL
 
     purge_results = {
         "agent_id": str(agent_id),

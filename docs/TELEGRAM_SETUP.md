@@ -85,6 +85,7 @@ Once configured, your bot supports these commands:
 | `/test network <host>` | Test network egress |
 | `/purge` | List agents for PII purge |
 | `/purge <agent_id>` | Purge PII from agent data |
+| `/purge *` | Purge PII from ALL agents |
 | `/block` | Emergency block ALL actions |
 | `/unblock` | Resume normal operation |
 
@@ -130,11 +131,26 @@ The `/purge` command removes personally identifiable information (PII) from agen
 2. Send `/purge <agent_id>` with the first 8 characters of the agent ID
 3. Review what will be deleted and confirm
 
+**Purge all agents:**
+```
+/purge *
+```
+
 **What gets purged:**
 - Conversation history containing PII patterns
 - Memory files (SOUL.md, MEMORY.md)
 - Cached session data in Redis
-- Audit log entries containing PII (SSN, credit cards, emails, phones)
+- Audit log entries containing PII patterns
+
+**PII patterns detected (US, UK, Canada, Australia):**
+
+| Region | Pattern |
+|--------|---------|
+| US | SSN, ZIP codes, phone numbers |
+| UK | National Insurance Number, NHS Number, postcodes, phone |
+| Canada | Social Insurance Number, postal codes, phone |
+| Australia | Tax File Number, Medicare, postcodes, phone |
+| Global | Credit cards, IBAN, email, IP addresses, street addresses |
 
 **Example:**
 ```

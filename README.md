@@ -151,6 +151,7 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 | `/test network <host>` | Test if network egress is allowed |
 | `/purge` | List agents for PII purge |
 | `/purge <agent_id>` | Purge PII from agent (with confirm) |
+| `/purge *` | Purge PII from ALL agents (with confirm) |
 | `/block` | Emergency block ALL agent actions |
 | `/unblock` | Resume normal operation |
 

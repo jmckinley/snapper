@@ -912,6 +912,7 @@ async def _handle_purge_command(chat_id: int, text: str, message: dict):
     Usage:
         /purge              - Show agents and purge options
         /purge <agent_id>   - Purge specific agent (with confirm)
+        /purge *            - Purge ALL agents (with confirm)
     """
     from app.models.agents import Agent
 
@@ -921,8 +922,50 @@ async def _handle_purge_command(chat_id: int, text: str, message: dict):
     test_agent_id = await _get_or_create_test_agent(chat_id)
 
     if len(parts) > 1:
+        arg = parts[1].strip()
+
+        # Check for purge all
+        if arg in ("*", "all"):
+            async with async_session_factory() as db:
+                stmt = select(Agent).where(Agent.is_deleted == False)
+                result = await db.execute(stmt)
+                agents = result.scalars().all()
+
+            if not agents:
+                await _send_message(
+                    chat_id=chat_id,
+                    text="📋 No agents found to purge.",
+                )
+                return
+
+            reply_markup = {
+                "inline_keyboard": [
+                    [
+                        {"text": f"🗑️ PURGE ALL ({len(agents)} agents)", "callback_data": "confirm_purge:*"},
+                        {"text": "❌ Cancel", "callback_data": "cancel_purge:0"},
+                    ]
+                ]
+            }
+
+            agent_list = "\n".join([f"• {a.name} (`{str(a.id)[:8]}...`)" for a in agents[:10]])
+            if len(agents) > 10:
+                agent_list += f"\n_...and {len(agents) - 10} more_"
+
+            await _send_message_with_keyboard(
+                chat_id=chat_id,
+                text=(
+                    f"⚠️ *PURGE ALL AGENTS*\n\n"
+                    f"This will purge PII from *{len(agents)} agents*:\n\n"
+                    f"{agent_list}\n\n"
+                    "⚠️ *This action is IRREVERSIBLE.*\n\n"
+                    "Are you sure?"
+                ),
+                reply_markup=reply_markup,
+            )
+            return
+
         # Specific agent ID provided
-        agent_id_partial = parts[1].strip()
+        agent_id_partial = arg
 
         # Look up agent by partial ID
         from sqlalchemy import cast, String
@@ -997,13 +1040,81 @@ async def _handle_purge_command(chat_id: int, text: str, message: dict):
 
 
 async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
-    """Execute PII purge for an agent."""
-    import re
+    """Execute PII purge for an agent or all agents."""
     from app.models.agents import Agent
     from app.redis_client import redis_client
     from sqlalchemy import cast, String
+    from app.utils.pii_patterns import PII_PATTERNS_FULL, redact_pii
+    from app.models.audit_logs import AuditLog
 
-    # Look up full agent ID
+    # Handle purge all
+    if agent_id_partial == "*":
+        async with async_session_factory() as db:
+            stmt = select(Agent).where(Agent.is_deleted == False)
+            result = await db.execute(stmt)
+            agents = result.scalars().all()
+
+            if not agents:
+                return {"message": "No agents found"}
+
+            total_redacted = 0
+            total_cache_deleted = 0
+            agent_count = len(agents)
+
+            for agent in agents:
+                # Redact PII in audit logs for this agent
+                stmt = select(AuditLog).where(AuditLog.agent_id == agent.id)
+                result = await db.execute(stmt)
+                audit_logs = result.scalars().all()
+
+                for log in audit_logs:
+                    if log.message:
+                        log.message, count = redact_pii(log.message, PII_PATTERNS_FULL)
+                        if count > 0:
+                            total_redacted += 1
+
+                # Clear Redis cache
+                patterns = [
+                    f"agent:{agent.id}:*",
+                    f"rate_limit:agent:{agent.id}:*",
+                    f"session:{agent.id}:*",
+                ]
+                for pattern in patterns:
+                    keys = await redis_client.keys(pattern)
+                    for key in keys:
+                        await redis_client.delete(key)
+                        total_cache_deleted += 1
+
+            # Log the purge action
+            purge_log = AuditLog(
+                action=AuditAction.PII_PURGE,
+                severity=AuditSeverity.CRITICAL,
+                message=f"PII purge ALL ({agent_count} agents) executed via Telegram by {username}",
+                new_value={
+                    "agent_count": agent_count,
+                    "purged_by": username,
+                    "source": "telegram",
+                    "audit_logs_redacted": total_redacted,
+                    "cache_keys_deleted": total_cache_deleted,
+                },
+            )
+            db.add(purge_log)
+            await db.commit()
+
+        return {
+            "message": (
+                f"*Agents purged:* {agent_count}\n"
+                f"*Audit logs redacted:* {total_redacted}\n"
+                f"*Cache keys deleted:* {total_cache_deleted}\n\n"
+                "_For complete PII removal from OpenClaw, also run:_\n"
+                "`openclaw agent --purge-pii`"
+            ),
+            "agent_count": agent_count,
+            "redacted_count": total_redacted,
+            "cache_keys_deleted": total_cache_deleted,
+        }
+
+    # Single agent purge
     async with async_session_factory() as db:
         stmt = select(Agent).where(
             cast(Agent.id, String).like(f"{agent_id_partial}%"),
@@ -1018,16 +1129,7 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
         agent_id = agent.id
         agent_name = agent.name
 
-        # PII patterns to redact in audit logs
-        pii_patterns = [
-            (r"\b\d{3}-\d{2}-\d{4}\b", "[SSN REDACTED]"),  # SSN
-            (r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b", "[CC REDACTED]"),  # Credit card
-            (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "[EMAIL REDACTED]"),  # Email
-            (r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b", "[PHONE REDACTED]"),  # Phone
-        ]
-
         # Redact PII in audit logs for this agent
-        from app.models.audit_logs import AuditLog
         stmt = select(AuditLog).where(AuditLog.agent_id == agent_id)
         result = await db.execute(stmt)
         audit_logs = result.scalars().all()
@@ -1035,10 +1137,8 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
         redacted_count = 0
         for log in audit_logs:
             if log.message:
-                original = log.message
-                for pattern, replacement in pii_patterns:
-                    log.message = re.sub(pattern, replacement, log.message)
-                if log.message != original:
+                log.message, count = redact_pii(log.message, PII_PATTERNS_FULL)
+                if count > 0:
                     redacted_count += 1
 
         # Log the purge action
