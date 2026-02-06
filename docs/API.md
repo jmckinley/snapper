@@ -149,6 +149,19 @@ Possible decisions:
 - `deny` - Request is blocked
 - `require_approval` - Request needs human approval
 
+#### Allow Once Bypass
+
+When a user taps "Allow Once" in Telegram, a one-time approval key is stored in Redis. The next matching request will be allowed and the key consumed:
+
+```json
+{
+  "decision": "allow",
+  "reason": "One-time approval granted via Telegram"
+}
+```
+
+The key format is `once_allow:{agent_id}:{command_hash}` with a 5-minute TTL.
+
 #### Learning Mode Response
 
 When `LEARNING_MODE=true`, denied requests show what would happen:
@@ -245,6 +258,20 @@ curl -X POST http://localhost:8000/api/v1/approvals/{id}/decide \
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/v1/telegram/webhook` | Telegram bot webhook |
+
+#### Callback Data Formats
+
+The Telegram bot uses inline buttons with specific callback data formats:
+
+| Action | Data Format | Description |
+|--------|-------------|-------------|
+| `once:{context}` | Allow this command once (5 min) | Creates temporary Redis key |
+| `always:{context}` | Create permanent allow rule | Creates COMMAND_ALLOWLIST or SKILL_ALLOWLIST rule |
+| `rule:{id}` | View rule details | Shows rule info in chat |
+| `confirm_block:{chat_id}` | Confirm emergency block | Creates priority 10000 deny-all rule |
+| `cancel_block:{chat_id}` | Cancel emergency block | Clears pending block |
+| `approve:{request_id}` | Approve pending request | Allows blocked action |
+| `deny:{request_id}` | Deny pending request | Rejects blocked action |
 
 ## Rule Types
 

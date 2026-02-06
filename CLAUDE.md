@@ -76,8 +76,19 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose exec app alembic upgrade head
 docker compose exec app alembic revision --autogenerate -m "description"
 
-# Run tests
+# Run unit tests
 docker compose exec app pytest tests/ -v
+
+# Run specific test files
+docker compose exec app pytest tests/test_allow_once_always.py -v
+docker compose exec app pytest tests/test_telegram_callbacks.py -v
+docker compose exec app pytest tests/test_openclaw_templates.py -v
+
+# Run with coverage
+docker compose exec app pytest tests/ --cov=app --cov-report=term-missing
+
+# E2E tests (requires Playwright on host, app running)
+E2E_BASE_URL=http://localhost:8000 pytest tests/e2e -v
 
 # Linting (inside container)
 docker compose exec app black app/ tests/
@@ -134,3 +145,5 @@ async def protected_endpoint():
 - **API Design**: Follow REST conventions and provide OpenAPI documentation
 - **Testing**: Focus on rule engine logic and security boundary testing
 - **Error Handling**: Provide clear error messages for rule violations
+- **Allow Once/Always**: Telegram callbacks store temporary Redis keys for one-time approvals
+- **OpenClaw Templates**: 4 pre-configured templates for safe commands, sync, dangerous blocks, and approval requirements

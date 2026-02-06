@@ -442,6 +442,9 @@ pytest tests/e2e/test_dashboard.py -v
 E2E tests cover:
 - Dashboard page loading and navigation
 - Agent creation and management flows
+- Rule CRUD workflow (create, toggle active, delete)
+- Agent API key management (show, regenerate)
+- Agent status management (suspend, activate)
 - Rule creation and template application
 - OpenClaw setup wizard modal
 - Security and audit pages
@@ -451,9 +454,9 @@ E2E tests cover:
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 154 | API, rule engine, middleware |
+| Unit tests | 181 | API, rule engine, middleware, Telegram callbacks |
 | Integration tests | 41 | Live app testing (skipped in CI) |
-| E2E tests | 56 | Browser-based UI testing (Playwright) |
+| E2E tests | 65 | Browser-based UI testing (Playwright) |
 
 ## Common Commands
 

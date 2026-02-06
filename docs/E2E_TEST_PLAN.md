@@ -29,8 +29,24 @@ This test plan validates Snapper's security enforcement when acting as a "man in
 |-----------|--------|----------|
 | Snapper | ✅ Running | https://76.13.127.76:8443 |
 | OpenClaw | ✅ Running | https://76.13.127.76:443 |
-| Telegram Bot | ✅ Configured | @redfuzzydog_bot |
-| Integration | ❌ Not connected | Needs implementation |
+| Telegram Bot | ✅ Configured | @Snapper_approval_bot |
+| Integration | ✅ Connected | Shell wrapper hooks |
+
+## Automated E2E Tests
+
+Playwright-based E2E tests in `tests/e2e/`:
+
+| Test File | Tests | Description |
+|-----------|-------|-------------|
+| `test_dashboard.py` | 6 | Dashboard page loading, tiles |
+| `test_navigation.py` | 8 | Page navigation, responsive design |
+| `test_agents.py` | 15 | Agent registration, OpenClaw modal |
+| `test_agent_management.py` | 4 | API key show/regenerate, suspend/activate |
+| `test_rules.py` | 6 | Rules page, templates |
+| `test_rules_crud.py` | 5 | Create, toggle, delete rules |
+| `test_security.py` | 5 | Security page, vulnerabilities |
+
+Run with: `pytest tests/e2e -v --headed`
 
 ## Phase 1: Build Integration
 

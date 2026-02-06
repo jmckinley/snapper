@@ -1,11 +1,18 @@
-"""Playwright E2E test configuration and fixtures."""
+"""
+@module conftest
+@description Playwright E2E test configuration and fixtures.
+"""
 
 import os
+from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
 # Base URL for E2E tests - defaults to local Docker setup
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
+
+# Directory for screenshots on failure
+SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 
 @pytest.fixture(scope="session")
@@ -63,3 +70,34 @@ def settings_page(page: Page, base_url: str) -> Page:
     page.goto(f"{base_url}/settings")
     page.wait_for_selector("text=Settings", timeout=10000)
     return page
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Capture screenshot on test failure for easier debugging."""
+    outcome = yield
+    report = outcome.get_result()
+
+    if report.when == "call" and report.failed:
+        # Try to get the page fixture
+        page = item.funcargs.get("page")
+        if page is None:
+            # Try other page fixtures
+            for fixture_name in ["dashboard_page", "agents_page", "rules_page", "security_page", "settings_page"]:
+                page = item.funcargs.get(fixture_name)
+                if page is not None:
+                    break
+
+        if page is not None:
+            try:
+                # Create screenshots directory if it doesn't exist
+                SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+                # Generate filename from test name
+                test_name = item.name.replace("/", "_").replace("::", "_")
+                screenshot_path = SCREENSHOT_DIR / f"{test_name}.png"
+
+                page.screenshot(path=str(screenshot_path))
+                print(f"\nScreenshot saved: {screenshot_path}")
+            except Exception as e:
+                print(f"\nFailed to capture screenshot: {e}")

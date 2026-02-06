@@ -1,4 +1,7 @@
-"""Pytest fixtures for Snapper Rules Manager tests."""
+"""
+@module conftest
+@description Pytest fixtures for Snapper Rules Manager tests.
+"""
 
 import asyncio
 import os
@@ -242,3 +245,29 @@ async def sample_alert(db_session: AsyncSession, sample_agent: Agent) -> Alert:
     await db_session.commit()
     await db_session.refresh(alert)
     return alert
+
+
+@pytest_asyncio.fixture
+async def once_allow_key(redis: RedisClient, sample_agent: Agent):
+    """Create a one-time approval key in Redis for testing Allow Once functionality."""
+    import hashlib
+    test_command = "cat /etc/passwd"
+    cmd_hash = hashlib.sha256(test_command.encode()).hexdigest()[:16]
+    key = f"once_allow:{sample_agent.name}:{cmd_hash}"
+    await redis.set(key, "1", expire=300)
+    return key, test_command
+
+
+@pytest_asyncio.fixture
+async def telegram_context(redis: RedisClient, sample_agent: Agent):
+    """Create a Telegram callback context in Redis for testing Telegram callbacks."""
+    import json
+    import hashlib
+    context_data = {
+        "type": "run",
+        "value": "test command",
+        "agent_id": sample_agent.name,
+    }
+    context_key = hashlib.sha256(json.dumps(context_data).encode()).hexdigest()[:12]
+    await redis.set(f"tg_ctx:{context_key}", json.dumps(context_data), expire=3600)
+    return context_key, context_data

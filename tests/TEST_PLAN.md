@@ -85,7 +85,16 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | RE-081 | Require approval for network | POST to external API | REQUIRE_APPROVAL |
 | RE-082 | Auto-deny on timeout | No response in 5min | DENY |
 
-### 1.10 Rule Priority
+### 1.10 Allow Once/Always (Telegram Approvals)
+| Test ID | Description | Input | Expected Result |
+|---------|-------------|-------|-----------------|
+| RE-085 | Allow once key grants access | once_allow:{agent}:{hash} in Redis | ALLOW |
+| RE-086 | Allow once key consumed | Second request same command | DENY |
+| RE-087 | Allow once agent name lookup | Key by agent name, request by external_id | ALLOW |
+| RE-088 | Allow once command isolation | Approval for cmd A, request cmd B | DENY |
+| RE-089 | Allow once bypasses deny rule | Explicit deny rule + approval key | ALLOW |
+
+### 1.11 Rule Priority
 | Test ID | Description | Input | Expected Result |
 |---------|-------------|-------|-----------------|
 | RE-090 | Higher priority wins | Conflicting rules | Higher priority applies |
@@ -155,6 +164,17 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | RU-012 | Apply Gmail protection template | Rule created |
 | RU-013 | Apply with parameter overrides | Overrides merged correctly |
 
+### 3.2b OpenClaw Templates
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| RU-014 | openclaw-safe-commands exists | Template found in list |
+| RU-015 | openclaw-sync-operations exists | Template found in list |
+| RU-016 | openclaw-block-dangerous exists | Template found in list |
+| RU-017 | openclaw-require-approval exists | Template found in list |
+| RU-018 | Safe commands allows ls, cat, git | Patterns match safe commands |
+| RU-019 | Block dangerous blocks rm -rf, curl\|bash | Patterns match dangerous commands |
+| RU-020 | Apply openclaw template creates rule | Rule created with source=template |
+
 ### 3.3 Rule Import/Export
 | Test ID | Description | Expected Result |
 |---------|-------------|-----------------|
@@ -193,6 +213,33 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | HK-010 | Allow output (exit 0) | Tool proceeds |
 | HK-011 | Deny output (JSON) | Tool blocked with reason |
 | HK-012 | Ask output (JSON) | User prompted for approval |
+
+---
+
+## 4b. Telegram Callback Tests
+
+### 4b.1 Allow Once Callback
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TG-001 | once: callback stores Redis key | Key created with 5 min TTL |
+| TG-002 | once: callback with expired context | Error returned, no key created |
+
+### 4b.2 Allow Always Callback
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TG-010 | always: creates COMMAND_ALLOWLIST for run | Rule created with escaped regex |
+| TG-011 | always: creates SKILL_ALLOWLIST for install | Skill rule created |
+| TG-012 | always: escapes regex special chars | Pattern properly escaped |
+
+### 4b.3 Emergency Block Callback
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TG-020 | confirm_block creates deny-all rule | Priority 10000 rule with .* pattern |
+
+### 4b.4 Rule View Callback
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TG-030 | rule: returns formatted details | Rule name, type, action in message |
 
 ---
 
