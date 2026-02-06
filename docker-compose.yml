@@ -82,6 +82,9 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - NOTIFY_ON_BLOCK=${NOTIFY_ON_BLOCK:-true}
     volumes:
       - .:/app
     depends_on:

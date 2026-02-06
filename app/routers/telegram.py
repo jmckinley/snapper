@@ -827,7 +827,26 @@ async def _create_allow_rule_from_context(context_json: str, username: str) -> d
 
     test_type = context.get("type", "run")
     value = context.get("value", "")
-    agent_id = UUID(context.get("agent_id"))
+    agent_id_str = context.get("agent_id", "")
+
+    # Try to parse as UUID first, otherwise look up by external_id/name
+    agent_id = None
+    try:
+        agent_id = UUID(agent_id_str)
+    except (ValueError, TypeError):
+        # Look up agent by external_id or name
+        from app.models.agents import Agent
+        async with async_session_factory() as db:
+            stmt = select(Agent).where(
+                (Agent.external_id == agent_id_str) | (Agent.name == agent_id_str),
+                Agent.is_deleted == False,
+            ).limit(1)
+            result = await db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent:
+                agent_id = agent.id
+            else:
+                return {"message": f"Agent not found: {agent_id_str}", "rule_id": None}
 
     # Build rule based on test type
     if test_type == "run":

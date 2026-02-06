@@ -221,8 +221,9 @@ def _send_telegram_alert(
     # Build Telegram message with Markdown
     text = f"{emoji} *{severity.upper()}: {title}*\n\n{message}"
 
-    # Add approval buttons if this is an approval request
     reply_markup = None
+
+    # Add approval buttons if this is an approval request
     if metadata and metadata.get("request_id") and metadata.get("requires_approval"):
         request_id = metadata["request_id"]
         reply_markup = {
@@ -233,6 +234,43 @@ def _send_telegram_alert(
                 ]
             ]
         }
+    # Add Allow Once/Always buttons for blocked commands
+    elif metadata and metadata.get("command") and metadata.get("agent_id"):
+        import hashlib
+        import json
+        import redis
+
+        # Build context for the allow rule
+        context_data = json.dumps({
+            "type": "run",
+            "value": metadata["command"],
+            "agent_id": metadata.get("agent_name", metadata["agent_id"]),  # Use name for lookup
+        })
+        # Create a short hash key for the context (callback_data has 64 byte limit)
+        context_key = hashlib.sha256(context_data.encode()).hexdigest()[:12]
+
+        # Store context in Redis with 1 hour expiry
+        try:
+            redis_url = settings.REDIS_URL or "redis://localhost:6379/0"
+            r = redis.from_url(redis_url)
+            r.setex(f"tg_ctx:{context_key}", 3600, context_data)
+
+            buttons = [
+                [
+                    {"text": "✅ Allow Once", "callback_data": f"once:{context_key}"},
+                    {"text": "📝 Allow Always", "callback_data": f"always:{context_key}"},
+                ],
+            ]
+
+            # Add View Rule button if we have the rule name
+            if metadata.get("rule_name"):
+                rule_id = metadata.get("rule_id", "")[:12] if metadata.get("rule_id") else ""
+                if rule_id:
+                    buttons.append([{"text": "📋 View Rule", "callback_data": f"rule:{rule_id}"}])
+
+            reply_markup = {"inline_keyboard": buttons}
+        except Exception as e:
+            logger.exception(f"Failed to store context for Telegram buttons: {e}")
 
     # Add metadata footer
     if metadata:

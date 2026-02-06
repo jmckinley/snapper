@@ -1376,6 +1376,7 @@ async def evaluate_request(
                         "file_path": request.file_path,
                         "tool_name": request.tool_name,
                         "rule_name": matched_rule_name,
+                        "rule_id": str(result.blocking_rule) if result.blocking_rule else None,
                     },
                 )
             elif result.decision.value == "require_approval":
