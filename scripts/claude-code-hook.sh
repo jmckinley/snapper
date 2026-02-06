@@ -24,7 +24,7 @@
 #
 # Or run: snapper integrate claude-code
 
-SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
+SNAPPER_URL="${SNAPPER_URL:-https://76.13.127.76:8443}"
 SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-claude-code-$(hostname)}"
 SNAPPER_API_KEY="${SNAPPER_API_KEY:-}"  # Optional: snp_xxx for authenticated requests
 APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"
@@ -98,9 +98,9 @@ if [ -n "$SNAPPER_API_KEY" ]; then
 fi
 
 # Call Snapper evaluate endpoint
-RESPONSE=$(curl -sf -X POST "$SNAPPER_URL/api/v1/rules/evaluate" \
+RESPONSE=$(curl -skf -X POST "$SNAPPER_URL/api/v1/rules/evaluate" \
     -H "Content-Type: application/json" \
-    -H "Origin: http://localhost:8000" \
+    -H "Origin: $SNAPPER_URL" \
     ${AUTH_HEADER:+-H "X-API-Key: $SNAPPER_API_KEY"} \
     -d "$PAYLOAD" 2>/dev/null)
 
@@ -157,8 +157,8 @@ case "$DECISION" in
                 exit 1
             fi
 
-            STATUS_RESPONSE=$(curl -sf "$SNAPPER_URL/api/v1/approvals/$APPROVAL_ID/status" \
-                -H "Origin: http://localhost:8000" \
+            STATUS_RESPONSE=$(curl -skf "$SNAPPER_URL/api/v1/approvals/$APPROVAL_ID/status" \
+                -H "Origin: $SNAPPER_URL" \
                 ${SNAPPER_API_KEY:+-H "X-API-Key: $SNAPPER_API_KEY"} 2>/dev/null)
 
             if [ $? -ne 0 ]; then
