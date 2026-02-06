@@ -1,53 +1,60 @@
-"""E2E tests for site-wide navigation and accessibility."""
+"""
+@module test_navigation
+@description E2E tests for site-wide navigation and accessibility.
+Tests navbar, health endpoints, page titles, responsive design, and accessibility.
+"""
 
 from playwright.sync_api import Page, expect
 
 
 class TestGlobalNavigation:
-    """Tests for the global navigation sidebar."""
+    """Tests for the global navigation bar."""
 
-    def test_sidebar_has_all_nav_items(self, dashboard_page: Page):
-        """Sidebar contains all main navigation items."""
+    def test_navbar_has_all_nav_items(self, dashboard_page: Page):
+        """Navbar contains all main navigation items."""
         nav = dashboard_page.locator("nav")
 
-        expect(nav.locator("text=Dashboard")).to_be_visible()
-        expect(nav.locator("text=Connect Your AI")).to_be_visible()
-        expect(nav.locator("text=Rules")).to_be_visible()
-        expect(nav.locator("text=Security")).to_be_visible()
-        expect(nav.locator("text=Audit")).to_be_visible()
-        expect(nav.locator("text=Settings")).to_be_visible()
+        expect(nav.locator("a:has-text('Dashboard')")).to_be_visible()
+        expect(nav.locator("a:has-text('Integrations')")).to_be_visible()
+        expect(nav.locator("a:has-text('Agents')")).to_be_visible()
+        expect(nav.locator("a:has-text('Security')")).to_be_visible()
+        expect(nav.locator("a:has-text('Audit')")).to_be_visible()
+        expect(nav.locator("a:has-text('Settings')")).to_be_visible()
 
-    def test_sidebar_navigation_works(self, page: Page, base_url: str):
-        """Each sidebar link navigates to correct page."""
+    def test_navbar_navigation_works(self, page: Page, base_url: str):
+        """Each navbar link navigates to correct page."""
         page.goto(base_url)
         page.wait_for_load_state("networkidle")
 
         nav_items = [
             ("Dashboard", "/"),
-            ("Connect Your AI", "/agents"),
-            ("Rules", "/rules"),
+            ("Agents", "/agents"),
+            ("Integrations", "/integrations"),
             ("Security", "/security"),
             ("Audit", "/audit"),
             ("Settings", "/settings"),
         ]
 
         for link_text, expected_path in nav_items:
-            page.click(f"nav >> text={link_text}")
+            page.click(f"nav a:has-text('{link_text}')")
             page.wait_for_load_state("networkidle")
             current_url = page.url
-            assert current_url.rstrip("/").endswith(expected_path.rstrip("/")) or expected_path == "/", \
-                f"Expected {expected_path}, got {current_url}"
+            if expected_path == "/":
+                assert current_url.rstrip("/") == base_url.rstrip("/"), \
+                    f"Expected {base_url}, got {current_url}"
+            else:
+                assert expected_path in current_url, \
+                    f"Expected {expected_path} in {current_url}"
 
     def test_logo_links_to_dashboard(self, page: Page, base_url: str):
         """Clicking logo returns to dashboard."""
         page.goto(f"{base_url}/settings")
         page.wait_for_load_state("networkidle")
 
-        # Click on Snapper logo/brand
-        logo = page.locator("text=Snapper").first
-        if logo.is_visible():
-            logo.click()
-            expect(page).to_have_url(base_url + "/")
+        # Click on Snapper logo/brand (the link with the logo image)
+        page.click("nav a:has(img)")
+        page.wait_for_load_state("networkidle")
+        expect(page).to_have_url(base_url + "/")
 
 
 class TestHealthEndpoints:
@@ -100,8 +107,9 @@ class TestResponsiveDesign:
         page.goto(base_url)
         page.wait_for_load_state("networkidle")
 
-        # Page should still be functional
-        expect(page.locator("text=Snapper")).to_be_visible()
+        # Page should still show main content - use h2 for more specific match
+        page.wait_for_selector("h2:has-text('Welcome to Snapper')", timeout=10000)
+        expect(page.locator("h2:has-text('Welcome to Snapper')")).to_be_visible()
 
     def test_tablet_viewport(self, page: Page, base_url: str):
         """Page works on tablet viewport."""
@@ -109,7 +117,9 @@ class TestResponsiveDesign:
         page.goto(base_url)
         page.wait_for_load_state("networkidle")
 
-        expect(page.locator("text=Snapper")).to_be_visible()
+        # Page should show main content - use h2 for more specific match
+        page.wait_for_selector("h2:has-text('Welcome to Snapper')", timeout=10000)
+        expect(page.locator("h2:has-text('Welcome to Snapper')")).to_be_visible()
 
 
 class TestAccessibility:
@@ -137,7 +147,7 @@ class TestAccessibility:
     def test_form_inputs_have_labels(self, agents_page: Page):
         """Form inputs should have associated labels."""
         # Open the register modal to get form fields
-        agents_page.click("text=Add Another AI")
+        agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
         # Check that inputs have labels (either explicit or implicit)

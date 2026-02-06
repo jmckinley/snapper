@@ -1,4 +1,8 @@
-"""E2E tests for the Security page."""
+"""
+@module test_security
+@description E2E tests for Security, Audit, Settings, Wizard, and Help pages.
+Tests page loading and content verification for security-related pages.
+"""
 
 from playwright.sync_api import Page, expect
 
@@ -67,8 +71,9 @@ class TestWizardPage:
         """Wizard page loads correctly."""
         page.goto(f"{base_url}/wizard")
         page.wait_for_load_state("networkidle")
-        # Wizard should have some guidance content
-        expect(page.locator("body")).to_contain_text(["wizard", "setup", "start", "guide"], ignore_case=True)
+        # Wizard should have the welcome content
+        expect(page.locator("text=Welcome to Snapper")).to_be_visible()
+        expect(page.locator("text=Protect your AI agents")).to_be_visible()
 
 
 class TestHelpPage:
