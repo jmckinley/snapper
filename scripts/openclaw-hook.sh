@@ -7,6 +7,7 @@
 
 SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
 SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-openclaw-$(hostname)}"
+SNAPPER_API_KEY="${SNAPPER_API_KEY:-}"  # Optional: snp_xxx for authenticated requests
 APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"  # 5 minutes default
 
 # Read hook input from stdin
@@ -67,6 +68,7 @@ PAYLOAD=$(jq -n \
 RESPONSE=$(curl -sf -X POST "$SNAPPER_URL/api/v1/rules/evaluate" \
     -H "Content-Type: application/json" \
     -H "Origin: http://localhost:8000" \
+    ${SNAPPER_API_KEY:+-H "X-API-Key: $SNAPPER_API_KEY"} \
     -d "$PAYLOAD" 2>/dev/null)
 
 # Check response
@@ -126,7 +128,8 @@ case "$DECISION" in
 
             # Check approval status
             STATUS_RESPONSE=$(curl -sf "$SNAPPER_URL/api/v1/approvals/$APPROVAL_ID/status" \
-                -H "Origin: http://localhost:8000" 2>/dev/null)
+                -H "Origin: http://localhost:8000" \
+                ${SNAPPER_API_KEY:+-H "X-API-Key: $SNAPPER_API_KEY"} 2>/dev/null)
 
             if [ $? -ne 0 ]; then
                 echo "⚠️  Warning: Could not check approval status" >&2

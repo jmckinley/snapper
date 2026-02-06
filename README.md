@@ -332,16 +332,45 @@ GET    /health/ready           # Readiness check (DB + Redis)
 
 All settings are environment variables. Copy `.env.example` to `.env` to customize.
 
-Key settings:
+### Learning Mode (Default)
+
+Snapper starts in **learning mode** — it logs what would be blocked but doesn't actually block anything. This lets you:
+
+1. See what rules would trigger without breaking your workflow
+2. Fine-tune rules before enforcing them
+3. Build confidence before going strict
+
+To switch to enforcement mode:
+```bash
+LEARNING_MODE=false
+DENY_BY_DEFAULT=true
+```
+
+### API Key Authentication
+
+Each agent gets a unique API key (`snp_xxx`) on creation. Keys are optional by default but recommended for production.
+
+```bash
+# Require API keys for all agent requests
+REQUIRE_API_KEY=true
+```
+
+Pass the key in hooks:
+```bash
+export SNAPPER_API_KEY=snp_your_key_here
+```
+
+### Key Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SECRET_KEY` | *required* | Session signing key (`openssl rand -hex 32`) |
-| `DENY_BY_DEFAULT` | `true` | Deny unknown requests (fail-safe) |
+| `LEARNING_MODE` | `true` | Log violations but don't block (recommended for beta) |
+| `DENY_BY_DEFAULT` | `false` | Deny unknown requests when learning mode is off |
+| `REQUIRE_API_KEY` | `false` | Require API key for agent requests |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,app` | Accepted Host headers |
 | `ALLOWED_ORIGINS` | `http://localhost:8000` | CORS/WebSocket origins |
-| `REQUIRE_LOCALHOST_ONLY` | `false` | Reject non-localhost requests |
-| `DEBUG` | `true` | Debug mode (set `false` in production) |
+| `DEBUG` | `false` | Debug mode |
 
 See `.env.example` for the full list including database, Redis, Celery, alerting, and notification settings.
 

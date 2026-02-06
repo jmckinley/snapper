@@ -32,9 +32,11 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 50
 
     # Security Defaults - Fail-safe configuration
-    DENY_BY_DEFAULT: bool = True  # Critical: deny unless explicitly allowed
+    DENY_BY_DEFAULT: bool = False  # False = learning mode (log only), True = enforce
+    LEARNING_MODE: bool = True  # When true, log violations but don't block
+    REQUIRE_API_KEY: bool = False  # Require API key for agent requests
     VALIDATE_WEBSOCKET_ORIGIN: bool = True  # CVE-2026-25253 mitigation
-    REQUIRE_LOCALHOST_ONLY: bool = True  # Auth bypass mitigation
+    REQUIRE_LOCALHOST_ONLY: bool = False  # Auth bypass mitigation (relaxed for beta)
 
     # Allowed origins for WebSocket connections (CVE-2026-25253)
     ALLOWED_ORIGINS: str = Field(

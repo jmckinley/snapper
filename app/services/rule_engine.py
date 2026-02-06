@@ -68,6 +68,8 @@ class EvaluationResult:
     details: Dict[str, Any] = field(default_factory=dict)
     evaluation_time_ms: float = 0.0
     logged: bool = False
+    learning_mode: bool = False  # True if decision was overridden by learning mode
+    would_have_blocked: bool = False  # True if learning mode bypassed a denial
 
 
 class RuleEngine:
@@ -149,6 +151,25 @@ class RuleEngine:
                     matched_rules.append(rule.id)
 
                     if action == RuleAction.DENY:
+                        # Check if learning mode is enabled
+                        from app.config import get_settings
+                        settings = get_settings()
+
+                        if settings.LEARNING_MODE:
+                            # Learning mode: log but don't block
+                            result.decision = EvaluationDecision.ALLOW
+                            result.blocking_rule = rule.id
+                            result.reason = f"[LEARNING MODE] Would be denied by: {rule.name}"
+                            result.matched_rules = matched_rules
+                            result.learning_mode = True
+                            result.would_have_blocked = True
+                            logger.warning(
+                                f"Learning mode bypass: {rule.name} would have blocked "
+                                f"request type={context.request_type}, "
+                                f"command={context.command}, file={context.file_path}"
+                            )
+                            return result
+
                         # Short-circuit on DENY
                         result.decision = EvaluationDecision.DENY
                         result.blocking_rule = rule.id
@@ -174,8 +195,26 @@ class RuleEngine:
                 result.decision = EvaluationDecision.ALLOW
                 result.reason = "Allowed by matching rules"
             else:
-                result.decision = EvaluationDecision.DENY
-                result.reason = "No ALLOW rule matched - deny by default"
+                # Check learning mode for deny-by-default case
+                from app.config import get_settings
+                settings = get_settings()
+
+                if settings.LEARNING_MODE or not settings.DENY_BY_DEFAULT:
+                    result.decision = EvaluationDecision.ALLOW
+                    result.learning_mode = True
+                    if settings.DENY_BY_DEFAULT:
+                        result.would_have_blocked = True
+                        result.reason = "[LEARNING MODE] No ALLOW rule matched - would deny by default"
+                        logger.warning(
+                            f"Learning mode bypass: No ALLOW rule matched for "
+                            f"request type={context.request_type}, "
+                            f"command={context.command}, file={context.file_path}"
+                        )
+                    else:
+                        result.reason = "No matching rules - allow by default (learning mode)"
+                else:
+                    result.decision = EvaluationDecision.DENY
+                    result.reason = "No ALLOW rule matched - deny by default"
 
             result.matched_rules = matched_rules
 

@@ -26,6 +26,7 @@
 
 SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
 SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-claude-code-$(hostname)}"
+SNAPPER_API_KEY="${SNAPPER_API_KEY:-}"  # Optional: snp_xxx for authenticated requests
 APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"
 
 # Read hook input from stdin (JSON format)
@@ -90,10 +91,17 @@ PAYLOAD=$(jq -n \
     }'
 )
 
+# Build auth header if API key is set
+AUTH_HEADER=""
+if [ -n "$SNAPPER_API_KEY" ]; then
+    AUTH_HEADER="-H \"X-API-Key: $SNAPPER_API_KEY\""
+fi
+
 # Call Snapper evaluate endpoint
 RESPONSE=$(curl -sf -X POST "$SNAPPER_URL/api/v1/rules/evaluate" \
     -H "Content-Type: application/json" \
     -H "Origin: http://localhost:8000" \
+    ${AUTH_HEADER:+-H "X-API-Key: $SNAPPER_API_KEY"} \
     -d "$PAYLOAD" 2>/dev/null)
 
 # Check response
@@ -150,7 +158,8 @@ case "$DECISION" in
             fi
 
             STATUS_RESPONSE=$(curl -sf "$SNAPPER_URL/api/v1/approvals/$APPROVAL_ID/status" \
-                -H "Origin: http://localhost:8000" 2>/dev/null)
+                -H "Origin: http://localhost:8000" \
+                ${SNAPPER_API_KEY:+-H "X-API-Key: $SNAPPER_API_KEY"} 2>/dev/null)
 
             if [ $? -ne 0 ]; then
                 sleep $POLL_INTERVAL

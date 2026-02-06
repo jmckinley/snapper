@@ -1,5 +1,6 @@
 """Agent model for Snapper instances."""
 
+import secrets
 import uuid
 from datetime import datetime
 from enum import Enum
@@ -17,6 +18,11 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+def generate_api_key() -> str:
+    """Generate a secure API key with snp_ prefix."""
+    return f"snp_{secrets.token_urlsafe(32)}"
 
 
 class AgentStatus(str, Enum):
@@ -74,6 +80,21 @@ class Agent(Base):
         comment="Unique Snapper agent identifier",
     )
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # API Key for authentication
+    api_key: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=generate_api_key,
+        comment="API key for agent authentication (snp_...)",
+    )
+    api_key_last_used: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Last time the API key was used",
+    )
 
     # Status and trust
     status: Mapped[AgentStatus] = mapped_column(
