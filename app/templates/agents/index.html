@@ -468,30 +468,54 @@
         }
 
         container.innerHTML = agents.map(agent => `
-            <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
-                <div class="flex items-center space-x-4">
-                    <div class="h-10 w-10 ${agent.status === 'active' ? 'bg-green-100' : 'bg-gray-100'} rounded-full flex items-center justify-center">
-                        ${agent.external_id.includes('openclaw') ? '🦎' : '🤖'}
+            <div class="px-6 py-4 hover:bg-gray-50">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="h-10 w-10 ${agent.status === 'active' ? 'bg-green-100' : 'bg-gray-100'} rounded-full flex items-center justify-center">
+                            ${agent.external_id.includes('openclaw') ? '🦎' : '🤖'}
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">${agent.name}</h4>
+                            <p class="text-sm text-gray-500">ID: <code class="bg-gray-100 px-1 rounded">${agent.external_id}</code></p>
+                        </div>
                     </div>
-                    <div>
-                        <h4 class="font-medium text-gray-900">${agent.name}</h4>
-                        <p class="text-sm text-gray-500">ID: <code class="bg-gray-100 px-1 rounded">${agent.external_id}</code></p>
+                    <div class="flex items-center space-x-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            agent.status === 'active' ? 'bg-green-100 text-green-800' :
+                            agent.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                        }">
+                            ${agent.status === 'active' ? '● Connected' : agent.status === 'pending' ? '○ Pending' : agent.status}
+                        </span>
+                        <div class="flex space-x-2">
+                            ${agent.status === 'active' ?
+                                `<button onclick="suspendAgent('${agent.id}')" class="text-sm text-yellow-600 hover:text-yellow-700">Pause</button>` :
+                                `<button onclick="activateAgent('${agent.id}')" class="text-sm text-green-600 hover:text-green-700">Activate</button>`
+                            }
+                        </div>
                     </div>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        agent.status === 'active' ? 'bg-green-100 text-green-800' :
-                        agent.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                    }">
-                        ${agent.status === 'active' ? '● Connected' : agent.status === 'pending' ? '○ Pending' : agent.status}
-                    </span>
-                    <div class="flex space-x-2">
-                        ${agent.status === 'active' ?
-                            `<button onclick="suspendAgent('${agent.id}')" class="text-sm text-yellow-600 hover:text-yellow-700">Pause</button>` :
-                            `<button onclick="activateAgent('${agent.id}')" class="text-sm text-green-600 hover:text-green-700">Activate</button>`
-                        }
+                <!-- API Key Section -->
+                <div class="mt-3 ml-14 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-medium text-gray-500 uppercase">API Key</span>
+                            <code id="key-display-${agent.id}" class="text-sm font-mono bg-white px-2 py-1 rounded border">${maskApiKey(agent.api_key)}</code>
+                            <input type="hidden" id="key-full-${agent.id}" value="${agent.api_key || ''}">
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="toggleKeyVisibility('${agent.id}')" class="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 border border-gray-300 rounded hover:bg-gray-100" title="Show/hide key">
+                                <span id="key-toggle-${agent.id}">Show</span>
+                            </button>
+                            <button onclick="copyApiKey('${agent.id}')" class="text-xs px-2 py-1 text-primary-600 hover:text-primary-800 border border-primary-300 rounded hover:bg-primary-50" title="Copy to clipboard">
+                                Copy
+                            </button>
+                            <button onclick="regenerateApiKey('${agent.id}')" class="text-xs px-2 py-1 text-orange-600 hover:text-orange-800 border border-orange-300 rounded hover:bg-orange-50" title="Generate new key">
+                                Regenerate
+                            </button>
+                        </div>
                     </div>
+                    <p class="mt-2 text-xs text-gray-500">Use this key in X-API-Key header when calling Snapper from this agent</p>
                 </div>
             </div>
         `).join('');
@@ -633,6 +657,71 @@
         toast.textContent = message;
         container.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
+    }
+
+    // API Key Management Functions
+    function maskApiKey(key) {
+        if (!key) return 'No key';
+        // Show prefix and last 4 chars: snp_****abcd
+        if (key.length > 12) {
+            return key.substring(0, 4) + '****' + key.substring(key.length - 4);
+        }
+        return key.substring(0, 4) + '****';
+    }
+
+    function toggleKeyVisibility(agentId) {
+        const display = document.getElementById(`key-display-${agentId}`);
+        const fullKey = document.getElementById(`key-full-${agentId}`).value;
+        const toggle = document.getElementById(`key-toggle-${agentId}`);
+
+        if (toggle.textContent === 'Show') {
+            display.textContent = fullKey;
+            toggle.textContent = 'Hide';
+        } else {
+            display.textContent = maskApiKey(fullKey);
+            toggle.textContent = 'Show';
+        }
+    }
+
+    async function copyApiKey(agentId) {
+        const fullKey = document.getElementById(`key-full-${agentId}`).value;
+        try {
+            await navigator.clipboard.writeText(fullKey);
+            showToast('API key copied to clipboard', 'success');
+        } catch (err) {
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea');
+            textarea.value = fullKey;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('API key copied', 'success');
+        }
+    }
+
+    async function regenerateApiKey(agentId) {
+        if (!confirm('Generate a new API key? The old key will stop working immediately.')) return;
+
+        try {
+            const response = await fetch(`/api/v1/agents/${agentId}/regenerate-key`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Update the displayed key
+                document.getElementById(`key-full-${agentId}`).value = data.api_key;
+                document.getElementById(`key-display-${agentId}`).textContent = data.api_key;
+                document.getElementById(`key-toggle-${agentId}`).textContent = 'Hide';
+                showToast('New API key generated!', 'success');
+            } else {
+                const error = await response.json();
+                showToast(error.detail || 'Failed to regenerate key', 'error');
+            }
+        } catch (error) {
+            showToast('Failed to regenerate key', 'error');
+        }
     }
 </script>
 {% endblock %}
