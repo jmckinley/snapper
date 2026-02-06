@@ -65,11 +65,23 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm app ale
 
 ### OpenClaw
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/quick-setup.sh | bash
-```
+For OpenClaw running in Docker alongside Snapper:
 
-Options: `--strict` (require approval for sensitive actions) or `--permissive` (logging only).
+1. Register OpenClaw as an agent in Snapper
+2. Create the shell wrapper hook
+3. Configure OpenClaw's `SHELL` environment variable
+4. Restart OpenClaw
+
+See the full [OpenClaw Integration Guide](docs/OPENCLAW_INTEGRATION.md) for step-by-step instructions.
+
+**Quick test after setup:**
+```bash
+# Should work
+docker compose exec openclaw-gateway /app/hooks/snapper-shell.sh -c "ls /tmp"
+
+# Should be blocked
+docker compose exec openclaw-gateway /app/hooks/snapper-shell.sh -c "rm -rf /"
+```
 
 ### Claude Code
 
@@ -441,7 +453,7 @@ E2E tests cover:
 |-------|-------|-------------|
 | Unit tests | 154 | API, rule engine, middleware |
 | Integration tests | 41 | Live app testing (skipped in CI) |
-| E2E tests | 30+ | Browser-based UI testing |
+| E2E tests | 56 | Browser-based UI testing (Playwright) |
 
 ## Common Commands
 

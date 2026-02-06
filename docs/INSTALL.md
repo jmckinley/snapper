@@ -224,6 +224,38 @@ Expected response:
 }
 ```
 
+## OpenClaw Integration
+
+If you're running OpenClaw on the same server:
+
+1. Register OpenClaw agent:
+```bash
+curl -X POST http://localhost:8000/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{"name": "OpenClaw", "external_id": "openclaw-main"}'
+```
+
+2. Create shell wrapper at `/opt/openclaw/hooks/snapper-shell.sh`
+
+3. Add to OpenClaw's docker-compose.yml:
+```yaml
+services:
+  openclaw-gateway:
+    volumes:
+      - ./hooks:/app/hooks:ro
+    environment:
+      SHELL: /app/hooks/snapper-shell.sh
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+4. Restart OpenClaw:
+```bash
+docker compose up -d --force-recreate openclaw-gateway
+```
+
+See [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) for full details.
+
 ## Uninstalling
 
 ```bash

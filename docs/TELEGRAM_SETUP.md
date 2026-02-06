@@ -203,6 +203,19 @@ curl -F "url=https://your-server:8443/api/v1/telegram/webhook" \
      "https://api.telegram.org/bot<TOKEN>/setWebhook"
 ```
 
+## OpenClaw Integration
+
+When OpenClaw is integrated with Snapper, approval requests appear in Telegram:
+
+1. OpenClaw tries to run `npm install express`
+2. Snapper's "Require Approval for Installs" rule triggers
+3. You receive a Telegram notification with the command details
+4. Tap **Approve** or **Deny** to decide
+
+The decision is sent back to OpenClaw, which either executes or blocks the command.
+
+See [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) for setup details.
+
 ## Security Notes
 
 - **Bot tokens are secrets** — Never commit them to git or share publicly

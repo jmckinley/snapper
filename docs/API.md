@@ -149,6 +149,28 @@ Possible decisions:
 - `deny` - Request is blocked
 - `require_approval` - Request needs human approval
 
+#### Learning Mode Response
+
+When `LEARNING_MODE=true`, denied requests show what would happen:
+```json
+{
+  "decision": "allow",
+  "reason": "[LEARNING MODE] Would be denied by: Block Dangerous Commands",
+  "matched_rule_id": "uuid",
+  "matched_rule_name": "Block Dangerous Commands"
+}
+```
+
+#### Request Types
+
+| Type | Description | Fields |
+|------|-------------|--------|
+| `command` | Shell command execution | `command` |
+| `file_access` | File read/write | `file_path`, `file_operation` |
+| `network` | Network egress | `url`, `host`, `port` |
+| `tool` | Generic tool call | `tool_name`, `tool_input` |
+| `skill_install` | Skill installation | `skill_name`, `publisher` |
+
 ### Audit
 
 | Method | Path | Description |
