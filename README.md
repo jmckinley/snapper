@@ -143,7 +143,12 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 | `/status` | Check Snapper connection |
 | `/rules` | View active security rules |
 | `/pending` | List pending approvals |
-| `/test` | Test rule enforcement |
+| `/approve <id>` | Approve a pending request |
+| `/deny <id>` | Deny a pending request |
+| `/test run <cmd>` | Test if a shell command is allowed |
+| `/test install <skill>` | Test if a skill install is allowed |
+| `/test access <file>` | Test if file access is allowed |
+| `/test network <host>` | Test if network egress is allowed |
 | `/block` | Emergency block ALL agent actions |
 | `/unblock` | Resume normal operation |
 
