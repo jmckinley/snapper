@@ -1,7 +1,8 @@
-"""Telegram bot webhook for approval handling."""
+"""Telegram bot webhook for approval handling and rule testing."""
 
 import logging
 from typing import Optional
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Request, HTTPException
@@ -14,6 +15,9 @@ from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 logger = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/telegram", tags=["telegram"])
+
+# Store test agent IDs per chat (in-memory for simplicity)
+_test_agents: dict[int, UUID] = {}
 
 
 class TelegramUpdate(BaseModel):
@@ -93,6 +97,7 @@ async def telegram_webhook(request: Request):
                 "*Commands:*\n"
                 "/status - Check Snapper connection\n"
                 "/pending - List pending approvals\n"
+                "/test - Test rule enforcement\n"
                 "/help - Show this message\n\n"
                 f"Your Chat ID: `{chat_id}`\n"
                 "_Add this to your Snapper settings._"
@@ -107,6 +112,7 @@ async def telegram_webhook(request: Request):
                 "/pending - List pending approval requests\n"
                 "/approve <id> - Approve a request\n"
                 "/deny <id> - Deny a request\n"
+                "/test - Test rule enforcement (try `/test help`)\n"
                 "/help - Show this message"
             ),
         )
@@ -163,6 +169,8 @@ async def telegram_webhook(request: Request):
                 chat_id=chat_id,
                 text=f"{emoji} Request `{request_id}` has been *{action}d*.",
             )
+    elif text.startswith("/test"):
+        await _handle_test_command(chat_id, text, message)
 
     return {"ok": True}
 
@@ -249,3 +257,171 @@ async def _edit_message(chat_id: int, message_id: int, text: str):
             },
             timeout=30.0,
         )
+
+
+async def _handle_test_command(chat_id: int, text: str, message: dict):
+    """
+    Handle /test command for simulating agent actions against rule engine.
+
+    Usage:
+        /test run <command>      - Test a shell command
+        /test install <skill>    - Test installing a ClawHub skill
+        /test access <file>      - Test file access
+        /test network <host>     - Test network egress
+        /test help               - Show test command help
+    """
+    parts = text.split(maxsplit=2)
+
+    if len(parts) < 2 or parts[1] == "help":
+        await _send_message(
+            chat_id=chat_id,
+            text=(
+                "🧪 *Test Rule Enforcement*\n\n"
+                "Simulate agent actions to test Snapper rules:\n\n"
+                "*Commands:*\n"
+                "`/test run <cmd>` - Test shell command\n"
+                "`/test install <skill>` - Test skill install\n"
+                "`/test access <file>` - Test file access\n"
+                "`/test network <host>` - Test network egress\n\n"
+                "*Examples:*\n"
+                "`/test run ls -la`\n"
+                "`/test run rm -rf /`\n"
+                "`/test run cat ~/.ssh/id_rsa`\n"
+                "`/test install malware-deployer`\n"
+                "`/test access /etc/passwd`\n"
+                "`/test network evil.com`"
+            ),
+        )
+        return
+
+    subcommand = parts[1].lower()
+    arg = parts[2] if len(parts) > 2 else ""
+
+    if not arg:
+        await _send_message(
+            chat_id=chat_id,
+            text=f"❓ Missing argument. Usage: `/test {subcommand} <value>`",
+        )
+        return
+
+    # Get or create test agent for this chat
+    agent_id = await _get_or_create_test_agent(chat_id)
+
+    # Build evaluation context based on subcommand
+    from app.services.rule_engine import EvaluationContext, EvaluationDecision, RuleEngine
+    from app.redis_client import redis_client
+
+    context = EvaluationContext(
+        agent_id=agent_id,
+        request_type="command",  # Default
+        origin="https://telegram.org",
+        metadata={"source": "telegram_test", "chat_id": chat_id},
+    )
+
+    if subcommand == "run":
+        context.request_type = "command"
+        context.command = arg
+    elif subcommand == "install":
+        context.request_type = "skill"
+        context.skill_id = arg
+    elif subcommand == "access":
+        context.request_type = "file_access"
+        context.file_path = arg
+        context.file_operation = "read"
+    elif subcommand == "network":
+        context.request_type = "network"
+        context.target_host = arg
+        context.target_port = 443
+    else:
+        await _send_message(
+            chat_id=chat_id,
+            text=f"❓ Unknown test type: `{subcommand}`\n\nTry `/test help`",
+        )
+        return
+
+    # Run evaluation
+    async with async_session_factory() as db:
+        engine = RuleEngine(db, redis_client)
+        result = await engine.evaluate(context)
+
+    # Format response
+    if result.decision == EvaluationDecision.ALLOW:
+        emoji = "✅"
+        status = "ALLOWED"
+    elif result.decision == EvaluationDecision.DENY:
+        emoji = "❌"
+        status = "BLOCKED"
+    elif result.decision == EvaluationDecision.REQUIRE_APPROVAL:
+        emoji = "⏳"
+        status = "REQUIRES APPROVAL"
+    else:
+        emoji = "❓"
+        status = result.decision.value.upper()
+
+    # Build response message
+    response_lines = [
+        f"{emoji} *{status}*\n",
+        f"*Test:* `{subcommand} {arg}`",
+    ]
+
+    if result.reason:
+        response_lines.append(f"*Reason:* {result.reason}")
+
+    if result.blocking_rule:
+        response_lines.append(f"*Rule ID:* `{str(result.blocking_rule)[:8]}...`")
+
+    if result.evaluation_time_ms:
+        response_lines.append(f"*Eval time:* {result.evaluation_time_ms:.1f}ms")
+
+    await _send_message(chat_id=chat_id, text="\n".join(response_lines))
+
+
+async def _get_or_create_test_agent(chat_id: int) -> UUID:
+    """Get or create a test agent for a Telegram chat."""
+    global _test_agents
+
+    if chat_id in _test_agents:
+        # Verify agent still exists
+        from app.models.agents import Agent
+        from sqlalchemy import select
+
+        async with async_session_factory() as db:
+            stmt = select(Agent).where(
+                Agent.id == _test_agents[chat_id],
+                Agent.is_deleted == False,
+            )
+            result = await db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent:
+                return agent.id
+
+    # Create new test agent
+    from app.models.agents import Agent, AgentStatus, TrustLevel
+    from uuid import uuid4
+
+    agent_id = uuid4()
+    async with async_session_factory() as db:
+        # Check if agent with this external_id already exists
+        external_id = f"telegram-test-{chat_id}"
+        from sqlalchemy import select
+        stmt = select(Agent).where(Agent.external_id == external_id)
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            _test_agents[chat_id] = existing.id
+            return existing.id
+
+        agent = Agent(
+            id=agent_id,
+            external_id=external_id,
+            name=f"Telegram Test Agent ({chat_id})",
+            description="Test agent for Telegram rule testing",
+            status=AgentStatus.ACTIVE,
+            trust_level=TrustLevel.STANDARD,
+        )
+        db.add(agent)
+        await db.commit()
+
+    _test_agents[chat_id] = agent_id
+    return agent_id
