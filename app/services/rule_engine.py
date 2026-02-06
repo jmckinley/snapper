@@ -329,21 +329,52 @@ class RuleEngine:
     async def _evaluate_skill_denylist(
         self, rule: Rule, context: EvaluationContext
     ) -> tuple[bool, RuleAction]:
-        """Evaluate ClawHub skill denylist rule."""
+        """Evaluate ClawHub skill denylist rule.
+
+        Supports:
+        - Exact skill name matching (blocked_skills)
+        - Pattern matching (blocked_patterns) for typosquats
+        - Publisher blocking (blocked_publishers) for known bad actors
+        """
         if context.request_type != "skill" or not context.skill_id:
             return False, rule.action
 
         params = rule.parameters
-        denied_skills = params.get("skills", [])
+        skill_id = context.skill_id.lower()
+
+        # Check exact match in denied skills list
+        denied_skills = params.get("skills", []) or params.get("blocked_skills", [])
+        for denied in denied_skills:
+            if skill_id == denied.lower():
+                return True, rule.action
+
+        # Check pattern matching (for typosquats like clawhub-XXXXX)
+        blocked_patterns = params.get("blocked_patterns", [])
+        for pattern in blocked_patterns:
+            try:
+                if re.match(pattern, skill_id, re.IGNORECASE):
+                    return True, rule.action
+            except re.error:
+                logger.warning(f"Invalid regex pattern in skill denylist: {pattern}")
+
+        # Check publisher blocking (skill_id format: publisher/skill-name)
+        blocked_publishers = params.get("blocked_publishers", [])
+        if "/" in skill_id:
+            publisher = skill_id.split("/")[0]
+            if publisher.lower() in [p.lower() for p in blocked_publishers]:
+                return True, rule.action
+
+        # Check database for flagged malicious skills
         auto_block_flagged = params.get("auto_block_flagged", True)
-
-        if context.skill_id in denied_skills:
-            return True, rule.action  # Respect rule's action
-
-        # Check if skill is flagged as malicious (would query malicious_skills table)
         if auto_block_flagged:
-            # This would be implemented to check the malicious_skills table
-            pass
+            from app.models.security_issues import MaliciousSkill
+            stmt = select(MaliciousSkill).where(
+                MaliciousSkill.skill_id == skill_id,
+                MaliciousSkill.is_blocked == True,
+            )
+            result = await self.db.execute(stmt)
+            if result.scalar_one_or_none():
+                return True, rule.action
 
         return False, rule.action
 

@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
-# Known malicious ClawHub skills (as of security research)
+# Known malicious ClawHub skills (as of security research - Feb 2026)
+# Source: ClawHavoc campaign analysis, ToxicSkills study, Snyk research
 MALICIOUS_SKILLS = [
+    # Original blocklist
     "shell-executor-pro",
     "file-exfiltrator",
     "credential-harvester",
@@ -35,7 +37,66 @@ MALICIOUS_SKILLS = [
     "botnet-client",
     "data-wiper",
     "privilege-escalator",
-    # Add more as discovered by security research tasks
+
+    # ClawHub typosquatting variants (ClawHavoc campaign - Feb 2026)
+    "clawhub",
+    "clawhub1",
+    "clawhubb",
+    "clawhubcli",
+    "clawwhub",
+    "cllawhub",
+    "clawdhub",
+    "clawdhub1",
+
+    # Known malicious with random suffixes (pattern: clawhub-XXXXX)
+    "clawhub-6yr3b",
+    "clawhub-c9y4p",
+    "clawhub-d4kxr",
+    "clawhub-f3qcn",
+    "clawhub-gpcrq",
+    "clawhub-gstca",
+    "clawhub-hh1fd",
+    "clawhub-hh2km",
+    "clawhub-hylhq",
+    "clawhub-i7oci",
+    "clawhub-i9zhz",
+    "clawhub-ja7eh",
+    "clawhub-krmvq",
+    "clawhub-oihpl",
+    "clawhub-olgys",
+    "clawhub-osasg",
+    "clawhub-rkvny",
+    "clawhub-sxtsn",
+    "clawhub-tlxx5",
+    "clawhub-uoeym",
+    "clawhub-wixce",
+    "clawhub-wotp2",
+
+    # Auto-updater category (high risk - dynamic payload fetching)
+    "auto-update-helper",
+    "skill-auto-updater",
+    "clawhub-updater",
+    "self-update-tool",
+]
+
+# Malicious skill patterns (regex) - matched in rule_engine.py
+MALICIOUS_SKILL_PATTERNS = [
+    r"^clawhub[0-9a-z\-]*$",      # ClawHub typosquats
+    r"^clawdhub[0-9a-z\-]*$",     # clawdhub typosquats
+    r"^hightower6eu/.*$",          # Known malicious publisher (314+ skills)
+    r".*crypto-trader.*",          # Crypto trading category (111 malicious)
+    r".*polymarket-bot.*",         # Prediction market bots (34 malicious)
+    r".*-auto-updater.*",          # Auto-updaters (28 malicious, dynamic payloads)
+    r".*solana-wallet.*",          # Wallet drainers
+    r".*-miner-.*",                # Crypto miners
+    r".*-stealer.*",               # Credential stealers
+    r".*-backdoor.*",              # Backdoors
+    r".*-rat$",                    # Remote access trojans
+]
+
+# Malicious publishers to block entirely
+MALICIOUS_PUBLISHERS = [
+    "hightower6eu",  # 314+ malicious skills in ClawHavoc campaign
 ]
 
 # Default security rules to apply
@@ -61,17 +122,19 @@ DEFAULT_SECURITY_RULES = [
     },
     {
         "name": "Malicious ClawHub Skills Blocker",
-        "description": "Blocks installation of known malicious ClawHub skills identified by security research.",
+        "description": "Blocks installation of known malicious ClawHub skills identified by security research. Includes ClawHavoc campaign (341+ skills) and ToxicSkills (1467 payloads).",
         "rule_type": RuleType.SKILL_DENYLIST,
         "action": RuleAction.DENY,
         "priority": 900,
         "parameters": {
             "blocked_skills": MALICIOUS_SKILLS,
+            "blocked_patterns": MALICIOUS_SKILL_PATTERNS,
+            "blocked_publishers": MALICIOUS_PUBLISHERS,
             "block_unverified": False,  # Can be enabled for stricter security
             "auto_update": True,
         },
         "is_active": True,
-        "tags": ["security", "clawhub", "malware-protection"],
+        "tags": ["security", "clawhub", "malware-protection", "clawhavoc"],
     },
     {
         "name": "Credential Protection",
@@ -117,12 +180,13 @@ DEFAULT_SECURITY_RULES = [
     },
     {
         "name": "Dangerous Command Blocker",
-        "description": "Blocks execution of potentially dangerous system commands.",
+        "description": "Blocks execution of potentially dangerous system commands including RCE, reverse shells, and data exfiltration vectors.",
         "rule_type": RuleType.COMMAND_DENYLIST,
         "action": RuleAction.DENY,
         "priority": 800,
         "parameters": {
             "patterns": [
+                # Destructive commands
                 r"^rm\s+-rf\s+/",
                 r"^rm\s+-rf\s+~",
                 r"^dd\s+.*of=/dev/",
@@ -131,15 +195,65 @@ DEFAULT_SECURITY_RULES = [
                 r"^chmod\s+-R\s+777",
                 r":(){:|:&};:",  # Fork bomb
                 r">\s*/dev/sda",
-                r"^curl\s+.*\|\s*(ba)?sh",
-                r"^wget\s+.*\|\s*(ba)?sh",
+
+                # Remote code execution (pipe to shell)
+                r".*curl\s+.*\|\s*(ba)?sh",
+                r".*wget\s+.*\|\s*(ba)?sh",
+                r".*curl\s+.*\|\s*python",
+                r".*wget\s+.*\|\s*python",
+
+                # Base64 encoded command execution (bypass attempts)
+                r".*base64\s+-d.*\|\s*(ba)?sh",
+                r".*base64\s+--decode.*\|\s*(ba)?sh",
+                r"echo\s+.*\|\s*base64\s+-d\s*\|\s*sh",
+
+                # Reverse shells
                 r"^nc\s+-e",
                 r"^ncat\s+-e",
+                r"bash\s+-i\s*>&\s*/dev/tcp",
                 r"^python.*-c.*import\s+socket",
+                r"^python.*-c.*subprocess",
+                r"^perl.*-e.*socket",
+                r"^ruby.*-rsocket",
+                r"^php.*-r.*fsockopen",
+
+                # Eval/exec patterns
+                r"eval\s*\(",
+                r"exec\s*\(",
+                r"\$\(.*\)",  # Command substitution with suspicious content
+
+                # Cron/persistence
+                r"crontab\s+-e",
+                r"echo.*>>\s*/etc/cron",
+                r"echo.*>>\s*~/.bashrc",
+                r"echo.*>>\s*~/.bash_profile",
+
+                # Privilege escalation
+                r"chmod\s+[ugo]\+s",  # SUID/SGID
+                r"chown\s+root",
             ],
         },
         "is_active": True,
-        "tags": ["security", "commands", "system-protection"],
+        "tags": ["security", "commands", "system-protection", "rce-prevention"],
+    },
+    {
+        "name": "Memory Poisoning Protection",
+        "description": "Blocks modifications to agent memory files (SOUL.md, MEMORY.md) which can be used for persistence attacks.",
+        "rule_type": RuleType.FILE_ACCESS,
+        "action": RuleAction.REQUIRE_APPROVAL,
+        "priority": 850,
+        "parameters": {
+            "protected_patterns": [
+                r"SOUL\.md$",
+                r"MEMORY\.md$",
+                r"\.claude/.*\.md$",
+                r"\.mcp/.*\.json$",
+                r"conversation.*\.json$",
+            ],
+            "operations": ["write", "delete", "append"],
+        },
+        "is_active": True,
+        "tags": ["security", "memory-protection", "persistence-prevention"],
     },
     {
         "name": "Network Egress Control",
@@ -215,6 +329,45 @@ KNOWN_CVES = [
         "mitigation_notes": "Apply skill denylist rules. Only install verified skills from trusted publishers.",
         "references": [
             "https://github.com/snapper/clawhub/security/advisories",
+        ],
+    },
+    {
+        "cve_id": "CVE-2026-25157",
+        "title": "OpenClaw Command Injection via Skill Parameters",
+        "description": "Command injection vulnerability in OpenClaw skill parameter handling allows attackers to execute arbitrary shell commands through crafted skill inputs.",
+        "severity": IssueSeverity.HIGH,
+        "cvss_score": 8.1,
+        "affected_versions": ["< 2026.1.29"],
+        "mitigation_notes": "Update to OpenClaw 2026.1.29+. Apply command denylist rules to block injection patterns.",
+        "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-25157",
+        ],
+    },
+    {
+        "cve_id": "CVE-2026-CLAWHAVOC",
+        "title": "ClawHavoc Supply Chain Attack Campaign",
+        "description": "Coordinated supply chain attack on ClawHub with 341+ malicious skills traced to a single threat actor (hightower6eu). Skills distributed macOS malware via ClickFix instructions. Categories affected: crypto trading (111), YouTube utilities (57), prediction market bots (34), auto-updaters (28).",
+        "severity": IssueSeverity.CRITICAL,
+        "cvss_score": 9.8,
+        "affected_versions": ["all"],
+        "mitigation_notes": "Block all skills from hightower6eu publisher. Apply typosquatting patterns to skill denylist. Enable skill allowlisting for production environments.",
+        "references": [
+            "https://thehackernews.com/2026/02/researchers-find-341-malicious-clawhub.html",
+            "https://snyk.io/articles/clawdhub-malicious-campaign-ai-agent-skills/",
+            "https://blog.virustotal.com/2026/02/from-automation-to-infection-how.html",
+        ],
+    },
+    {
+        "cve_id": "CVE-2026-MEMPOISONING",
+        "title": "AI Agent Memory Poisoning Attacks",
+        "description": "Attackers inject malicious data into agent memory files (SOUL.md, MEMORY.md, vector databases) to create persistent backdoors. MINJA attack achieves >95% injection success rate. AGENTPOISON achieves 82% retrieval and 63% end-to-end success.",
+        "severity": IssueSeverity.HIGH,
+        "cvss_score": 7.5,
+        "affected_versions": ["all"],
+        "mitigation_notes": "Protect SOUL.md and MEMORY.md files from unauthorized modification. Require human approval for memory file changes. Monitor for anomalous memory modifications.",
+        "references": [
+            "https://ttps.ai/technique/memory_poisoning.html",
+            "https://www.lakera.ai/blog/agentic-ai-threats-p1",
         ],
     },
 ]
