@@ -1192,7 +1192,7 @@ from pydantic import BaseModel
 class EvaluateRequest(BaseModel):
     """Request for rule evaluation from hooks."""
     agent_id: str
-    request_type: str  # "command", "file_access", "network", "tool"
+    request_type: str  # "command", "file_access", "network", "tool", "skill"
     # For command requests
     command: Optional[str] = None
     # For file access requests
@@ -1202,6 +1202,8 @@ class EvaluateRequest(BaseModel):
     url: Optional[str] = None
     # For origin validation (CVE-2026-25253 mitigation)
     origin: Optional[str] = None
+    # For skill installation requests
+    skill_id: Optional[str] = None
     # For generic tool requests
     tool_name: Optional[str] = None
     tool_input: Optional[Dict[str, Any]] = None
@@ -1273,6 +1275,7 @@ async def evaluate_request(
         agent_id=agent.id,
         request_type=request.request_type,
         command=request.command,
+        skill_id=request.skill_id,
         file_path=request.file_path,
         file_operation=request.file_operation,
         target_host=target_host,
