@@ -373,11 +373,20 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
     return {"status": "processed", "action": action, "request_id": request_id}
 
 
+def _escape_markdown(text: str) -> str:
+    """Escape special Markdown characters in text."""
+    # Characters that need escaping in Telegram Markdown
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
+
 async def _send_message(chat_id: int, text: str):
     """Send a message via Telegram Bot API."""
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
     async with httpx.AsyncClient() as client:
-        await client.post(
+        response = await client.post(
             url,
             json={
                 "chat_id": chat_id,
@@ -386,6 +395,16 @@ async def _send_message(chat_id: int, text: str):
             },
             timeout=30.0,
         )
+        if response.status_code != 200:
+            logger.error(f"Telegram sendMessage failed: {response.status_code} - {response.text}")
+            # Retry without Markdown if parsing failed
+            if "parse" in response.text.lower() or "markdown" in response.text.lower():
+                logger.info("Retrying without Markdown parsing")
+                await client.post(
+                    url,
+                    json={"chat_id": chat_id, "text": text},
+                    timeout=30.0,
+                )
 
 
 async def _answer_callback(callback_id: str, text: str):
@@ -631,7 +650,14 @@ async def _send_message_with_keyboard(chat_id: int, text: str, reply_markup: Opt
         payload["reply_markup"] = reply_markup
 
     async with httpx.AsyncClient() as client:
-        await client.post(url, json=payload, timeout=30.0)
+        response = await client.post(url, json=payload, timeout=30.0)
+        if response.status_code != 200:
+            logger.error(f"Telegram sendMessage failed: {response.status_code} - {response.text}")
+            # Retry without Markdown if parsing failed
+            if "parse" in response.text.lower() or "markdown" in response.text.lower():
+                logger.info("Retrying without Markdown parsing")
+                payload.pop("parse_mode", None)
+                await client.post(url, json=payload, timeout=30.0)
 
 
 async def _handle_rules_command(chat_id: int, text: str):
