@@ -28,6 +28,7 @@ BOT_COMMANDS = [
     {"command": "rules", "description": "View active security rules"},
     {"command": "pending", "description": "List pending approvals"},
     {"command": "test", "description": "Test rule enforcement"},
+    {"command": "purge", "description": "Purge PII from agent data"},
     {"command": "block", "description": "Emergency block ALL actions"},
     {"command": "unblock", "description": "Resume normal operation"},
 ]
@@ -200,6 +201,29 @@ async def telegram_webhook(request: Request):
                     )
                 return {"ok": True, "action": "cancel_block"}
 
+            elif action == "confirm_purge":
+                # Confirm PII purge - data is agent_id
+                result = await _execute_pii_purge(data, username)
+                await _answer_callback(callback_id=callback_id, text="🗑️ PII purge complete!")
+                if cb_chat_id and cb_message_id:
+                    await _edit_message(
+                        chat_id=cb_chat_id,
+                        message_id=cb_message_id,
+                        text=f"🗑️ *PII PURGE COMPLETE* by @{username}\n\n{result['message']}",
+                    )
+                return {"ok": True, "action": "purge", "agent_id": data}
+
+            elif action == "cancel_purge":
+                # Cancel PII purge
+                await _answer_callback(callback_id=callback_id, text="Cancelled")
+                if cb_chat_id and cb_message_id:
+                    await _edit_message(
+                        chat_id=cb_chat_id,
+                        message_id=cb_message_id,
+                        text="✅ PII purge cancelled. No data was deleted.",
+                    )
+                return {"ok": True, "action": "cancel_purge"}
+
     # Handle /start and /help commands
     message = data.get("message", {})
     text = message.get("text", "")
@@ -234,6 +258,8 @@ async def telegram_webhook(request: Request):
                 "*Rules:*\n"
                 "/rules - View active security rules\n"
                 "/test - Test rule enforcement\n\n"
+                "*Data:*\n"
+                "/purge - 🗑️ Purge PII from agent data\n\n"
                 "*Emergency:*\n"
                 "/block - ⚠️ Block ALL agent actions\n"
                 "/unblock - Resume normal operation\n\n"
@@ -302,6 +328,8 @@ async def telegram_webhook(request: Request):
         await _handle_unblock_command(chat_id, message)
     elif text.startswith("/test"):
         await _handle_test_command(chat_id, text, message)
+    elif text.startswith("/purge"):
+        await _handle_purge_command(chat_id, text, message)
 
     return {"ok": True}
 
@@ -875,3 +903,183 @@ async def _get_rule_info(rule_id_partial: str) -> str:
         lines.append(f"\n*Parameters:*\n```\n{params_str}\n```")
 
     return "\n".join(lines)
+
+
+async def _handle_purge_command(chat_id: int, text: str, message: dict):
+    """
+    Handle /purge command - purge PII from agent data with confirmation.
+
+    Usage:
+        /purge              - Show agents and purge options
+        /purge <agent_id>   - Purge specific agent (with confirm)
+    """
+    from app.models.agents import Agent
+
+    parts = text.split(maxsplit=1)
+
+    # Get test agent for this chat (to show as default option)
+    test_agent_id = await _get_or_create_test_agent(chat_id)
+
+    if len(parts) > 1:
+        # Specific agent ID provided
+        agent_id_partial = parts[1].strip()
+
+        # Look up agent by partial ID
+        from sqlalchemy import cast, String
+        async with async_session_factory() as db:
+            stmt = select(Agent).where(
+                cast(Agent.id, String).like(f"{agent_id_partial}%"),
+                Agent.is_deleted == False,
+            ).limit(1)
+            result = await db.execute(stmt)
+            agent = result.scalar_one_or_none()
+
+        if not agent:
+            await _send_message(
+                chat_id=chat_id,
+                text=f"❓ Agent `{agent_id_partial}...` not found.\n\nUse `/purge` to see available agents.",
+            )
+            return
+
+        # Show confirmation for this specific agent
+        agent_id_str = str(agent.id)
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {"text": "🗑️ CONFIRM PURGE", "callback_data": f"confirm_purge:{agent_id_str[:12]}"},
+                    {"text": "❌ Cancel", "callback_data": "cancel_purge:0"},
+                ]
+            ]
+        }
+
+        await _send_message_with_keyboard(
+            chat_id=chat_id,
+            text=(
+                f"⚠️ *PII PURGE - {agent.name}*\n\n"
+                f"Agent ID: `{agent_id_str[:8]}...`\n\n"
+                "This will permanently delete:\n"
+                "• Conversation history with PII\n"
+                "• Memory files (SOUL.md, MEMORY.md)\n"
+                "• Cached session data\n"
+                "• Audit logs containing PII patterns\n\n"
+                "⚠️ *This action is IRREVERSIBLE.*\n\n"
+                "Are you sure?"
+            ),
+            reply_markup=reply_markup,
+        )
+        return
+
+    # No agent specified - show list of agents
+    async with async_session_factory() as db:
+        stmt = select(Agent).where(Agent.is_deleted == False).limit(10)
+        result = await db.execute(stmt)
+        agents = result.scalars().all()
+
+    if not agents:
+        await _send_message(
+            chat_id=chat_id,
+            text="📋 *PII Purge*\n\nNo agents found.\n\n_Create an agent first using the Snapper dashboard._",
+        )
+        return
+
+    lines = [
+        "🗑️ *PII Purge*\n",
+        "Select an agent to purge PII data:\n",
+    ]
+    for agent in agents:
+        agent_id_str = str(agent.id)[:8]
+        lines.append(f"• `{agent_id_str}` - {agent.name}")
+
+    lines.append("\n*Usage:* `/purge <agent_id>`")
+    lines.append("_Example:_ `/purge " + str(agents[0].id)[:8] + "`")
+
+    await _send_message(chat_id=chat_id, text="\n".join(lines))
+
+
+async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
+    """Execute PII purge for an agent."""
+    import re
+    from app.models.agents import Agent
+    from app.redis_client import redis_client
+    from sqlalchemy import cast, String
+
+    # Look up full agent ID
+    async with async_session_factory() as db:
+        stmt = select(Agent).where(
+            cast(Agent.id, String).like(f"{agent_id_partial}%"),
+            Agent.is_deleted == False,
+        ).limit(1)
+        result = await db.execute(stmt)
+        agent = result.scalar_one_or_none()
+
+        if not agent:
+            return {"message": f"Agent `{agent_id_partial}...` not found"}
+
+        agent_id = agent.id
+        agent_name = agent.name
+
+        # PII patterns to redact in audit logs
+        pii_patterns = [
+            (r"\b\d{3}-\d{2}-\d{4}\b", "[SSN REDACTED]"),  # SSN
+            (r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b", "[CC REDACTED]"),  # Credit card
+            (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "[EMAIL REDACTED]"),  # Email
+            (r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b", "[PHONE REDACTED]"),  # Phone
+        ]
+
+        # Redact PII in audit logs for this agent
+        from app.models.audit_logs import AuditLog
+        stmt = select(AuditLog).where(AuditLog.agent_id == agent_id)
+        result = await db.execute(stmt)
+        audit_logs = result.scalars().all()
+
+        redacted_count = 0
+        for log in audit_logs:
+            if log.message:
+                original = log.message
+                for pattern, replacement in pii_patterns:
+                    log.message = re.sub(pattern, replacement, log.message)
+                if log.message != original:
+                    redacted_count += 1
+
+        # Log the purge action
+        purge_log = AuditLog(
+            action=AuditAction.PII_PURGE,
+            severity=AuditSeverity.WARNING,
+            agent_id=agent_id,
+            message=f"PII purge executed via Telegram by {username}",
+            new_value={
+                "agent_id": str(agent_id),
+                "agent_name": agent_name,
+                "purged_by": username,
+                "source": "telegram",
+                "audit_logs_redacted": redacted_count,
+            },
+        )
+        db.add(purge_log)
+        await db.commit()
+
+    # Clear Redis cache for this agent
+    cache_keys_deleted = 0
+    patterns = [
+        f"agent:{agent_id}:*",
+        f"rate_limit:agent:{agent_id}:*",
+        f"session:{agent_id}:*",
+    ]
+    for pattern in patterns:
+        keys = await redis_client.keys(pattern)
+        for key in keys:
+            await redis_client.delete(key)
+            cache_keys_deleted += 1
+
+    return {
+        "message": (
+            f"*Agent:* {agent_name}\n"
+            f"*Audit logs redacted:* {redacted_count}\n"
+            f"*Cache keys deleted:* {cache_keys_deleted}\n\n"
+            "_For complete PII removal from OpenClaw, also run:_\n"
+            "`openclaw agent --purge-pii`"
+        ),
+        "agent_id": str(agent_id),
+        "redacted_count": redacted_count,
+        "cache_keys_deleted": cache_keys_deleted,
+    }

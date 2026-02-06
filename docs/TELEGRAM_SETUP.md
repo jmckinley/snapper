@@ -83,6 +83,8 @@ Once configured, your bot supports these commands:
 | `/test install <skill>` | Test a skill installation |
 | `/test access <file>` | Test file access |
 | `/test network <host>` | Test network egress |
+| `/purge` | List agents for PII purge |
+| `/purge <agent_id>` | Purge PII from agent data |
 | `/block` | Emergency block ALL actions |
 | `/unblock` | Resume normal operation |
 
@@ -119,6 +121,29 @@ To resume normal operation:
 ```
 
 This deactivates the emergency block rule.
+
+## PII Purge
+
+The `/purge` command removes personally identifiable information (PII) from agent data, supporting GDPR compliance:
+
+1. Send `/purge` to see a list of agents
+2. Send `/purge <agent_id>` with the first 8 characters of the agent ID
+3. Review what will be deleted and confirm
+
+**What gets purged:**
+- Conversation history containing PII patterns
+- Memory files (SOUL.md, MEMORY.md)
+- Cached session data in Redis
+- Audit log entries containing PII (SSN, credit cards, emails, phones)
+
+**Example:**
+```
+/purge a1b2c3d4
+```
+
+The bot will show a confirmation dialog. Tap "CONFIRM PURGE" to proceed.
+
+**Note:** For complete PII removal from OpenClaw agents, also run `openclaw agent --purge-pii` on the agent's host.
 
 ## Multiple Bots
 

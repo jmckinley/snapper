@@ -149,6 +149,8 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 | `/test install <skill>` | Test if a skill install is allowed |
 | `/test access <file>` | Test if file access is allowed |
 | `/test network <host>` | Test if network egress is allowed |
+| `/purge` | List agents for PII purge |
+| `/purge <agent_id>` | Purge PII from agent (with confirm) |
 | `/block` | Emergency block ALL agent actions |
 | `/unblock` | Resume normal operation |
 
