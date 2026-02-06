@@ -464,7 +464,7 @@ async def _handle_test_command(chat_id: int, text: str, message: dict):
         context_key = hashlib.sha256(context_data.encode()).hexdigest()[:12]
 
         # Store context in Redis with 1 hour expiry
-        await redis_client.set(f"tg_ctx:{context_key}", context_data, ex=3600)
+        await redis_client.set(f"tg_ctx:{context_key}", context_data, expire=3600)
 
         buttons = [
             [
