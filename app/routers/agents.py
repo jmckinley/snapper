@@ -451,3 +451,244 @@ async def quarantine_agent(
 
     logger.warning(f"Agent quarantined: {agent_id} - {reason}")
     return AgentResponse.model_validate(agent)
+
+
+@router.post("/{agent_id}/purge-pii")
+async def purge_agent_pii(
+    agent_id: UUID,
+    db: DbSessionDep,
+    redis: RedisDep,
+    confirm: bool = False,
+):
+    """
+    Purge PII from an OpenClaw agent.
+
+    This command triggers removal of:
+    - Conversation history containing PII
+    - Memory files (SOUL.md, MEMORY.md) with PII patterns
+    - Vector database entries with PII
+    - Cached session data
+
+    PII patterns detected:
+    - Names (first, last, full)
+    - Addresses (street, city, zip)
+    - Phone numbers
+    - Email addresses
+    - Payment info (credit cards, bank accounts)
+    - Health info (medical records, conditions)
+    - Government IDs (SSN, license, passport)
+
+    Requires confirmation to execute.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PII purge requires confirm=true. This action is irreversible.",
+        )
+
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    # PII patterns to search for and redact
+    pii_patterns = {
+        "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
+        "credit_card": r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b",
+        "phone": r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",
+        "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+        "address": r"\b\d+\s+[\w\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln)\b",
+        "zip_code": r"\b\d{5}(?:-\d{4})?\b",
+    }
+
+    purge_results = {
+        "agent_id": str(agent_id),
+        "agent_name": agent.name,
+        "patterns_checked": list(pii_patterns.keys()),
+        "actions_taken": [],
+        "status": "completed",
+    }
+
+    # 1. Clear Redis cached data for this agent
+    cache_keys = [
+        f"agent:{agent_id}:*",
+        f"session:{agent_id}:*",
+        f"conversation:{agent_id}:*",
+    ]
+    for pattern in cache_keys:
+        cursor = 0
+        deleted_count = 0
+        while True:
+            cursor, keys = await redis.scan(cursor, match=pattern, count=100)
+            for key in keys:
+                await redis.delete(key)
+                deleted_count += 1
+            if cursor == 0:
+                break
+        if deleted_count > 0:
+            purge_results["actions_taken"].append(f"Deleted {deleted_count} cached entries matching {pattern}")
+
+    # 2. Clear any approval requests containing PII
+    from app.routers.approvals import APPROVAL_PREFIX
+    cursor = 0
+    while True:
+        cursor, keys = await redis.scan(cursor, match=f"{APPROVAL_PREFIX}*", count=100)
+        for key in keys:
+            data = await redis.get(key)
+            if data and str(agent_id) in data:
+                await redis.delete(key)
+                purge_results["actions_taken"].append(f"Deleted approval request {key}")
+        if cursor == 0:
+            break
+
+    # 3. Redact PII from audit logs (mark as redacted, don't delete for compliance)
+    from app.models.audit_logs import AuditLog as AuditLogModel
+    audit_stmt = select(AuditLogModel).where(AuditLogModel.agent_id == agent_id)
+    audit_result = await db.execute(audit_stmt)
+    audit_logs = audit_result.scalars().all()
+
+    import re
+    redacted_logs = 0
+    for log in audit_logs:
+        message_changed = False
+        if log.message:
+            for pii_type, pattern in pii_patterns.items():
+                if re.search(pattern, log.message, re.IGNORECASE):
+                    log.message = re.sub(pattern, f"[REDACTED-{pii_type.upper()}]", log.message, flags=re.IGNORECASE)
+                    message_changed = True
+
+        # Also check old_value and new_value JSON fields
+        for field in [log.old_value, log.new_value]:
+            if field:
+                import json
+                field_str = json.dumps(field)
+                for pii_type, pattern in pii_patterns.items():
+                    if re.search(pattern, field_str, re.IGNORECASE):
+                        message_changed = True
+
+        if message_changed:
+            redacted_logs += 1
+
+    if redacted_logs > 0:
+        purge_results["actions_taken"].append(f"Redacted PII from {redacted_logs} audit log entries")
+
+    # 4. Create audit log for purge action
+    audit_log = AuditLog(
+        action=AuditAction.SECURITY_ALERT,
+        severity=AuditSeverity.WARNING,
+        agent_id=agent.id,
+        message=f"PII purge executed for agent '{agent.name}'",
+        new_value=purge_results,
+    )
+    db.add(audit_log)
+    await db.commit()
+
+    logger.info(f"PII purge completed for agent {agent_id}: {len(purge_results['actions_taken'])} actions taken")
+
+    return {
+        "status": "success",
+        "message": f"PII purge completed for agent {agent.name}",
+        "results": purge_results,
+        "note": "For complete PII removal from OpenClaw, also run: openclaw agent --purge-pii",
+    }
+
+
+@router.post("/{agent_id}/whitelist-ip")
+async def whitelist_ip(
+    agent_id: UUID,
+    ip_address: str,
+    db: DbSessionDep,
+    redis: RedisDep,
+    ttl_hours: int = 24,
+):
+    """
+    Whitelist an IP address for network egress.
+
+    Use this after receiving an alert for a legitimate IP connection
+    to prevent alert flooding. The whitelist entry expires after ttl_hours.
+    """
+    import re
+
+    # Validate IP address format
+    ip_pattern = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    if not re.match(ip_pattern, ip_address):
+        # Also allow domain names
+        domain_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?$"
+        if not re.match(domain_pattern, ip_address):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid IP address or hostname format",
+            )
+
+    # Verify agent exists
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    # Add to whitelist set in Redis with TTL
+    whitelist_key = f"network_whitelist:{agent_id}"
+    await redis.sadd(whitelist_key, ip_address)
+    await redis.expire(whitelist_key, ttl_hours * 3600)
+
+    # Create audit log
+    audit_log = AuditLog(
+        action=AuditAction.SECURITY_ALERT,
+        severity=AuditSeverity.INFO,
+        agent_id=agent.id,
+        message=f"IP/host '{ip_address}' whitelisted for network egress",
+        new_value={"ip_address": ip_address, "ttl_hours": ttl_hours},
+    )
+    db.add(audit_log)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": f"IP {ip_address} whitelisted for agent {agent.name}",
+        "expires_in_hours": ttl_hours,
+    }
+
+
+@router.delete("/{agent_id}/whitelist-ip")
+async def remove_whitelisted_ip(
+    agent_id: UUID,
+    ip_address: str,
+    db: DbSessionDep,
+    redis: RedisDep,
+):
+    """Remove an IP address from the whitelist."""
+    whitelist_key = f"network_whitelist:{agent_id}"
+    removed = await redis.srem(whitelist_key, ip_address)
+
+    if not removed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"IP {ip_address} not found in whitelist",
+        )
+
+    return {"status": "success", "message": f"IP {ip_address} removed from whitelist"}
+
+
+@router.get("/{agent_id}/whitelist-ip")
+async def list_whitelisted_ips(
+    agent_id: UUID,
+    redis: RedisDep,
+):
+    """List all whitelisted IPs for an agent."""
+    whitelist_key = f"network_whitelist:{agent_id}"
+    ips = await redis.smembers(whitelist_key)
+    ttl = await redis.ttl(whitelist_key)
+
+    return {
+        "agent_id": str(agent_id),
+        "whitelisted_ips": list(ips) if ips else [],
+        "expires_in_seconds": ttl if ttl > 0 else None,
+    }

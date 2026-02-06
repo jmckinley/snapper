@@ -258,6 +258,14 @@ class RedisClient:
 
         return await self._circuit_breaker.call(_incr)
 
+    async def ttl(self, key: str) -> int:
+        """Get key time-to-live in seconds. Returns -2 if key doesn't exist, -1 if no TTL."""
+
+        async def _ttl():
+            return await self._client.ttl(key)
+
+        return await self._circuit_breaker.call(_ttl)
+
     async def expire(self, key: str, seconds: int) -> bool:
         """Set key expiration."""
 
@@ -313,6 +321,14 @@ class RedisClient:
             return await self._client.sismember(name, value)
 
         return await self._circuit_breaker.call(_sismember)
+
+    async def srem(self, name: str, *values: str) -> int:
+        """Remove members from set."""
+
+        async def _srem():
+            return await self._client.srem(name, *values)
+
+        return await self._circuit_breaker.call(_srem)
 
     async def scan(self, cursor: int = 0, match: str = None, count: int = 100) -> tuple:
         """Scan keys matching pattern."""

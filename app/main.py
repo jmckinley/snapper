@@ -45,6 +45,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Verifying database connection...")
     await init_db()
 
+    # Register Telegram bot commands for autocomplete menu
+    if settings.TELEGRAM_BOT_TOKEN:
+        logger.info("Registering Telegram bot commands...")
+        from app.routers.telegram import register_bot_commands
+        await register_bot_commands()
+
     logger.info("Snapper started successfully")
 
     yield

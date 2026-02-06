@@ -20,6 +20,18 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
+# Bot commands to register with Telegram
+BOT_COMMANDS = [
+    {"command": "start", "description": "Start the bot and show help"},
+    {"command": "help", "description": "Show available commands"},
+    {"command": "status", "description": "Check Snapper connection"},
+    {"command": "rules", "description": "View active security rules"},
+    {"command": "pending", "description": "List pending approvals"},
+    {"command": "test", "description": "Test rule enforcement"},
+    {"command": "block", "description": "Emergency block ALL actions"},
+    {"command": "unblock", "description": "Resume normal operation"},
+]
+
 # Store test agent IDs per chat (in-memory for simplicity)
 _test_agents: dict[int, UUID] = {}
 
@@ -32,6 +44,48 @@ class TelegramUpdate(BaseModel):
     update_id: int
     callback_query: Optional[dict] = None
     message: Optional[dict] = None
+
+
+async def register_bot_commands() -> bool:
+    """
+    Register bot commands with Telegram for autocomplete menu.
+
+    This enables the typedown list when users type '/' in the chat.
+    Called automatically at startup and can be triggered via API.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN:
+        logger.warning("Cannot register commands: TELEGRAM_BOT_TOKEN not set")
+        return False
+
+    url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/setMyCommands"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                json={"commands": BOT_COMMANDS},
+                timeout=30.0,
+            )
+            result = response.json()
+
+            if result.get("ok"):
+                logger.info(f"Registered {len(BOT_COMMANDS)} bot commands with Telegram")
+                return True
+            else:
+                logger.error(f"Failed to register commands: {result.get('description')}")
+                return False
+    except Exception as e:
+        logger.error(f"Error registering bot commands: {e}")
+        return False
+
+
+@router.post("/register-commands")
+async def trigger_register_commands():
+    """Manually trigger bot command registration with Telegram."""
+    success = await register_bot_commands()
+    if success:
+        return {"status": "success", "commands": len(BOT_COMMANDS)}
+    raise HTTPException(status_code=500, detail="Failed to register commands")
 
 
 @router.post("/webhook")

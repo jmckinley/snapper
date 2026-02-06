@@ -37,6 +37,16 @@ class TrustLevel(str, Enum):
     ELEVATED = "elevated"  # Most permissive
 
 
+class ExecutionEnvironment(str, Enum):
+    """Agent execution environment for sandbox enforcement."""
+
+    UNKNOWN = "unknown"       # Not reported - treated as untrusted
+    BARE_METAL = "bare_metal" # Running directly on host
+    CONTAINER = "container"   # Docker/Podman container
+    VM = "vm"                 # Virtual machine
+    SANDBOX = "sandbox"       # Dedicated sandbox environment
+
+
 class Agent(Base):
     """
     Snapper agent instance.
@@ -112,6 +122,42 @@ class Agent(Base):
     rate_limit_window_seconds: Mapped[Optional[int]] = mapped_column(
         nullable=True,
         comment="Override default rate limit window for this agent",
+    )
+
+    # Version and environment tracking (for enforcement rules)
+    agent_version: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Reported agent version (e.g., 2026.1.29)",
+    )
+    agent_type: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Agent framework type (openclaw, claude-code, cursor, etc.)",
+    )
+    execution_environment: Mapped[ExecutionEnvironment] = mapped_column(
+        String(50),
+        default=ExecutionEnvironment.UNKNOWN,
+        nullable=False,
+        comment="Reported execution environment for sandbox enforcement",
+    )
+
+    # Trust scoring (auto-adjusting based on behavior)
+    trust_score: Mapped[float] = mapped_column(
+        default=1.0,
+        nullable=False,
+        comment="Adaptive trust score (0.0-1.0), reduced on violations",
+    )
+    auto_adjust_trust: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Whether to auto-reduce trust score on denials",
+    )
+    violation_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False,
+        comment="Number of rule violations by this agent",
     )
 
     # Timestamps

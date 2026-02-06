@@ -55,6 +55,10 @@ class RuleType(str, Enum):
     # File system
     FILE_ACCESS = "file_access"
 
+    # Version and environment enforcement (Feb 2026)
+    VERSION_ENFORCEMENT = "version_enforcement"
+    SANDBOX_REQUIRED = "sandbox_required"
+
 
 class RuleAction(str, Enum):
     """Action to take when rule matches."""
@@ -368,6 +372,46 @@ RULE_PARAMETER_SCHEMAS = {
             "read_only_paths": {
                 "type": "array",
                 "items": {"type": "string"},
+            },
+        },
+    },
+    RuleType.VERSION_ENFORCEMENT: {
+        "type": "object",
+        "properties": {
+            "minimum_versions": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "description": "Map of agent_type to minimum version (e.g., {'openclaw': '2026.1.29'})",
+            },
+            "blocked_versions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Specific versions to block entirely",
+            },
+            "allow_unknown_version": {
+                "type": "boolean",
+                "default": False,
+                "description": "Whether to allow agents that don't report a version",
+            },
+        },
+        "required": ["minimum_versions"],
+    },
+    RuleType.SANDBOX_REQUIRED: {
+        "type": "object",
+        "properties": {
+            "allowed_environments": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["container", "vm", "sandbox"],
+                },
+                "default": ["container", "vm", "sandbox"],
+                "description": "Execution environments that satisfy sandbox requirement",
+            },
+            "allow_unknown": {
+                "type": "boolean",
+                "default": False,
+                "description": "Whether to allow agents with unknown execution environment",
             },
         },
     },

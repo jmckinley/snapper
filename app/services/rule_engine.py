@@ -99,6 +99,8 @@ class RuleEngine:
             RuleType.HUMAN_IN_LOOP: self._evaluate_human_in_loop,
             RuleType.LOCALHOST_RESTRICTION: self._evaluate_localhost_restriction,
             RuleType.FILE_ACCESS: self._evaluate_file_access,
+            RuleType.VERSION_ENFORCEMENT: self._evaluate_version_enforcement,
+            RuleType.SANDBOX_REQUIRED: self._evaluate_sandbox_required,
         }
 
     async def evaluate(self, context: EvaluationContext) -> EvaluationResult:
@@ -411,7 +413,7 @@ class RuleEngine:
     async def _evaluate_network_egress(
         self, rule: Rule, context: EvaluationContext
     ) -> tuple[bool, RuleAction]:
-        """Evaluate network egress rule."""
+        """Evaluate network egress rule with IP whitelist support."""
         if context.request_type != "network" or not context.target_host:
             return False, rule.action
 
@@ -419,6 +421,12 @@ class RuleEngine:
         allowed_hosts = params.get("allowed_hosts", [])
         denied_hosts = params.get("denied_hosts", [])
         allowed_ports = params.get("allowed_ports", [])
+
+        # Check if target is a whitelisted IP (user approved after alert)
+        whitelist_key = f"network_whitelist:{context.agent_id}"
+        whitelisted_ips = await self.redis.smembers(whitelist_key)
+        if context.target_host in whitelisted_ips:
+            return False, rule.action  # Whitelisted - skip further checks
 
         # Check denied hosts first
         for host_pattern in denied_hosts:
@@ -550,6 +558,92 @@ class RuleEngine:
                     break
             if not path_allowed:
                 return True, RuleAction.DENY
+
+        return False, rule.action
+
+    async def _evaluate_version_enforcement(
+        self, rule: Rule, context: EvaluationContext
+    ) -> tuple[bool, RuleAction]:
+        """
+        Evaluate version enforcement rule.
+
+        Blocks agents running vulnerable versions (e.g., OpenClaw < 2026.1.29).
+        """
+        from packaging import version as pkg_version
+
+        params = rule.parameters
+        minimum_versions = params.get("minimum_versions", {})
+        blocked_versions = params.get("blocked_versions", [])
+        allow_unknown = params.get("allow_unknown_version", False)
+
+        # Get agent info from context metadata or database
+        agent_type = context.metadata.get("agent_type")
+        agent_version = context.metadata.get("agent_version")
+
+        # If no version info, check database
+        if not agent_version:
+            stmt = select(Agent).where(Agent.id == context.agent_id)
+            result = await self.db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent:
+                agent_type = agent.agent_type
+                agent_version = agent.agent_version
+
+        # No version reported
+        if not agent_version:
+            if not allow_unknown:
+                return True, RuleAction.DENY
+            return False, rule.action
+
+        # Check blocked versions
+        if agent_version in blocked_versions:
+            return True, RuleAction.DENY
+
+        # Check minimum version for agent type
+        if agent_type and agent_type in minimum_versions:
+            try:
+                min_ver = minimum_versions[agent_type]
+                if pkg_version.parse(agent_version) < pkg_version.parse(min_ver):
+                    return True, RuleAction.DENY
+            except Exception:
+                # Version parsing failed - be conservative
+                logger.warning(f"Failed to parse version: {agent_version}")
+                if not allow_unknown:
+                    return True, RuleAction.DENY
+
+        return False, rule.action
+
+    async def _evaluate_sandbox_required(
+        self, rule: Rule, context: EvaluationContext
+    ) -> tuple[bool, RuleAction]:
+        """
+        Evaluate sandbox requirement rule.
+
+        Blocks agents not running in approved execution environments.
+        """
+        params = rule.parameters
+        allowed_environments = params.get("allowed_environments", ["container", "vm", "sandbox"])
+        allow_unknown = params.get("allow_unknown", False)
+
+        # Get execution environment from context or database
+        exec_env = context.metadata.get("execution_environment")
+
+        if not exec_env:
+            stmt = select(Agent).where(Agent.id == context.agent_id)
+            result = await self.db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent:
+                exec_env = agent.execution_environment.value if agent.execution_environment else None
+
+        # No environment reported
+        if not exec_env or exec_env == "unknown":
+            if not allow_unknown:
+                return True, RuleAction.DENY
+            return False, rule.action
+
+        # Check if environment is in allowed list
+        if exec_env not in allowed_environments:
+            return True, RuleAction.DENY
 
         return False, rule.action
 

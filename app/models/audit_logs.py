@@ -50,6 +50,9 @@ class AuditAction(str, Enum):
     CREDENTIAL_ACCESS_BLOCKED = "credential_access_blocked"
     MALICIOUS_SKILL_BLOCKED = "malicious_skill_blocked"
     CVE_MITIGATION_TRIGGERED = "cve_mitigation_triggered"
+    SECURITY_ALERT = "security_alert"
+    PII_PURGE = "pii_purge"
+    IP_WHITELIST_CHANGED = "ip_whitelist_changed"
 
     # System events
     SYSTEM_STARTUP = "system_startup"

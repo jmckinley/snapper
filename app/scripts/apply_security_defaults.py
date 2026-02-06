@@ -290,6 +290,36 @@ DEFAULT_SECURITY_RULES = [
         "is_active": True,
         "tags": ["security", "rate-limit", "abuse-prevention"],
     },
+    {
+        "name": "Version Enforcement - Block Vulnerable OpenClaw",
+        "description": "Blocks OpenClaw versions prior to 2026.1.29 which contain CVE-2026-25253 (WebSocket RCE).",
+        "rule_type": RuleType.VERSION_ENFORCEMENT,
+        "action": RuleAction.DENY,
+        "priority": 950,
+        "parameters": {
+            "minimum_versions": {
+                "openclaw": "2026.1.29",
+                "moltbot": "2026.1.29",
+            },
+            "blocked_versions": [],
+            "allow_unknown_version": False,
+        },
+        "is_active": True,
+        "tags": ["security", "version-enforcement", "cve-mitigation"],
+    },
+    {
+        "name": "Sandbox Requirement (Optional)",
+        "description": "Requires agents to run in container, VM, or sandbox environment. Disabled by default.",
+        "rule_type": RuleType.SANDBOX_REQUIRED,
+        "action": RuleAction.DENY,
+        "priority": 750,
+        "parameters": {
+            "allowed_environments": ["container", "vm", "sandbox"],
+            "allow_unknown": False,
+        },
+        "is_active": False,  # Disabled by default - enable for high-security environments
+        "tags": ["security", "sandbox", "isolation"],
+    },
 ]
 
 # Known CVEs to track
