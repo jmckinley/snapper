@@ -30,12 +30,17 @@ os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only-32chars!"
 os.environ["DATABASE_URL"] = f"postgresql+asyncpg://snapper:snapper@{_get_db_host()}:5432/snapper_test"
 os.environ["REDIS_URL"] = f"redis://{_get_redis_host()}:6379/15"
 os.environ["DENY_BY_DEFAULT"] = "true"
+os.environ["LEARNING_MODE"] = "false"
 os.environ["VALIDATE_WEBSOCKET_ORIGIN"] = "false"
 os.environ["REQUIRE_LOCALHOST_ONLY"] = "false"
 os.environ["ALLOWED_ORIGINS"] = "http://testserver"
 os.environ["ALLOWED_HOSTS"] = "testserver,localhost"
 
 from app.config import get_settings
+
+# Clear settings cache to ensure test environment variables take effect
+get_settings.cache_clear()
+
 from app.database import Base, get_db
 from app.main import app
 from app.redis_client import redis_client, RedisClient, get_redis
@@ -69,6 +74,14 @@ def event_loop() -> Generator:
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_settings_cache():
+    """Clear settings cache before each test to ensure env vars take effect."""
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture(scope="function")

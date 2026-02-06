@@ -173,34 +173,46 @@ class TestLearningMode:
     @pytest.mark.asyncio
     async def test_learning_mode_allows_denied_request(self, client, sample_agent, db_session):
         """Test that learning mode allows requests that would be denied."""
+        import os
         from app.models.rules import Rule, RuleType, RuleAction
+        from app.config import get_settings
 
-        # Create a deny rule
-        rule = Rule(
-            id=uuid4(),
-            name="Block rm",
-            agent_id=sample_agent.id,
-            rule_type=RuleType.COMMAND_DENYLIST,
-            action=RuleAction.DENY,
-            priority=100,
-            parameters={"patterns": ["^rm\\s"]},
-            is_active=True,
-        )
-        db_session.add(rule)
-        await db_session.commit()
+        # Enable learning mode for this test
+        original_value = os.environ.get("LEARNING_MODE", "false")
+        os.environ["LEARNING_MODE"] = "true"
+        get_settings.cache_clear()
 
-        # With learning mode on (default), should allow but mark as would_have_blocked
-        response = await client.post(
-            "/api/v1/rules/evaluate",
-            headers={"X-API-Key": sample_agent.api_key},
-            json={
-                "agent_id": sample_agent.external_id,
-                "request_type": "command",
-                "command": "rm -rf /tmp/test",
-            },
-        )
-        assert response.status_code == 200
-        data = response.json()
-        # In learning mode, should be allowed
-        assert data["decision"] == "allow"
-        assert "LEARNING MODE" in data.get("reason", "")
+        try:
+            # Create a deny rule
+            rule = Rule(
+                id=uuid4(),
+                name="Block rm",
+                agent_id=sample_agent.id,
+                rule_type=RuleType.COMMAND_DENYLIST,
+                action=RuleAction.DENY,
+                priority=100,
+                parameters={"patterns": ["^rm\\s"]},
+                is_active=True,
+            )
+            db_session.add(rule)
+            await db_session.commit()
+
+            # With learning mode on, should allow but mark as would_have_blocked
+            response = await client.post(
+                "/api/v1/rules/evaluate",
+                headers={"X-API-Key": sample_agent.api_key},
+                json={
+                    "agent_id": sample_agent.external_id,
+                    "request_type": "command",
+                    "command": "rm -rf /tmp/test",
+                },
+            )
+            assert response.status_code == 200
+            data = response.json()
+            # In learning mode, should be allowed
+            assert data["decision"] == "allow"
+            assert "LEARNING MODE" in data.get("reason", "")
+        finally:
+            # Restore original setting
+            os.environ["LEARNING_MODE"] = original_value
+            get_settings.cache_clear()

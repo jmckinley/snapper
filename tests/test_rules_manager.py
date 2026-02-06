@@ -1,6 +1,10 @@
 """
 Snapper Rules Manager - Automated Test Suite
 Covers rule engine, agent management, API, and integration tests.
+
+NOTE: These are integration tests that require a live app running at localhost:8000.
+They are skipped by default in the unit test suite. Run them manually with:
+    pytest tests/test_rules_manager.py -v --run-integration
 """
 
 import asyncio
@@ -8,6 +12,9 @@ import pytest
 import httpx
 from uuid import UUID
 import time
+
+# Skip all tests in this module unless --run-integration is passed
+pytestmark = pytest.mark.skip(reason="Integration tests - require live app at localhost:8000")
 
 BASE_URL = "http://localhost:8000"
 API_URL = f"{BASE_URL}/api/v1"

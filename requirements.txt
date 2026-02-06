@@ -44,6 +44,10 @@ pytest-asyncio>=0.23.4
 pytest-cov>=4.1.0
 httpx>=0.26.0  # For async test client
 
+# E2E Testing
+playwright>=1.40.0
+pytest-playwright>=0.4.4
+
 # Development
 black>=24.1.1
 flake8>=7.0.0

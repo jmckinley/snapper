@@ -393,6 +393,56 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
 
 **Containers (5):** app, postgres, redis, celery-worker, celery-beat.
 
+## Testing
+
+### Unit Tests
+
+```bash
+# Run all unit tests
+docker compose exec app python -m pytest tests/ -v
+
+# Run with coverage
+docker compose exec app python -m pytest tests/ --cov=app --cov-report=html
+
+# Run specific test file
+docker compose exec app python -m pytest tests/test_rule_engine.py -v
+```
+
+### E2E Tests (Playwright)
+
+Browser-based end-to-end tests using Playwright:
+
+```bash
+# Install Playwright (run once)
+pip install playwright pytest-playwright
+playwright install chromium
+
+# Run E2E tests (app must be running)
+E2E_BASE_URL=http://localhost:8000 pytest tests/e2e -v
+
+# Run with browser visible
+pytest tests/e2e -v --headed
+
+# Run specific E2E test
+pytest tests/e2e/test_dashboard.py -v
+```
+
+E2E tests cover:
+- Dashboard page loading and navigation
+- Agent creation and management flows
+- Rule creation and template application
+- OpenClaw setup wizard modal
+- Security and audit pages
+- Responsive design
+
+### Test Results
+
+| Suite | Count | Description |
+|-------|-------|-------------|
+| Unit tests | 154 | API, rule engine, middleware |
+| Integration tests | 41 | Live app testing (skipped in CI) |
+| E2E tests | 30+ | Browser-based UI testing |
+
 ## Common Commands
 
 ```bash
@@ -411,8 +461,11 @@ docker compose down -v && docker compose up -d
 # Run migrations
 docker compose exec app alembic upgrade head
 
-# Run tests
+# Run unit tests
 docker compose exec app python -m pytest tests/ -v
+
+# Run E2E tests (from host, not container)
+./scripts/run-e2e-tests.sh
 ```
 
 For production, prefix with `-f docker-compose.yml -f docker-compose.prod.yml`.
