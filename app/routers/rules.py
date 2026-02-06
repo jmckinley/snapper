@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1224,21 +1224,61 @@ async def evaluate_request(
     request: EvaluateRequest,
     db: DbSessionDep,
     redis: RedisDep,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ):
     """
     Evaluate a request against rules.
 
     This endpoint is called by the PreToolUse hook to check if an action
     should be allowed, denied, or require approval.
+
+    Authentication:
+    - If X-API-Key header is provided, agent is identified by API key
+    - Otherwise, agent is identified by agent_id in request body
+    - If REQUIRE_API_KEY=true and no key provided, returns 401
     """
     from app.models.agents import Agent
+    from app.config import get_settings
 
-    # Look up agent by external_id
-    stmt = select(Agent).where(
-        Agent.external_id == request.agent_id,
-        Agent.is_deleted == False,
-    )
-    agent = (await db.execute(stmt)).scalar_one_or_none()
+    settings = get_settings()
+    agent = None
+
+    # Try API key authentication first
+    if x_api_key:
+        if not x_api_key.startswith("snp_"):
+            return EvaluateResponse(
+                decision="deny",
+                reason="Invalid API key format",
+            )
+
+        stmt = select(Agent).where(
+            Agent.api_key == x_api_key,
+            Agent.is_deleted == False,
+        )
+        agent = (await db.execute(stmt)).scalar_one_or_none()
+
+        if not agent:
+            return EvaluateResponse(
+                decision="deny",
+                reason="Invalid API key",
+            )
+
+        # Update last used timestamp
+        agent.api_key_last_used = datetime.utcnow()
+
+    # Fall back to external_id lookup if no API key
+    if not agent and request.agent_id:
+        if settings.REQUIRE_API_KEY:
+            return EvaluateResponse(
+                decision="deny",
+                reason="API key required. Set X-API-Key header.",
+            )
+
+        stmt = select(Agent).where(
+            Agent.external_id == request.agent_id,
+            Agent.is_deleted == False,
+        )
+        agent = (await db.execute(stmt)).scalar_one_or_none()
 
     if not agent:
         # Unknown agent - deny by default

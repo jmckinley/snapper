@@ -53,6 +53,8 @@ class AgentResponse(AgentBase):
     external_id: str
     status: AgentStatus
     trust_level: TrustLevel
+    api_key: str  # Agent's API key for authentication
+    api_key_last_used: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     last_seen_at: Optional[datetime] = None
@@ -72,6 +74,8 @@ class AgentResponse(AgentBase):
                 "description": data.description,
                 "status": data.status,
                 "trust_level": data.trust_level,
+                "api_key": data.api_key,
+                "api_key_last_used": data.api_key_last_used,
                 "allowed_origins": data.allowed_origins,
                 "require_localhost_only": data.require_localhost_only,
                 "metadata": data.agent_metadata,

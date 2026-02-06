@@ -453,6 +453,63 @@ async def quarantine_agent(
     return AgentResponse.model_validate(agent)
 
 
+@router.post("/{agent_id}/regenerate-key")
+async def regenerate_api_key(
+    agent_id: UUID,
+    db: DbSessionDep,
+):
+    """
+    Regenerate an agent's API key.
+
+    The old key is immediately invalidated. Use this if you suspect
+    the key has been compromised or as part of regular key rotation.
+
+    Returns the new API key - make sure to save it, as it won't be
+    shown again in full.
+    """
+    from app.models.agents import generate_api_key
+
+    # Get agent
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    old_key_prefix = agent.api_key[:12] + "..."  # Log prefix only
+
+    # Generate new key
+    agent.api_key = generate_api_key()
+    agent.api_key_last_used = None  # Reset last used
+
+    # Audit log
+    audit_log = AuditLog(
+        action=AuditAction.AGENT_UPDATED,
+        severity=AuditSeverity.WARNING,
+        agent_id=agent.id,
+        message=f"API key regenerated for agent '{agent.name}'",
+        old_value={"api_key_prefix": old_key_prefix},
+        new_value={"api_key_prefix": agent.api_key[:12] + "..."},
+    )
+    db.add(audit_log)
+
+    await db.commit()
+    await db.refresh(agent)
+
+    logger.info(f"API key regenerated for agent: {agent_id}")
+
+    return {
+        "status": "success",
+        "message": "API key regenerated successfully",
+        "api_key": agent.api_key,
+        "agent_id": str(agent.id),
+        "agent_name": agent.name,
+    }
+
+
 @router.post("/{agent_id}/purge-pii")
 async def purge_agent_pii(
     agent_id: UUID,
