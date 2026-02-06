@@ -121,7 +121,7 @@ fi
 log "Building and starting containers..."
 
 cd "$INSTALL_DIR"
-$COMPOSE_CMD up -d --build
+$COMPOSE_CMD up -d --build --force-recreate
 
 # Wait for postgres and redis to be healthy
 log "Waiting for database and cache to be ready..."
@@ -137,7 +137,7 @@ ok "Migrations complete"
 # ─── Step 5: Restart App (pick up migrated schema) ─────────────────────────
 log "Restarting app container..."
 
-$COMPOSE_CMD up -d
+$COMPOSE_CMD up -d --force-recreate
 ok "App restarted"
 
 # ─── Step 6: Configure Caddy Reverse Proxy ─────────────────────────────────
@@ -231,5 +231,5 @@ echo ""
 echo -e "  Manage:     cd $INSTALL_DIR"
 echo -e "  Logs:       $COMPOSE_CMD logs -f"
 echo -e "  Stop:       $COMPOSE_CMD down"
-echo -e "  Update:     git pull && $COMPOSE_CMD up -d --build"
+echo -e "  Update:     git pull && $COMPOSE_CMD up -d --build --force-recreate"
 echo ""
