@@ -162,10 +162,11 @@ async def telegram_webhook(request: Request):
                 result = await _create_allow_rule_from_context(context_json, username)
                 await _answer_callback(callback_id=callback_id, text="✅ Rule created!")
                 if cb_chat_id and cb_message_id:
+                    rule_id_short = result.get('rule_id', 'N/A')[:8]
                     await _edit_message(
                         chat_id=cb_chat_id,
                         message_id=cb_message_id,
-                        text=f"✅ *ALLOW RULE CREATED* by @{username}\n\n{result['message']}\n\n_Rule ID: `{result.get('rule_id', 'N/A')[:8]}...`_",
+                        text=f"✅ ALLOW RULE CREATED by @{username}\n\nRule ID: {rule_id_short}",
                     )
                 return {"ok": True, "action": "allow_always", "rule_id": result.get("rule_id")}
 
