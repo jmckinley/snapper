@@ -1016,73 +1016,185 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
     # Delete the user's message containing raw PII immediately
     await _delete_user_message(chat_id, message)
 
-    # Handle multi-step credit card flow
+    # Handle multi-step flows
     step = pending.get("step")
-    if step and pending["category"] == "credit_card":
-        if step == "number":
-            # Validate card number (basic: digits only, 13-19 chars)
-            digits = re.sub(r"[\s\-]", "", raw_value)
-            if not digits.isdigit() or len(digits) < 13 or len(digits) > 19:
+    if step:
+        cat = pending["category"]
+
+        # --- Credit Card: number → exp → cvc ---
+        if cat == "credit_card":
+            if step == "number":
+                digits = re.sub(r"[\s\-]", "", raw_value)
+                if not digits.isdigit() or len(digits) < 13 or len(digits) > 19:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="That doesn't look like a valid card number. Please enter 13-19 digits.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["card_number"] = digits
+                pending["step"] = "exp"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
                 await _send_message(
                     chat_id=chat_id,
-                    text="That doesn't look like a valid card number. Please enter 13-19 digits.\n_Type /cancel to abort._",
+                    text="Step 2/3: Reply with the *expiration date*\n(e.g., `12/27` or `12/2027`)\n\n_Type /cancel to abort._",
                 )
                 return
-
-            pending["card_number"] = digits
-            pending["step"] = "exp"
-            await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
-            await _send_message(
-                chat_id=chat_id,
-                text=(
-                    f"Step 2/3: Reply with the *expiration date*\n"
-                    "(e.g., `12/27` or `12/2027`)\n\n"
-                    "_Type /cancel to abort._"
-                ),
-            )
-            return
-
-        elif step == "exp":
-            # Validate exp date (MM/YY or MM/YYYY)
-            exp_clean = raw_value.strip().replace("-", "/")
-            if not re.match(r"^\d{1,2}/\d{2,4}$", exp_clean):
+            elif step == "exp":
+                exp_clean = raw_value.strip().replace("-", "/")
+                if not re.match(r"^\d{1,2}/\d{2,4}$", exp_clean):
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter expiration as `MM/YY` or `MM/YYYY`.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["card_exp"] = exp_clean
+                pending["step"] = "cvc"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
                 await _send_message(
                     chat_id=chat_id,
-                    text="Please enter expiration as `MM/YY` or `MM/YYYY`.\n_Type /cancel to abort._",
+                    text="Step 3/3: Reply with the *CVC/CVV*\n(3 or 4 digit security code)\n\n_Type /cancel to abort._",
                 )
                 return
+            elif step == "cvc":
+                cvc_clean = raw_value.strip()
+                if not re.match(r"^\d{3,4}$", cvc_clean):
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="CVC should be 3 or 4 digits.\n_Type /cancel to abort._",
+                    )
+                    return
+                raw_value = json.dumps({
+                    "number": pending["card_number"],
+                    "exp": pending["card_exp"],
+                    "cvc": cvc_clean,
+                })
+                # Fall through to create entry
 
-            pending["card_exp"] = exp_clean
-            pending["step"] = "cvc"
-            await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
-            await _send_message(
-                chat_id=chat_id,
-                text=(
-                    f"Step 3/3: Reply with the *CVC/CVV*\n"
-                    "(3 or 4 digit security code on your card)\n\n"
-                    "_Type /cancel to abort._"
-                ),
-            )
-            return
-
-        elif step == "cvc":
-            # Validate CVC (3-4 digits)
-            cvc_clean = raw_value.strip()
-            if not re.match(r"^\d{3,4}$", cvc_clean):
+        # --- Address: street → city → state → zip ---
+        elif cat == "address":
+            if step == "street":
+                if len(raw_value) < 3:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a valid street address.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["addr_street"] = raw_value
+                pending["step"] = "city"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
                 await _send_message(
                     chat_id=chat_id,
-                    text="CVC should be 3 or 4 digits.\n_Type /cancel to abort._",
+                    text="Step 2/4: Reply with the *city*\n\n_Type /cancel to abort._",
                 )
                 return
+            elif step == "city":
+                if len(raw_value) < 2:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a valid city name.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["addr_city"] = raw_value
+                pending["step"] = "state"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
+                await _send_message(
+                    chat_id=chat_id,
+                    text="Step 3/4: Reply with the *state* (e.g., `CA`, `NY`)\n\n_Type /cancel to abort._",
+                )
+                return
+            elif step == "state":
+                state_clean = raw_value.strip().upper()
+                if len(state_clean) < 2:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a valid state abbreviation.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["addr_state"] = state_clean
+                pending["step"] = "zip"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
+                await _send_message(
+                    chat_id=chat_id,
+                    text="Step 4/4: Reply with the *ZIP code*\n\n_Type /cancel to abort._",
+                )
+                return
+            elif step == "zip":
+                zip_clean = raw_value.strip()
+                if not re.match(r"^\d{5}(-\d{4})?$", zip_clean):
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a valid ZIP code (e.g., `90210` or `90210-1234`).\n_Type /cancel to abort._",
+                    )
+                    return
+                raw_value = json.dumps({
+                    "street": pending["addr_street"],
+                    "city": pending["addr_city"],
+                    "state": pending["addr_state"],
+                    "zip": zip_clean,
+                })
+                # Fall through to create entry
 
-            # Combine all card data into a single JSON value
-            card_data = json.dumps({
-                "number": pending["card_number"],
-                "exp": pending["card_exp"],
-                "cvc": cvc_clean,
-            })
-            raw_value = card_data
-            # Fall through to create the entry below
+        # --- Name: first → last ---
+        elif cat == "name":
+            if step == "first":
+                if len(raw_value) < 1:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a first name.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["name_first"] = raw_value
+                pending["step"] = "last"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
+                await _send_message(
+                    chat_id=chat_id,
+                    text="Step 2/2: Reply with the *last name*\n\n_Type /cancel to abort._",
+                )
+                return
+            elif step == "last":
+                if len(raw_value) < 1:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a last name.\n_Type /cancel to abort._",
+                    )
+                    return
+                raw_value = json.dumps({
+                    "first": pending["name_first"],
+                    "last": raw_value,
+                })
+                # Fall through to create entry
+
+        # --- Bank Account: routing → account ---
+        elif cat == "bank_account":
+            if step == "routing":
+                digits = re.sub(r"[\s\-]", "", raw_value)
+                if not digits.isdigit() or len(digits) != 9:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Routing number should be exactly 9 digits.\n_Type /cancel to abort._",
+                    )
+                    return
+                pending["bank_routing"] = digits
+                pending["step"] = "account"
+                await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
+                await _send_message(
+                    chat_id=chat_id,
+                    text="Step 2/2: Reply with the *account number*\n\n_Type /cancel to abort._",
+                )
+                return
+            elif step == "account":
+                digits = re.sub(r"[\s\-]", "", raw_value)
+                if not digits.isdigit() or len(digits) < 4:
+                    await _send_message(
+                        chat_id=chat_id,
+                        text="Please enter a valid account number (digits only).\n_Type /cancel to abort._",
+                    )
+                    return
+                raw_value = json.dumps({
+                    "routing": pending["bank_routing"],
+                    "account": digits,
+                })
+                # Fall through to create entry
 
     category = PIICategory(pending["category"])
 
@@ -1358,26 +1470,63 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
         # Store pending add in Redis so we can receive the value in next message
         from app.redis_client import redis_client
 
-        if category_str == "credit_card":
-            # Multi-step: collect card number, exp date, CVC
-            pending_data = json.dumps({
-                "label": label,
-                "category": category_str,
-                "owner_chat_id": user_chat_id,
-                "owner_name": username,
-                "step": "number",  # number → exp → cvc → done
-            })
-            await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
-            await _send_message(
-                chat_id=chat_id,
-                text=(
+        # Multi-step categories
+        multi_step_categories = {
+            "credit_card": {
+                "step": "number",
+                "total_steps": 3,
+                "prompt": (
                     f"🔐 *Adding credit card:* {label}\n\n"
                     "Step 1/3: Reply with the *card number*\n"
                     "(e.g., `4111111111111234`)\n\n"
                     "⚠️ Your message will be deleted after processing.\n"
                     "_Type /cancel to abort._"
                 ),
-            )
+            },
+            "address": {
+                "step": "street",
+                "total_steps": 4,
+                "prompt": (
+                    f"🔐 *Adding address:* {label}\n\n"
+                    "Step 1/4: Reply with the *street address*\n"
+                    "(e.g., `123 Main St, Apt 4B`)\n\n"
+                    "⚠️ Your message will be deleted after processing.\n"
+                    "_Type /cancel to abort._"
+                ),
+            },
+            "name": {
+                "step": "first",
+                "total_steps": 2,
+                "prompt": (
+                    f"🔐 *Adding name:* {label}\n\n"
+                    "Step 1/2: Reply with the *first name*\n\n"
+                    "⚠️ Your message will be deleted after processing.\n"
+                    "_Type /cancel to abort._"
+                ),
+            },
+            "bank_account": {
+                "step": "routing",
+                "total_steps": 2,
+                "prompt": (
+                    f"🔐 *Adding bank account:* {label}\n\n"
+                    "Step 1/2: Reply with the *routing number* (9 digits)\n\n"
+                    "⚠️ Your message will be deleted after processing.\n"
+                    "_Type /cancel to abort._"
+                ),
+            },
+        }
+
+        if category_str in multi_step_categories:
+            ms = multi_step_categories[category_str]
+            pending_data = json.dumps({
+                "label": label,
+                "category": category_str,
+                "owner_chat_id": user_chat_id,
+                "owner_name": username,
+                "step": ms["step"],
+            })
+            await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
+            await _send_message(chat_id=chat_id, text=ms["prompt"])
         else:
             pending_data = json.dumps({
                 "label": label,
@@ -1388,13 +1537,10 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
             await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
 
             category_hints = {
-                "name": "full name",
-                "address": "full address",
-                "phone": "phone number",
+                "phone": "phone number (e.g., `+15551234567`)",
                 "email": "email address",
-                "ssn": "SSN",
+                "ssn": "SSN (e.g., `123-45-6789`)",
                 "passport": "passport number",
-                "bank_account": "account number",
                 "custom": "value",
             }
             hint = category_hints.get(category_str, "value")

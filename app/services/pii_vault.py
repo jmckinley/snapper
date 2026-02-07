@@ -111,6 +111,18 @@ def mask_value(raw_value: str, category: PIICategory) -> str:
         return "***-***-****"
 
     elif category == PIICategory.NAME:
+        # Handle JSON name data {"first": "...", "last": "..."}
+        try:
+            name = json.loads(raw_value)
+            if isinstance(name, dict) and "first" in name:
+                first = name["first"]
+                last = name.get("last", "")
+                f_mask = f"{first[0]}***" if len(first) > 1 else first
+                l_mask = f"{last[0]}***" if len(last) > 1 else last
+                return f"{f_mask} {l_mask}".strip()
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Fallback: plain string
         words = raw_value.split()
         masked_words = []
         for word in words:
@@ -132,13 +144,49 @@ def mask_value(raw_value: str, category: PIICategory) -> str:
         return "****"
 
     elif category == PIICategory.BANK_ACCOUNT:
+        # Handle JSON bank data {"routing": "...", "account": "..."}
+        try:
+            bank = json.loads(raw_value)
+            if isinstance(bank, dict) and "account" in bank:
+                acct = bank["account"]
+                routing = bank.get("routing", "")
+                acct_mask = f"****{acct[-4:]}" if len(acct) >= 4 else "****"
+                routing_mask = f"****{routing[-4:]}" if len(routing) >= 4 else "****"
+                return f"Routing: {routing_mask} / Acct: {acct_mask}"
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Fallback: plain account number
         digits = re.sub(r"[^0-9]", "", raw_value)
         if len(digits) >= 4:
             return f"{'*' * (len(digits) - 4)}{digits[-4:]}"
         return "****"
 
     elif category == PIICategory.ADDRESS:
-        # Show first number and zip, mask the rest
+        # Handle JSON address data {"street": "...", "city": "...", "state": "...", "zip": "..."}
+        try:
+            addr = json.loads(raw_value)
+            if isinstance(addr, dict) and "street" in addr:
+                street = addr["street"]
+                city = addr.get("city", "")
+                state = addr.get("state", "")
+                zip_code = addr.get("zip", "")
+                # Mask street: keep first number, mask the rest
+                street_words = street.split()
+                if street_words:
+                    masked_street = [street_words[0]]  # Keep street number
+                    for w in street_words[1:]:
+                        if len(w) > 1:
+                            masked_street.append(f"{w[0]}***")
+                        else:
+                            masked_street.append(w)
+                    street_masked = " ".join(masked_street)
+                else:
+                    street_masked = "****"
+                city_masked = f"{city[0]}***" if len(city) > 1 else city
+                return f"{street_masked}, {city_masked}, {state} {zip_code}".strip()
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Fallback: plain string address
         words = raw_value.split()
         if len(words) >= 2:
             masked = [words[0]]  # Keep street number
