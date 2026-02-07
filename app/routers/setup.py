@@ -271,6 +271,14 @@ async def quick_register_agent(
             f"Auto-registered AI agent instance at {request.host}:{request.port}"
         )
 
+    # Determine trust level based on profile
+    trust_levels = {
+        "strict": TrustLevel.UNTRUSTED,
+        "recommended": TrustLevel.STANDARD,
+        "permissive": TrustLevel.ELEVATED,
+    }
+    trust_level = trust_levels.get(request.security_profile, TrustLevel.STANDARD)
+
     # Check if already registered
     existing_result = await db.execute(
         select(Agent).where(Agent.external_id == external_id)
@@ -314,14 +322,6 @@ async def quick_register_agent(
             rules_applied=rules_applied,
             config_snippet=config_snippet,
         )
-
-    # Determine trust level based on profile
-    trust_levels = {
-        "strict": TrustLevel.UNTRUSTED,
-        "recommended": TrustLevel.STANDARD,
-        "permissive": TrustLevel.ELEVATED,
-    }
-    trust_level = trust_levels.get(request.security_profile, TrustLevel.STANDARD)
 
     # Create agent
     agent = Agent(
