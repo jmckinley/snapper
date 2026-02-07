@@ -99,7 +99,8 @@ class Settings(BaseSettings):
     NOTIFY_ON_ALLOW: bool = False  # Send notification when action is allowed (verbose)
 
     # PII Vault
-    PII_VAULT_TOKEN_TTL_SECONDS: int = 60  # Resolved value Redis TTL (one-time retrieval)
+    PII_VAULT_TOKEN_TTL_SECONDS: int = 30  # Resolved value Redis TTL (one-time retrieval)
+    REQUIRE_VAULT_AUTH: bool = False  # Require API key or internal source for vault writes
 
     # Logging
     LOG_LEVEL: str = "INFO"

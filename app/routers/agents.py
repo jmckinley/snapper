@@ -106,6 +106,7 @@ async def create_agent(
         tags=agent_data.tags,
         rate_limit_max_requests=agent_data.rate_limit_max_requests,
         rate_limit_window_seconds=agent_data.rate_limit_window_seconds,
+        owner_chat_id=agent_data.owner_chat_id,
     )
 
     db.add(agent)

@@ -203,10 +203,29 @@ def _send_telegram_alert(
     message: str,
     severity: str,
     metadata: Optional[dict] = None,
+    target_chat_id: Optional[str] = None,
 ):
-    """Send alert via Telegram bot."""
-    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
-        logger.warning("Telegram not configured, skipping Telegram alert")
+    """Send alert via Telegram bot with per-user routing."""
+    if not settings.TELEGRAM_BOT_TOKEN:
+        logger.warning("Telegram bot token not configured, skipping Telegram alert")
+        return
+
+    # Resolution chain for target chat:
+    # 1. Explicit target_chat_id parameter
+    # 2. PII context owner_chat_id (vault entry owner)
+    # 3. Agent owner_chat_id (agent owner)
+    # 4. Fallback: global TELEGRAM_CHAT_ID
+    effective_chat_id = target_chat_id
+    if not effective_chat_id and metadata:
+        pii_ctx = metadata.get("pii_context")
+        if pii_ctx and isinstance(pii_ctx, dict):
+            effective_chat_id = pii_ctx.get("owner_chat_id")
+        if not effective_chat_id:
+            effective_chat_id = metadata.get("agent_owner_chat_id")
+    if not effective_chat_id:
+        effective_chat_id = settings.TELEGRAM_CHAT_ID
+    if not effective_chat_id:
+        logger.warning("No target chat ID for Telegram alert, skipping")
         return
 
     # Severity emojis for Telegram
@@ -331,7 +350,7 @@ def _send_telegram_alert(
     # Send via Telegram Bot API
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
-        "chat_id": settings.TELEGRAM_CHAT_ID,
+        "chat_id": effective_chat_id,
         "text": text,
         "parse_mode": "Markdown",
     }

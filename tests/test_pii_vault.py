@@ -8,13 +8,17 @@ from uuid import uuid4
 
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.services.pii_vault import (
+    BRUTE_FORCE_MAX_FAILURES,
     VAULT_TOKEN_REGEX,
+    check_token_lookup_limit,
     decrypt_value,
     domain_matches,
     encrypt_value,
     find_vault_tokens,
     generate_token,
     mask_value,
+    record_token_lookup_failure,
+    record_token_lookup_success,
 )
 
 
@@ -69,9 +73,16 @@ class TestTokenGeneration:
     """Test vault token format and uniqueness."""
 
     def test_token_format(self):
-        """Token should match {{SNAPPER_VAULT:<8hex>}} format."""
+        """Token should match {{SNAPPER_VAULT:<32hex>}} format (128-bit entropy)."""
         token = generate_token()
-        assert re.match(r"^\{\{SNAPPER_VAULT:[a-f0-9]{8}\}\}$", token)
+        assert re.match(r"^\{\{SNAPPER_VAULT:[a-f0-9]{32}\}\}$", token)
+
+    def test_token_entropy(self):
+        """New tokens should have 128-bit entropy (32 hex chars)."""
+        token = generate_token()
+        # Extract hex portion: {{SNAPPER_VAULT:...}}
+        hex_part = token[len("{{SNAPPER_VAULT:"):-len("}}")]
+        assert len(hex_part) == 32  # 16 bytes = 32 hex chars = 128 bits
 
     def test_token_uniqueness(self):
         """Tokens should be unique."""
@@ -100,6 +111,20 @@ class TestTokenGeneration:
         """find_vault_tokens should return empty list when no tokens present."""
         text = 'browser fill [{"ref":"15","value":"John Smith"}]'
         assert find_vault_tokens(text) == []
+
+    def test_regex_detects_old_8char_tokens(self):
+        """VAULT_TOKEN_REGEX should still detect old 8-char (32-bit) tokens."""
+        old_token = "{{SNAPPER_VAULT:a1b2c3d4}}"
+        assert VAULT_TOKEN_REGEX.match(old_token)
+        found = find_vault_tokens(f"value: {old_token}")
+        assert old_token in found
+
+    def test_regex_detects_new_32char_tokens(self):
+        """VAULT_TOKEN_REGEX should detect new 32-char (128-bit) tokens."""
+        new_token = "{{SNAPPER_VAULT:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6}}"
+        assert VAULT_TOKEN_REGEX.match(new_token)
+        found = find_vault_tokens(f"value: {new_token}")
+        assert new_token in found
 
 
 # ============================================================================
@@ -500,4 +525,109 @@ class TestTokenResolution:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         resolved = await resolve_tokens(mock_db, ["{{SNAPPER_VAULT:deadbeef}}"])
+        assert len(resolved) == 0
+
+    @pytest.mark.asyncio
+    async def test_resolve_ownership_enforced_when_provided(self, mock_db):
+        """When requester_chat_id is provided, ownership must match."""
+        from app.services.pii_vault import resolve_tokens
+
+        token = "{{SNAPPER_VAULT:a1b2c3d4}}"
+        entry = self._make_entry(token, "4111111111111234", owner="user_A")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = entry
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        # Same owner should succeed
+        resolved = await resolve_tokens(mock_db, [token], requester_chat_id="user_A")
+        assert token in resolved
+
+    @pytest.mark.asyncio
+    async def test_resolve_ownership_mismatch_fails(self, mock_db):
+        """Ownership mismatch should prevent token resolution."""
+        from app.services.pii_vault import resolve_tokens
+
+        token = "{{SNAPPER_VAULT:a1b2c3d4}}"
+        entry = self._make_entry(token, "4111111111111234", owner="user_A")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = entry
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        # Different owner should fail
+        resolved = await resolve_tokens(mock_db, [token], requester_chat_id="user_B")
+        assert token not in resolved
+
+
+# ============================================================================
+# Brute-force protection tests
+# ============================================================================
+
+
+class TestBruteForceProtection:
+    """Test brute-force protection for token lookups."""
+
+    @pytest.fixture
+    def mock_redis(self):
+        """Create a mock Redis client."""
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.set = AsyncMock()
+        redis.delete = AsyncMock()
+        return redis
+
+    @pytest.mark.asyncio
+    async def test_check_limit_allows_by_default(self, mock_redis):
+        """No lockout by default."""
+        mock_redis.get = AsyncMock(return_value=None)
+        allowed = await check_token_lookup_limit(mock_redis, "user1")
+        assert allowed is True
+
+    @pytest.mark.asyncio
+    async def test_check_limit_blocks_when_locked(self, mock_redis):
+        """Locked out user should be blocked."""
+        mock_redis.get = AsyncMock(return_value="1")
+        allowed = await check_token_lookup_limit(mock_redis, "user1")
+        assert allowed is False
+
+    @pytest.mark.asyncio
+    async def test_failure_counter_increments(self, mock_redis):
+        """Failure counter should increment on each failure."""
+        mock_redis.get = AsyncMock(return_value="2")
+        triggered = await record_token_lookup_failure(mock_redis, "user1")
+        # 2 + 1 = 3, below threshold of 5
+        assert triggered is False
+
+    @pytest.mark.asyncio
+    async def test_lockout_triggered_at_threshold(self, mock_redis):
+        """Lockout should trigger after BRUTE_FORCE_MAX_FAILURES failures."""
+        mock_redis.get = AsyncMock(return_value=str(BRUTE_FORCE_MAX_FAILURES - 1))
+        triggered = await record_token_lookup_failure(mock_redis, "user1")
+        assert triggered is True
+        # Should have set lockout key
+        mock_redis.set.assert_any_call("vault_lockout:user1", "1", expire=900)
+
+    @pytest.mark.asyncio
+    async def test_success_clears_failures(self, mock_redis):
+        """Successful lookup should clear the failure counter."""
+        await record_token_lookup_success(mock_redis, "user1")
+        mock_redis.delete.assert_called_with("vault_failures:user1")
+
+    @pytest.mark.asyncio
+    async def test_resolve_with_brute_force_lockout(self):
+        """resolve_tokens should return empty when locked out."""
+        from app.services.pii_vault import resolve_tokens
+
+        mock_db = AsyncMock()
+        mock_redis = AsyncMock()
+        # Simulate lockout
+        mock_redis.get = AsyncMock(return_value="1")
+
+        resolved = await resolve_tokens(
+            mock_db,
+            ["{{SNAPPER_VAULT:deadbeef}}"],
+            requester_chat_id="locked_user",
+            redis=mock_redis,
+        )
         assert len(resolved) == 0

@@ -89,7 +89,7 @@ class PIIVaultEntry(Base):
 
     # Vault token (the reference users give to agents)
     token: Mapped[str] = mapped_column(
-        String(30),
+        String(52),
         unique=True,
         nullable=False,
         index=True,

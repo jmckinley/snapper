@@ -1561,6 +1561,7 @@ async def evaluate_request(
                         "tool_name": request.tool_name,
                         "rule_name": matched_rule_name,
                         "rule_id": str(result.blocking_rule) if result.blocking_rule else None,
+                        "agent_owner_chat_id": getattr(agent, "owner_chat_id", None),
                     },
                 )
             elif result.decision.value == "require_approval":
@@ -1570,6 +1571,17 @@ async def evaluate_request(
                 # Check if PII was detected (from PII gate evaluator)
                 pii_context = context.metadata.get("pii_detected")
                 vault_tokens = pii_context.get("vault_tokens", []) if pii_context else []
+
+                # Look up vault token owner for ownership enforcement
+                vault_owner_chat_id = None
+                if vault_tokens:
+                    try:
+                        from app.services.pii_vault import get_entry_by_token
+                        first_entry = await get_entry_by_token(db, vault_tokens[0])
+                        if first_entry:
+                            vault_owner_chat_id = first_entry.owner_chat_id
+                    except Exception as e:
+                        logger.warning(f"Failed to look up vault token owner: {e}")
 
                 approval_request_id = await create_approval_request(
                     redis=redis,
@@ -1583,6 +1595,7 @@ async def evaluate_request(
                     tool_name=request.tool_name,
                     pii_context=pii_context,
                     vault_tokens=vault_tokens if vault_tokens else None,
+                    owner_chat_id=vault_owner_chat_id,
                 )
 
                 if notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
@@ -1595,11 +1608,14 @@ async def evaluate_request(
                         "rule_name": matched_rule_name,
                         "request_id": approval_request_id,
                         "requires_approval": True,
+                        "agent_owner_chat_id": getattr(agent, "owner_chat_id", None),
                     }
 
                     # Add PII context for rich Telegram notification
                     if pii_context:
                         alert_metadata["pii_context"] = pii_context
+                        if vault_owner_chat_id:
+                            pii_context["owner_chat_id"] = vault_owner_chat_id
 
                     title = f"Approval Required: {matched_rule_name or 'Security Rule'}"
                     if pii_context:
@@ -1632,15 +1648,25 @@ async def evaluate_request(
         pii_detected = context.metadata.get("pii_detected")
         if pii_detected and pii_detected.get("vault_tokens"):
             try:
-                from app.services.pii_vault import resolve_tokens
+                from app.services.pii_vault import resolve_tokens, get_entry_by_token
 
                 vault_tokens = pii_detected["vault_tokens"]
                 destination_domain = pii_detected.get("destination_domain")
+
+                # Look up owner for ownership enforcement
+                auto_owner_chat_id = None
+                try:
+                    first_entry = await get_entry_by_token(db, vault_tokens[0])
+                    if first_entry:
+                        auto_owner_chat_id = first_entry.owner_chat_id
+                except Exception:
+                    pass
 
                 resolved = await resolve_tokens(
                     db=db,
                     tokens=vault_tokens,
                     destination_domain=destination_domain,
+                    requester_chat_id=auto_owner_chat_id,
                 )
 
                 if resolved:

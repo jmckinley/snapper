@@ -11,12 +11,13 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, update
 
 from app.config import get_settings
 from app.database import async_session_factory
+from app.dependencies import telegram_webhook_rate_limit
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 from app.models.rules import Rule, RuleType, RuleAction
 
@@ -95,7 +96,7 @@ async def trigger_register_commands():
     raise HTTPException(status_code=500, detail="Failed to register commands")
 
 
-@router.post("/webhook")
+@router.post("/webhook", dependencies=[Depends(telegram_webhook_rate_limit)])
 async def telegram_webhook(request: Request):
     """
     Handle Telegram bot webhook callbacks.
@@ -713,6 +714,10 @@ async def _get_or_create_test_agent(chat_id: int) -> UUID:
         existing = result.scalar_one_or_none()
 
         if existing:
+            # Backfill owner_chat_id if missing
+            if not existing.owner_chat_id:
+                existing.owner_chat_id = str(chat_id)
+                await db.commit()
             _test_agents[chat_id] = existing.id
             return existing.id
 
@@ -723,6 +728,7 @@ async def _get_or_create_test_agent(chat_id: int) -> UUID:
             description="Test agent for Telegram rule testing",
             status=AgentStatus.ACTIVE,
             trust_level=TrustLevel.STANDARD,
+            owner_chat_id=str(chat_id),
         )
         db.add(agent)
         await db.commit()

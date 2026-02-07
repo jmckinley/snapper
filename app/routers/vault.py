@@ -4,16 +4,70 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, RedisDep, default_rate_limit, vault_write_rate_limit
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.services import pii_vault
 
 logger = logging.getLogger(__name__)
+
+
+async def verify_vault_access(
+    request: Request,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    x_internal_source: Optional[str] = Header(None, alias="X-Internal-Source"),
+):
+    """
+    Verify access for vault write operations.
+
+    When REQUIRE_VAULT_AUTH is True:
+    - Telegram-originated requests pass via X-Internal-Source: telegram
+    - External API callers must provide X-API-Key
+    """
+    from app.config import get_settings
+    settings = get_settings()
+
+    if not settings.REQUIRE_VAULT_AUTH:
+        return
+
+    # Internal Telegram requests are trusted
+    if x_internal_source == "telegram":
+        return
+
+    # Require API key for external callers
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required for vault operations. Provide X-API-Key header.",
+        )
+
+    # Validate API key format
+    if not x_api_key.startswith("snp_"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key format",
+        )
+
+    # Validate against known agent keys
+    from sqlalchemy import select as sa_select
+    from app.database import async_session_factory
+    from app.models.agents import Agent
+
+    async with async_session_factory() as db:
+        stmt = sa_select(Agent).where(Agent.api_key == x_api_key, Agent.is_deleted == False)
+        result = await db.execute(stmt)
+        agent = result.scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+
 
 router = APIRouter(prefix="/vault", dependencies=[Depends(default_rate_limit)])
 
@@ -56,7 +110,12 @@ class VaultDomainUpdate(BaseModel):
 # --- Endpoints ---
 
 
-@router.post("/entries", response_model=VaultEntryResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/entries",
+    response_model=VaultEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access)],
+)
 async def create_vault_entry(
     request: VaultEntryCreate,
     db: DbSessionDep,
@@ -139,7 +198,11 @@ async def list_vault_entries(
     ]
 
 
-@router.delete("/entries/{entry_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/entries/{entry_id}",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access)],
+)
 async def delete_vault_entry(
     entry_id: str,
     db: DbSessionDep,

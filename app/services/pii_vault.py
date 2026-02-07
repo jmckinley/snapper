@@ -24,8 +24,8 @@ from app.models.pii_vault import PIICategory, PIIVaultEntry
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Token regex for detection in text
-VAULT_TOKEN_REGEX = re.compile(r"\{\{SNAPPER_VAULT:[a-f0-9]{8}\}\}")
+# Token regex for detection in text (accepts both old 8-char and new 32-char tokens)
+VAULT_TOKEN_REGEX = re.compile(r"\{\{SNAPPER_VAULT:[a-f0-9]{8,32}\}\}")
 
 
 def get_encryption_key() -> bytes:
@@ -61,8 +61,8 @@ def decrypt_value(ciphertext: bytes) -> str:
 
 
 def generate_token() -> str:
-    """Generate a unique vault reference token."""
-    hex_id = os.urandom(4).hex()  # 8 hex chars
+    """Generate a unique vault reference token (128-bit entropy)."""
+    hex_id = os.urandom(16).hex()  # 32 hex chars
     return "{{SNAPPER_VAULT:" + hex_id + "}}"
 
 
@@ -328,6 +328,7 @@ async def resolve_tokens(
     tokens: list[str],
     destination_domain: Optional[str] = None,
     requester_chat_id: Optional[str] = None,
+    redis=None,
 ) -> dict[str, dict]:
     """
     Resolve vault tokens to their decrypted values.
@@ -336,34 +337,51 @@ async def resolve_tokens(
     for each successfully resolved token.
 
     Checks:
+    - Brute-force lockout (if redis provided)
     - Token exists and is not deleted
     - Not expired
     - Domain whitelist (if configured)
     - Max uses not exceeded
-    - Ownership (if requester_chat_id provided)
+    - Ownership (always enforced when requester_chat_id provided)
     """
     resolved = {}
+
+    # Brute-force protection: check lockout
+    bf_identifier = requester_chat_id or "anonymous"
+    if redis:
+        allowed = await check_token_lookup_limit(redis, bf_identifier)
+        if not allowed:
+            logger.warning(f"Token lookup locked out for: {bf_identifier}")
+            return resolved
+
+    has_failures = False
 
     for token in tokens:
         entry = await get_entry_by_token(db, token)
 
         if not entry:
             logger.warning(f"Vault token not found: {token}")
+            has_failures = True
             continue
 
-        # Check ownership if requester specified
+        # Enforce ownership check
         if requester_chat_id and entry.owner_chat_id != str(requester_chat_id):
-            logger.warning(f"Token ownership mismatch: {token}")
+            logger.warning(
+                f"Token ownership mismatch: {token} (owner={entry.owner_chat_id}, requester={requester_chat_id})"
+            )
+            has_failures = True
             continue
 
         # Check expiration
         if entry.expires_at and datetime.utcnow() > entry.expires_at.replace(tzinfo=None):
             logger.warning(f"Vault token expired: {token}")
+            has_failures = True
             continue
 
         # Check max uses
         if entry.max_uses is not None and entry.use_count >= entry.max_uses:
             logger.warning(f"Vault token max uses exceeded: {token}")
+            has_failures = True
             continue
 
         # Check domain whitelist
@@ -376,6 +394,7 @@ async def resolve_tokens(
                 logger.warning(
                     f"Domain {destination_domain} not in whitelist for token {token}"
                 )
+                has_failures = True
                 continue
 
         # Decrypt and resolve
@@ -383,6 +402,7 @@ async def resolve_tokens(
             plaintext = decrypt_value(entry.encrypted_value)
         except Exception as e:
             logger.error(f"Failed to decrypt vault entry {entry.id}: {e}")
+            has_failures = True
             continue
 
         # Update usage tracking
@@ -398,6 +418,13 @@ async def resolve_tokens(
             "masked_value": entry.masked_value,
         }
 
+    # Record brute-force metrics
+    if redis:
+        if has_failures and not resolved:
+            await record_token_lookup_failure(redis, bf_identifier)
+        elif resolved:
+            await record_token_lookup_success(redis, bf_identifier)
+
     if resolved:
         await db.flush()
 
@@ -407,3 +434,44 @@ async def resolve_tokens(
 def find_vault_tokens(text: str) -> list[str]:
     """Find all vault tokens in a text string."""
     return VAULT_TOKEN_REGEX.findall(text)
+
+
+# ============================================================================
+# Brute-force protection for token lookups
+# ============================================================================
+
+BRUTE_FORCE_MAX_FAILURES = 5
+BRUTE_FORCE_LOCKOUT_SECONDS = 900  # 15 minutes
+
+
+async def check_token_lookup_limit(redis, identifier: str) -> bool:
+    """Check if identifier is locked out from token lookups. Returns True if allowed."""
+    lockout_key = f"vault_lockout:{identifier}"
+    locked = await redis.get(lockout_key)
+    return locked is None
+
+
+async def record_token_lookup_failure(redis, identifier: str) -> bool:
+    """Record a failed token lookup. Returns True if lockout was triggered."""
+    failure_key = f"vault_failures:{identifier}"
+    count = await redis.get(failure_key)
+    count = int(count) if count else 0
+    count += 1
+
+    # Set/update the failure counter with 15 min expiry
+    await redis.set(failure_key, str(count), expire=BRUTE_FORCE_LOCKOUT_SECONDS)
+
+    if count >= BRUTE_FORCE_MAX_FAILURES:
+        # Trigger lockout
+        lockout_key = f"vault_lockout:{identifier}"
+        await redis.set(lockout_key, "1", expire=BRUTE_FORCE_LOCKOUT_SECONDS)
+        logger.warning(f"Vault token lookup lockout triggered for: {identifier}")
+        return True
+
+    return False
+
+
+async def record_token_lookup_success(redis, identifier: str) -> None:
+    """Clear failure counter on successful token lookup."""
+    failure_key = f"vault_failures:{identifier}"
+    await redis.delete(failure_key)

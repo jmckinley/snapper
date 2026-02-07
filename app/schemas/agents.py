@@ -27,6 +27,7 @@ class AgentCreate(AgentBase):
 
     external_id: str = Field(..., min_length=1, max_length=255)
     trust_level: TrustLevel = TrustLevel.UNTRUSTED
+    owner_chat_id: Optional[str] = Field(None, max_length=100, description="Telegram chat ID of agent owner")
 
 
 class AgentUpdate(BaseModel):
@@ -51,6 +52,7 @@ class AgentResponse(AgentBase):
 
     id: UUID
     external_id: str
+    owner_chat_id: Optional[str] = None
     status: AgentStatus
     trust_level: TrustLevel
     api_key: str  # Agent's API key for authentication
@@ -70,6 +72,7 @@ class AgentResponse(AgentBase):
             return {
                 "id": data.id,
                 "external_id": data.external_id,
+                "owner_chat_id": data.owner_chat_id,
                 "name": data.name,
                 "description": data.description,
                 "status": data.status,

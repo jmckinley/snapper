@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.dependencies import RedisDep
+from app.dependencies import RedisDep, approval_status_rate_limit, approval_decide_rate_limit
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ class ApprovalRequest(BaseModel):
     # PII vault fields
     pii_context: Optional[dict] = None  # Detection details from PII gate
     vault_tokens: Optional[list] = None  # Vault tokens to resolve on approval
+    owner_chat_id: Optional[str] = None  # Vault entry owner for ownership enforcement
 
 
 class ApprovalStatusResponse(BaseModel):
@@ -71,6 +72,7 @@ async def create_approval_request(
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     pii_context: Optional[dict] = None,
     vault_tokens: Optional[list] = None,
+    owner_chat_id: Optional[str] = None,
 ) -> str:
     """Create a new pending approval request in Redis."""
     approval_id = str(uuid4())
@@ -92,6 +94,7 @@ async def create_approval_request(
         expires_at=expires_at.isoformat(),
         pii_context=pii_context,
         vault_tokens=vault_tokens,
+        owner_chat_id=owner_chat_id,
     )
 
     # Store in Redis with TTL
@@ -134,7 +137,11 @@ async def update_approval_status(
     return True
 
 
-@router.get("/{approval_id}/status", response_model=ApprovalStatusResponse)
+@router.get(
+    "/{approval_id}/status",
+    response_model=ApprovalStatusResponse,
+    dependencies=[Depends(approval_status_rate_limit)],
+)
 async def check_approval_status(
     approval_id: str,
     redis: RedisDep,
@@ -190,8 +197,14 @@ async def check_approval_status(
         resolved_json = await redis.get(resolved_key)
 
         if resolved_json:
-            # One-time retrieval: return and delete
-            resolved_data = json.loads(resolved_json)
+            # One-time retrieval: decrypt, return, and delete
+            try:
+                from app.services.pii_vault import decrypt_value as vault_decrypt
+                decrypted_json = vault_decrypt(resolved_json if isinstance(resolved_json, bytes) else resolved_json.encode("latin-1"))
+                resolved_data = json.loads(decrypted_json)
+            except Exception:
+                # Fallback for unencrypted legacy data
+                resolved_data = json.loads(resolved_json)
             await redis.delete(resolved_key)
         else:
             # Resolve tokens now
@@ -208,16 +221,19 @@ async def check_approval_status(
                         db=db,
                         tokens=approval.vault_tokens,
                         destination_domain=destination_domain,
+                        requester_chat_id=approval.owner_chat_id,
                     )
                     await db.commit()
 
                 if resolved_data:
-                    # Store briefly for one-time retrieval if hook polls again
+                    # Encrypt before storing in Redis for one-time retrieval
+                    from app.services.pii_vault import encrypt_value as vault_encrypt
                     from app.config import get_settings
                     vault_settings = get_settings()
+                    encrypted_resolved = vault_encrypt(json.dumps(resolved_data))
                     await redis.set(
                         resolved_key,
-                        json.dumps(resolved_data),
+                        encrypted_resolved,
                         expire=vault_settings.PII_VAULT_TOKEN_TTL_SECONDS,
                     )
 
@@ -248,7 +264,11 @@ async def check_approval_status(
     )
 
 
-@router.post("/{approval_id}/decide", response_model=ApprovalStatusResponse)
+@router.post(
+    "/{approval_id}/decide",
+    response_model=ApprovalStatusResponse,
+    dependencies=[Depends(approval_decide_rate_limit)],
+)
 async def decide_approval(
     approval_id: str,
     request: ApprovalDecisionRequest,

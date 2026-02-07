@@ -72,6 +72,12 @@ class Agent(Base):
 
     # Agent identification
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    owner_chat_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+        comment="Telegram chat ID of the agent owner for per-user notifications",
+    )
     external_id: Mapped[str] = mapped_column(
         String(255),
         unique=True,
