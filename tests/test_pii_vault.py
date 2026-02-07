@@ -164,6 +164,74 @@ class TestMasking:
         """Empty value should return asterisks."""
         assert mask_value("", PIICategory.CREDIT_CARD) == "****"
 
+    # --- JSON structured data masking ---
+
+    def test_mask_credit_card_json(self):
+        """Credit card JSON should show last 4 and exp date."""
+        import json
+        val = json.dumps({"number": "4111111111111234", "exp": "12/27", "cvc": "123"})
+        result = mask_value(val, PIICategory.CREDIT_CARD)
+        assert result == "****-****-****-1234 exp 12/27"
+
+    def test_mask_name_json(self):
+        """Name JSON should show first letter of each part."""
+        import json
+        val = json.dumps({"first": "John", "last": "Smith"})
+        result = mask_value(val, PIICategory.NAME)
+        assert result == "J*** S***"
+
+    def test_mask_name_json_single_char(self):
+        """Name JSON with single-char name should not mask."""
+        import json
+        val = json.dumps({"first": "J", "last": "S"})
+        result = mask_value(val, PIICategory.NAME)
+        assert result == "J S"
+
+    def test_mask_address_json(self):
+        """Address JSON should show street number, city initial, state, and zip."""
+        import json
+        val = json.dumps({"street": "123 Main St", "city": "Springfield", "state": "IL", "zip": "62704"})
+        result = mask_value(val, PIICategory.ADDRESS)
+        assert "123" in result
+        assert "S***" in result  # city masked
+        assert "IL" in result
+        assert "62704" in result
+
+    def test_mask_address_json_with_apt(self):
+        """Address JSON with apartment in street should mask correctly."""
+        import json
+        val = json.dumps({"street": "456 Oak Ave, Apt 2B", "city": "Denver", "state": "CO", "zip": "80202"})
+        result = mask_value(val, PIICategory.ADDRESS)
+        assert "456" in result
+        assert "CO" in result
+        assert "80202" in result
+
+    def test_mask_bank_account_json(self):
+        """Bank account JSON should show last 4 of each number."""
+        import json
+        val = json.dumps({"routing": "021000021", "account": "1234567890"})
+        result = mask_value(val, PIICategory.BANK_ACCOUNT)
+        assert "Routing:" in result
+        assert "Acct:" in result
+        assert "0021" in result  # last 4 of routing
+        assert "7890" in result  # last 4 of account
+
+    def test_mask_name_plain_string_fallback(self):
+        """Plain string name should still work (backward compat)."""
+        assert mask_value("John Smith", PIICategory.NAME) == "J*** S***"
+
+    def test_mask_address_plain_string_fallback(self):
+        """Plain string address should still work (backward compat)."""
+        result = mask_value("123 Main Street", PIICategory.ADDRESS)
+        assert result.startswith("123")
+        assert "***" in result
+
+    def test_mask_bank_account_plain_string_fallback(self):
+        """Plain account number string should still work (backward compat)."""
+        result = mask_value("123456789012", PIICategory.BANK_ACCOUNT)
+        assert result.endswith("9012")
+        assert "*" in result
+
 
 # ============================================================================
 # Domain matching tests
