@@ -96,6 +96,12 @@ echo -e "\n${BLUE}Running database migrations...${NC}"
 docker compose exec -T app alembic upgrade head 2>/dev/null || true
 echo -e "${GREEN}✓ Migrations applied${NC}"
 
+# ── 5b. Create test database ─────────────────────────────────────
+
+echo -e "\n${BLUE}Creating test database...${NC}"
+docker compose exec -T postgres psql -U snapper -c "CREATE DATABASE snapper_test;" 2>/dev/null || true
+echo -e "${GREEN}✓ Test database ready${NC}"
+
 # ── 6. Open browser ───────────────────────────────────────────────
 
 URL="http://localhost:8000"
