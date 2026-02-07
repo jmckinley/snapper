@@ -233,18 +233,37 @@ def _send_telegram_alert(
         if dest:
             text += f"*Site:* {dest}\n"
 
+        # Show monetary amounts if detected
+        amounts = pii_context.get("amounts", [])
+        if amounts:
+            text += f"*Amount:* {', '.join(amounts)}\n"
+
         # List detected data
+        vault_token_details = pii_context.get("vault_token_details", [])
         vault_tokens = pii_context.get("vault_tokens", [])
         raw_pii = pii_context.get("raw_pii", [])
 
-        if vault_tokens or raw_pii:
+        if vault_token_details or vault_tokens or raw_pii:
             text += "\n*Data being sent:*\n"
-            for token in vault_tokens:
-                text += f"  • Vault Token: `{token[:20]}...`\n"
+            if vault_token_details:
+                for detail in vault_token_details:
+                    label = detail.get("label")
+                    category = detail.get("category", "").replace("_", " ").title()
+                    masked = detail.get("masked_value")
+                    if label and masked:
+                        text += f"  • {category}: `{masked}` ({label})\n"
+                    elif label:
+                        text += f"  • {label}\n"
+                    else:
+                        token = detail.get("token", "unknown")
+                        text += f"  • Vault Token: `{token[:20]}...`\n"
+            elif vault_tokens:
+                for token in vault_tokens:
+                    text += f"  • Vault Token: `{token[:20]}...`\n"
             for pii_item in raw_pii:
                 pii_type = pii_item.get("type", "unknown").replace("_", " ").title()
                 masked = pii_item.get("masked", "****")
-                text += f"  • {pii_type}: {masked}\n"
+                text += f"  • {pii_type}: `{masked}`\n"
     else:
         # Standard alert message
         text = f"{emoji} *{severity.upper()}: {title}*\n\n{message}"

@@ -777,10 +777,27 @@ class RuleEngine:
         if not scan_text:
             return False, rule.action
 
-        # Detect vault tokens
+        # Detect vault tokens and enrich with labels/masked values
         vault_tokens = []
+        vault_token_details = []
         if detect_vault:
             vault_tokens = find_vault_tokens(scan_text)
+            if vault_tokens:
+                from app.services.pii_vault import get_entry_by_token
+                for token in vault_tokens:
+                    try:
+                        entry = await get_entry_by_token(self.db, token)
+                        if entry:
+                            vault_token_details.append({
+                                "token": token,
+                                "label": entry.label,
+                                "category": entry.category.value if hasattr(entry.category, "value") else str(entry.category),
+                                "masked_value": entry.masked_value,
+                            })
+                        else:
+                            vault_token_details.append({"token": token})
+                    except Exception:
+                        vault_token_details.append({"token": token})
 
         # Detect raw PII
         raw_pii_findings = []
@@ -797,9 +814,13 @@ class RuleEngine:
         if not vault_tokens and not raw_pii_findings:
             return False, rule.action
 
+        # Extract monetary amounts from tool_input for display in alerts
+        amounts = self._extract_amounts(tool_input, scan_text)
+
         # Store detection details in context metadata for downstream use
         pii_detected = {
             "vault_tokens": vault_tokens,
+            "vault_token_details": vault_token_details,
             "raw_pii": [
                 {
                     "type": f["type"],
@@ -811,6 +832,7 @@ class RuleEngine:
             "destination_domain": destination_domain,
             "tool_name": context.metadata.get("tool_name"),
             "action": tool_input.get("action") if isinstance(tool_input, dict) else None,
+            "amounts": amounts,
         }
         context.metadata["pii_detected"] = pii_detected
 
@@ -857,6 +879,78 @@ class RuleEngine:
         if len(value) > 4:
             return f"{'*' * (len(value) - 4)}{value[-4:]}"
         return "****"
+
+    @staticmethod
+    def _extract_amounts(tool_input: dict, scan_text: str) -> list[str]:
+        """Extract monetary amounts from tool_input for display in alerts.
+
+        Looks for dollar amounts in:
+        1. Form field values (e.g., "$1,247.50" in a fill action)
+        2. Field labels/names containing price/total/amount keywords
+        3. Raw text patterns like "$123.45"
+        """
+        amounts = []
+        seen = set()
+
+        # Currency pattern: $1,234.56 or 1,234.56 USD or EUR 99.99 etc.
+        currency_re = re.compile(
+            r'(?:[\$\£\€\¥])\s*[\d,]+(?:\.\d{2})?'  # $1,234.56
+            r'|[\d,]+(?:\.\d{2})?\s*(?:USD|EUR|GBP|CAD|AUD|JPY|CHF)\b'  # 1234.56 USD
+            r'|(?:USD|EUR|GBP|CAD|AUD|JPY|CHF)\s*[\d,]+(?:\.\d{2})?',  # USD 1234.56
+            re.IGNORECASE,
+        )
+
+        # Price-related field name keywords
+        price_keywords = {
+            "total", "amount", "price", "cost", "subtotal", "sub_total",
+            "grand_total", "grandtotal", "payment", "charge", "fee", "rate",
+            "balance", "due", "sum",
+        }
+
+        if isinstance(tool_input, dict):
+            # Check form fields (browser fill action)
+            fields = tool_input.get("fields", [])
+            if isinstance(fields, list):
+                for field in fields:
+                    if not isinstance(field, dict):
+                        continue
+                    val = str(field.get("value", ""))
+                    label = str(field.get("label", field.get("name", field.get("aria-label", "")))).lower()
+                    # Check if the field value looks like a currency amount
+                    for m in currency_re.finditer(val):
+                        amt = m.group().strip()
+                        if amt not in seen:
+                            amounts.append(amt)
+                            seen.add(amt)
+                    # Check if a price-keyword field has a numeric value
+                    if any(kw in label for kw in price_keywords):
+                        clean = val.strip().lstrip("$£€¥").replace(",", "")
+                        try:
+                            float(clean)
+                            formatted = val.strip()
+                            if formatted not in seen:
+                                amounts.append(formatted)
+                                seen.add(formatted)
+                        except ValueError:
+                            pass
+
+            # Check other keys that might hold amounts
+            for key in ("amount", "total", "price", "cost"):
+                if key in tool_input:
+                    val = str(tool_input[key]).strip()
+                    if val and val not in seen:
+                        amounts.append(val)
+                        seen.add(val)
+
+        # Fallback: scan the full text for currency patterns
+        if not amounts:
+            for m in currency_re.finditer(scan_text):
+                amt = m.group().strip()
+                if amt not in seen:
+                    amounts.append(amt)
+                    seen.add(amt)
+
+        return amounts
 
 
 async def get_rule_engine(db: AsyncSession, redis: RedisClient) -> RuleEngine:

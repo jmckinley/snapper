@@ -502,3 +502,85 @@ class TestBrowserToolInputScanning:
         pii_types = [p["type"] for p in context.metadata["pii_detected"]["raw_pii"]]
         assert "credit_card" in pii_types
         assert "email" in pii_types
+
+
+# ============================================================================
+# Amount extraction tests
+# ============================================================================
+
+
+class TestAmountExtraction:
+    """Test extraction of monetary amounts from tool_input."""
+
+    def test_dollar_in_form_field(self):
+        """Dollar amount in a form field value should be extracted."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {"fields": [{"ref": "total", "value": "$1,247.50", "label": "Total"}]},
+            "",
+        )
+        assert "$1,247.50" in amounts
+
+    def test_amount_in_named_field(self):
+        """Numeric value in a price-keyword field should be extracted."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {"fields": [{"ref": "5", "value": "299.99", "label": "price"}]},
+            "",
+        )
+        assert "299.99" in amounts
+
+    def test_amount_top_level_key(self):
+        """Amount in a top-level tool_input key should be extracted."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {"total": "$549.00", "action": "pay"},
+            "",
+        )
+        assert "$549.00" in amounts
+
+    def test_currency_in_scan_text(self):
+        """Dollar amount in scan text (fallback) should be extracted."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {},
+            'Booking total is $1,899.00 for 3 nights',
+        )
+        assert "$1,899.00" in amounts
+
+    def test_euro_amount(self):
+        """Euro amounts should be detected."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {"fields": [{"ref": "1", "value": "€450.00"}]},
+            "",
+        )
+        assert "€450.00" in amounts
+
+    def test_usd_suffix(self):
+        """'1234.56 USD' format should be detected."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {},
+            "Total charge: 750.00 USD",
+        )
+        assert len(amounts) >= 1
+        assert any("750" in a for a in amounts)
+
+    def test_no_amount(self):
+        """No amounts in input should return empty list."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {"fields": [{"ref": "1", "value": "John Smith"}]},
+            "just some text",
+        )
+        assert amounts == []
+
+    def test_no_duplicates(self):
+        """Same amount appearing multiple times should only appear once."""
+        from app.services.rule_engine import RuleEngine
+        amounts = RuleEngine._extract_amounts(
+            {"total": "$500.00"},
+            "The total is $500.00",
+        )
+        assert amounts.count("$500.00") == 1
