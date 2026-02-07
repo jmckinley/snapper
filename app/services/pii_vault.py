@@ -2,6 +2,7 @@
 
 import fnmatch
 import hashlib
+import json
 import logging
 import os
 import re
@@ -81,7 +82,16 @@ def mask_value(raw_value: str, category: PIICategory) -> str:
         return "****"
 
     if category == PIICategory.CREDIT_CARD:
-        # Show last 4 digits
+        # Handle JSON card data {"number": "...", "exp": "...", "cvc": "..."}
+        try:
+            card = json.loads(raw_value)
+            if isinstance(card, dict) and "number" in card:
+                last4 = card["number"][-4:]
+                exp = card.get("exp", "**/**")
+                return f"****-****-****-{last4} exp {exp}"
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Fallback: plain card number
         digits = re.sub(r"[^0-9]", "", raw_value)
         if len(digits) >= 4:
             return f"****-****-****-{digits[-4:]}"

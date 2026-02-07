@@ -5,6 +5,7 @@
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
@@ -1011,6 +1012,78 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
 
     pending = json.loads(pending_json)
     raw_value = text.strip()
+
+    # Delete the user's message containing raw PII immediately
+    await _delete_user_message(chat_id, message)
+
+    # Handle multi-step credit card flow
+    step = pending.get("step")
+    if step and pending["category"] == "credit_card":
+        if step == "number":
+            # Validate card number (basic: digits only, 13-19 chars)
+            digits = re.sub(r"[\s\-]", "", raw_value)
+            if not digits.isdigit() or len(digits) < 13 or len(digits) > 19:
+                await _send_message(
+                    chat_id=chat_id,
+                    text="That doesn't look like a valid card number. Please enter 13-19 digits.\n_Type /cancel to abort._",
+                )
+                return
+
+            pending["card_number"] = digits
+            pending["step"] = "exp"
+            await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"Step 2/3: Reply with the *expiration date*\n"
+                    "(e.g., `12/27` or `12/2027`)\n\n"
+                    "_Type /cancel to abort._"
+                ),
+            )
+            return
+
+        elif step == "exp":
+            # Validate exp date (MM/YY or MM/YYYY)
+            exp_clean = raw_value.strip().replace("-", "/")
+            if not re.match(r"^\d{1,2}/\d{2,4}$", exp_clean):
+                await _send_message(
+                    chat_id=chat_id,
+                    text="Please enter expiration as `MM/YY` or `MM/YYYY`.\n_Type /cancel to abort._",
+                )
+                return
+
+            pending["card_exp"] = exp_clean
+            pending["step"] = "cvc"
+            await redis_client.set(f"vault_pending:{user_chat_id}", json.dumps(pending), expire=300)
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"Step 3/3: Reply with the *CVC/CVV*\n"
+                    "(3 or 4 digit security code on your card)\n\n"
+                    "_Type /cancel to abort._"
+                ),
+            )
+            return
+
+        elif step == "cvc":
+            # Validate CVC (3-4 digits)
+            cvc_clean = raw_value.strip()
+            if not re.match(r"^\d{3,4}$", cvc_clean):
+                await _send_message(
+                    chat_id=chat_id,
+                    text="CVC should be 3 or 4 digits.\n_Type /cancel to abort._",
+                )
+                return
+
+            # Combine all card data into a single JSON value
+            card_data = json.dumps({
+                "number": pending["card_number"],
+                "exp": pending["card_exp"],
+                "cvc": cvc_clean,
+            })
+            raw_value = card_data
+            # Fall through to create the entry below
+
     category = PIICategory(pending["category"])
 
     async with async_session_factory() as db:
@@ -1038,16 +1111,6 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
 
     await redis_client.delete(f"vault_pending:{user_chat_id}")
 
-    # Try to delete the user's message containing the raw PII
-    try:
-        msg_id = message.get("message_id")
-        if msg_id:
-            delete_url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/deleteMessage"
-            async with httpx.AsyncClient() as client:
-                await client.post(delete_url, json={"chat_id": chat_id, "message_id": msg_id}, timeout=10.0)
-    except Exception as e:
-        logger.warning(f"Could not delete PII message: {e}")
-
     await _send_message(
         chat_id=chat_id,
         text=(
@@ -1060,6 +1123,18 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
             "Snapper will intercept and require approval before it's submitted."
         ),
     )
+
+
+async def _delete_user_message(chat_id: int, message: dict):
+    """Try to delete a user's message containing sensitive data."""
+    try:
+        msg_id = message.get("message_id")
+        if msg_id:
+            delete_url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/deleteMessage"
+            async with httpx.AsyncClient() as client:
+                await client.post(delete_url, json={"chat_id": chat_id, "message_id": msg_id}, timeout=10.0)
+    except Exception as e:
+        logger.warning(f"Could not delete PII message: {e}")
 
 
 async def _handle_pii_command(chat_id: int, text: str, message: dict):
@@ -1193,7 +1268,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
 
             lines.append("\n*Commands:*")
             lines.append("`/vault add <label> <category>`")
-            lines.append("  Categories: credit\\_card, name, address, phone, email, ssn, passport, bank\\_account, custom")
+            lines.append("  Categories: cc, name, address, phone, email, ssn, passport, bank\\_account, custom")
             lines.append("`/vault list` - List your entries")
             lines.append("`/vault delete <token>` - Remove entry")
             lines.append("`/vault domains <token> add <domain>`")
@@ -1253,47 +1328,86 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
         category_str = tokens[-1].lower()
         label = " ".join(tokens[:-1])
 
+        # Category aliases for user-friendly input
+        category_aliases = {
+            "cc": "credit_card",
+            "card": "credit_card",
+            "creditcard": "credit_card",
+            "credit": "credit_card",
+            "addr": "address",
+            "tel": "phone",
+            "telephone": "phone",
+            "mobile": "phone",
+            "mail": "email",
+            "social": "ssn",
+            "bank": "bank_account",
+            "account": "bank_account",
+        }
+        category_str = category_aliases.get(category_str, category_str)
+
         # Validate category
         valid_categories = [c.value for c in PIICategory]
         if category_str not in valid_categories:
+            friendly = "credit\\_card (or cc), name, address, phone, email, ssn, passport, bank\\_account, custom"
             await _send_message(
                 chat_id=chat_id,
-                text=f"Unknown category: `{category_str}`\n\nValid: {', '.join(valid_categories)}",
+                text=f"Unknown category: `{category_str}`\n\nValid: {friendly}",
             )
             return
 
         # Store pending add in Redis so we can receive the value in next message
         from app.redis_client import redis_client
-        pending_data = json.dumps({
-            "label": label,
-            "category": category_str,
-            "owner_chat_id": user_chat_id,
-            "owner_name": username,
-        })
-        await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
 
-        category_hints = {
-            "credit_card": "card number (e.g., 4111111111111234)",
-            "name": "full name",
-            "address": "full address",
-            "phone": "phone number",
-            "email": "email address",
-            "ssn": "SSN",
-            "passport": "passport number",
-            "bank_account": "account number",
-            "custom": "value",
-        }
-        hint = category_hints.get(category_str, "value")
+        if category_str == "credit_card":
+            # Multi-step: collect card number, exp date, CVC
+            pending_data = json.dumps({
+                "label": label,
+                "category": category_str,
+                "owner_chat_id": user_chat_id,
+                "owner_name": username,
+                "step": "number",  # number → exp → cvc → done
+            })
+            await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"🔐 *Adding credit card:* {label}\n\n"
+                    "Step 1/3: Reply with the *card number*\n"
+                    "(e.g., `4111111111111234`)\n\n"
+                    "⚠️ Your message will be deleted after processing.\n"
+                    "_Type /cancel to abort._"
+                ),
+            )
+        else:
+            pending_data = json.dumps({
+                "label": label,
+                "category": category_str,
+                "owner_chat_id": user_chat_id,
+                "owner_name": username,
+            })
+            await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
 
-        await _send_message(
-            chat_id=chat_id,
-            text=(
-                f"🔐 *Adding vault entry:* {label} (`{category_str}`)\n\n"
-                f"Please reply with your {hint}.\n\n"
-                "⚠️ The value will be encrypted immediately and the message should be deleted.\n"
-                "_Type /cancel to abort._"
-            ),
-        )
+            category_hints = {
+                "name": "full name",
+                "address": "full address",
+                "phone": "phone number",
+                "email": "email address",
+                "ssn": "SSN",
+                "passport": "passport number",
+                "bank_account": "account number",
+                "custom": "value",
+            }
+            hint = category_hints.get(category_str, "value")
+
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"🔐 *Adding vault entry:* {label} (`{category_str}`)\n\n"
+                    f"Please reply with your {hint}.\n\n"
+                    "⚠️ The value will be encrypted immediately and the message should be deleted.\n"
+                    "_Type /cancel to abort._"
+                ),
+            )
         return
 
     elif subcommand == "delete":
