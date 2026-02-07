@@ -1053,7 +1053,7 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
         text=(
             f"🔐 *Vault entry created!*\n\n"
             f"*Label:* {entry.label}\n"
-            f"*Category:* {pending['category']}\n"
+            f"*Category:* `{pending['category']}`\n"
             f"*Masked:* `{entry.masked_value}`\n"
             f"*Token:* `{entry.token}`\n\n"
             "Give this token to your AI agent instead of the real value.\n"
@@ -1179,7 +1179,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                 lines = ["🔐 *Your PII Vault*\n"]
                 for e in entries[:15]:
                     cat = e.category.value if hasattr(e.category, "value") else e.category
-                    lines.append(f"  {cat}: *{e.label}*")
+                    lines.append(f"  `{cat}`: *{e.label}*")
                     lines.append(f"    `{e.token}`")
                     lines.append(f"    Masked: `{e.masked_value}`")
                     if e.allowed_domains:
@@ -1449,7 +1449,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                 text=(
                     f"🔐 *Vault entry created!*\n\n"
                     f"*Label:* {entry.label}\n"
-                    f"*Category:* {pending['category']}\n"
+                    f"*Category:* `{pending['category']}`\n"
                     f"*Masked:* {entry.masked_value}\n"
                     f"*Token:* `{entry.token}`\n\n"
                     "Give this token to your AI agent instead of the real value.\n"
