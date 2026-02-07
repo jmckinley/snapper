@@ -259,6 +259,11 @@ class RuleEngine:
         self, rule: Rule, context: EvaluationContext
     ) -> tuple[bool, RuleAction]:
         """Evaluate command allowlist rule."""
+        # Check request_types parameter for non-command request types (e.g., browser_action)
+        allowed_types = rule.parameters.get("request_types", [])
+        if allowed_types and context.request_type in allowed_types:
+            return True, rule.action
+
         if context.request_type != "command" or not context.command:
             return False, rule.action
 
