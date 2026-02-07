@@ -193,7 +193,7 @@ else
             read -r -p "Install missing prerequisites? [y/N] " INSTALL_CONFIRM
             echo ""
 
-            if [[ "${INSTALL_CONFIRM,,}" != "y" ]]; then
+            if [[ "$INSTALL_CONFIRM" != "y" && "$INSTALL_CONFIRM" != "Y" ]]; then
                 err "Cannot continue without prerequisites. Install them manually and re-run."
                 exit 1
             fi
@@ -242,7 +242,7 @@ else
         if [[ "$IS_UBUNTU_DEBIAN" == "yes" ]]; then
             read -r -p "Install UFW? [y/N] " UFW_CONFIRM
             echo ""
-            if [[ "${UFW_CONFIRM,,}" == "y" ]]; then
+            if [[ "$UFW_CONFIRM" == "y" || "$UFW_CONFIRM" == "Y" ]]; then
                 log "Installing UFW..."
                 apt-get update -qq
                 apt-get install -y -qq ufw
