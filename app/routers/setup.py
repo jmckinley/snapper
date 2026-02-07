@@ -272,13 +272,47 @@ async def quick_register_agent(
         )
 
     # Check if already registered
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(Agent).where(Agent.external_id == external_id)
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Agent with external_id '{external_id}' already registered",
+    existing_agent = existing_result.scalar_one_or_none()
+    if existing_agent:
+        if existing_agent.deleted_at is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Agent with external_id '{external_id}' already registered",
+            )
+        # Re-use the soft-deleted row: reactivate it
+        existing_agent.deleted_at = None
+        existing_agent.is_deleted = False
+        existing_agent.name = name
+        existing_agent.description = description
+        existing_agent.agent_type = (
+            request.agent_type if request.agent_type != "custom" else None
+        )
+        existing_agent.status = AgentStatus.ACTIVE
+        existing_agent.trust_level = trust_level
+        existing_agent.api_key = api_key
+        existing_agent.agent_metadata = {"api_key_hash": _hash_api_key(api_key)}
+
+        rules_applied = await _apply_security_profile(
+            db, existing_agent.id, request.security_profile
+        )
+        await db.commit()
+
+        config_snippet = _generate_config_snippet(
+            agent_id=str(existing_agent.id),
+            api_key=api_key,
+            rules_manager_url="http://localhost:8000",
+            agent_type=request.agent_type,
+        )
+        return QuickRegisterResponse(
+            agent_id=str(existing_agent.id),
+            name=name,
+            external_id=external_id,
+            api_key=api_key,
+            rules_applied=rules_applied,
+            config_snippet=config_snippet,
         )
 
     # Determine trust level based on profile
