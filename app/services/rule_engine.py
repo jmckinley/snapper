@@ -729,6 +729,7 @@ class RuleEngine:
         ])
         exempt_domains = params.get("exempt_domains", [])
         require_vault_for_approval = params.get("require_vault_for_approval", False)
+        pii_mode = params.get("pii_mode", "protected")  # "protected" or "auto"
 
         # Check domain exemption
         tool_input = context.metadata.get("tool_input", {})
@@ -811,6 +812,10 @@ class RuleEngine:
         # If raw PII found and require_vault_for_approval, deny outright
         if raw_pii_findings and require_vault_for_approval:
             return True, RuleAction.DENY
+
+        # Auto mode: allow but with pii_detected metadata for inline resolution
+        if pii_mode == "auto" and vault_tokens and not raw_pii_findings:
+            return True, RuleAction.ALLOW
 
         # Otherwise, require approval
         return True, RuleAction.REQUIRE_APPROVAL

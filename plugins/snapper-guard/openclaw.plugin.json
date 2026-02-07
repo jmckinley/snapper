@@ -1,0 +1,31 @@
+{
+  "id": "snapper-guard",
+  "name": "Snapper Guard",
+  "description": "Intercepts browser tool calls for PII vault token resolution and security policy enforcement via Snapper",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "snapperUrl": {
+        "type": "string",
+        "description": "Snapper API base URL (e.g., http://127.0.0.1:8000)"
+      },
+      "agentId": {
+        "type": "string",
+        "description": "Agent ID registered in Snapper"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Snapper API key (snp_... format)"
+      },
+      "approvalTimeoutMs": {
+        "type": "number",
+        "description": "Max time to wait for human approval (ms)"
+      },
+      "pollIntervalMs": {
+        "type": "number",
+        "description": "Interval between approval status polls (ms)"
+      }
+    }
+  }
+}

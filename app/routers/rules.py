@@ -1382,6 +1382,7 @@ class EvaluateResponse(BaseModel):
     matched_rule_name: Optional[str] = None
     approval_request_id: Optional[str] = None  # For require_approval decisions
     approval_timeout_seconds: Optional[int] = None  # How long until approval expires
+    resolved_data: Optional[Dict[str, Any]] = None  # Inline-resolved vault tokens (auto mode)
 
 
 @router.post("/evaluate", response_model=EvaluateResponse)
@@ -1625,5 +1626,27 @@ async def evaluate_request(
     if result.decision.value == "require_approval" and 'approval_request_id' in dir():
         response.approval_request_id = approval_request_id
         response.approval_timeout_seconds = 300  # 5 minutes
+
+    # Inline token resolution for auto mode (allow + pii_detected with vault tokens)
+    if result.decision.value == "allow":
+        pii_detected = context.metadata.get("pii_detected")
+        if pii_detected and pii_detected.get("vault_tokens"):
+            try:
+                from app.services.pii_vault import resolve_tokens
+
+                vault_tokens = pii_detected["vault_tokens"]
+                destination_domain = pii_detected.get("destination_domain")
+
+                resolved = await resolve_tokens(
+                    db=db,
+                    tokens=vault_tokens,
+                    destination_domain=destination_domain,
+                )
+
+                if resolved:
+                    response.resolved_data = resolved
+                    logger.info(f"Auto-resolved {len(resolved)} vault tokens for agent {agent.name}")
+            except Exception as e:
+                logger.error(f"Failed to resolve vault tokens: {e}")
 
     return response

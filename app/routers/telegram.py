@@ -33,6 +33,7 @@ BOT_COMMANDS = [
     {"command": "test", "description": "Test rule enforcement"},
     {"command": "purge", "description": "Purge PII from agent data"},
     {"command": "vault", "description": "Manage PII vault entries"},
+    {"command": "pii", "description": "Toggle PII protection mode"},
     {"command": "block", "description": "Emergency block ALL actions"},
     {"command": "unblock", "description": "Resume normal operation"},
 ]
@@ -295,6 +296,10 @@ async def telegram_webhook(request: Request):
                 "/vault - Manage encrypted PII storage\n"
                 "/vault add <label> <category> - Add entry\n"
                 "/vault list - View your entries\n\n"
+                "*PII Protection:*\n"
+                "/pii - Show current PII gate mode\n"
+                "/pii protected - Require approval for PII\n"
+                "/pii auto - Auto-resolve vault tokens\n\n"
                 "*Data:*\n"
                 "/purge - 🗑️ Purge PII from agent data\n\n"
                 "*Emergency:*\n"
@@ -367,6 +372,8 @@ async def telegram_webhook(request: Request):
         await _handle_test_command(chat_id, text, message)
     elif text.startswith("/vault"):
         await _handle_vault_command(chat_id, text, message)
+    elif text.startswith("/pii"):
+        await _handle_pii_command(chat_id, text, message)
     elif text.startswith("/purge"):
         await _handle_purge_command(chat_id, text, message)
 
@@ -1053,6 +1060,91 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
             "Snapper will intercept and require approval before it's submitted."
         ),
     )
+
+
+async def _handle_pii_command(chat_id: int, text: str, message: dict):
+    """Handle /pii command to toggle PII gate mode between protected and auto."""
+    username = message.get("from", {}).get("username", "Unknown")
+    parts = text.strip().split(None, 1)
+    subcommand = parts[1].strip().lower() if len(parts) > 1 else ""
+
+    async with async_session_factory() as db:
+        # Find the PII gate rule
+        stmt = select(Rule).where(
+            Rule.rule_type == RuleType.PII_GATE,
+            Rule.is_active == True,
+        )
+        result = await db.execute(stmt)
+        pii_rule = result.scalar_one_or_none()
+
+        if not pii_rule:
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    "No active PII gate rule found.\n\n"
+                    "Create one first via the dashboard or API using "
+                    "the `pii-gate-protection` template."
+                ),
+            )
+            return
+
+        current_mode = pii_rule.parameters.get("pii_mode", "protected")
+
+        if not subcommand:
+            # Show current mode
+            mode_emoji = "🛡️" if current_mode == "protected" else "⚡"
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"*PII Gate Mode:* {mode_emoji} `{current_mode}`\n\n"
+                    f"🛡️ *protected* — Vault tokens require human approval\n"
+                    f"⚡ *auto* — Vault tokens resolved automatically\n\n"
+                    f"Use `/pii protected` or `/pii auto` to change."
+                ),
+            )
+            return
+
+        if subcommand not in ("protected", "auto"):
+            await _send_message(
+                chat_id=chat_id,
+                text="Usage: `/pii protected` or `/pii auto`",
+            )
+            return
+
+        if subcommand == current_mode:
+            mode_emoji = "🛡️" if current_mode == "protected" else "⚡"
+            await _send_message(
+                chat_id=chat_id,
+                text=f"PII gate is already in {mode_emoji} `{current_mode}` mode.",
+            )
+            return
+
+        # Update the rule parameters
+        new_params = dict(pii_rule.parameters)
+        new_params["pii_mode"] = subcommand
+        pii_rule.parameters = new_params
+
+        # Log the change
+        audit_log = AuditLog(
+            action=AuditAction.RULE_UPDATED,
+            severity=AuditSeverity.WARNING,
+            message=f"PII gate mode changed to '{subcommand}' via Telegram by {username}",
+            old_value={"pii_mode": current_mode},
+            new_value={"pii_mode": subcommand},
+        )
+        db.add(audit_log)
+        await db.commit()
+
+        mode_emoji = "🛡️" if subcommand == "protected" else "⚡"
+        if subcommand == "protected":
+            desc = "Vault tokens will require human approval before being resolved."
+        else:
+            desc = "Vault tokens will be resolved automatically without approval."
+
+        await _send_message(
+            chat_id=chat_id,
+            text=f"{mode_emoji} PII gate mode set to *{subcommand}*\n\n{desc}",
+        )
 
 
 async def _handle_vault_command(chat_id: int, text: str, message: dict):

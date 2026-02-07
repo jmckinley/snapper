@@ -121,6 +121,12 @@ REASON=$(echo "$RESPONSE" | jq -r '.reason // "Security policy"')
 
 case "$DECISION" in
     allow)
+        # Output resolved vault data if present (auto mode token resolution)
+        RESOLVED_DATA=$(echo "$RESPONSE" | jq -c '.resolved_data // null')
+        if [ "$RESOLVED_DATA" != "null" ] && [ -n "$RESOLVED_DATA" ]; then
+            echo "🔓 Auto-resolved vault tokens" >&2
+            echo "$RESOLVED_DATA"
+        fi
         exit 0
         ;;
 
