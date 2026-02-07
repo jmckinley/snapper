@@ -165,61 +165,94 @@ if ! command -v caddy &>/dev/null; then
     NEED_CADDY=true
 fi
 
-if [[ ${#MISSING_BASIC[@]} -eq 0 && "$NEED_DOCKER" == "false" && "$NEED_CADDY" == "false" ]]; then
+NEED_UFW=false
+if ! command -v ufw &>/dev/null; then
+    NEED_UFW=true
+fi
+
+if [[ ${#MISSING_BASIC[@]} -eq 0 && "$NEED_DOCKER" == "false" && "$NEED_CADDY" == "false" && "$NEED_UFW" == "false" ]]; then
     ok "All prerequisites found"
 else
-    echo ""
-    warn "Missing prerequisites detected:"
-    if [[ ${#MISSING_BASIC[@]} -gt 0 ]]; then
-        warn "  - Basic tools: ${MISSING_BASIC[*]}"
-    fi
-    if [[ "$NEED_DOCKER" == "true" ]]; then
-        warn "  - Docker Engine + Compose plugin"
-    fi
-    if [[ "$NEED_CADDY" == "true" ]]; then
-        warn "  - Caddy web server"
-    fi
-    echo ""
-
-    if [[ "$IS_UBUNTU_DEBIAN" == "yes" ]]; then
-        echo -e "This script can install them automatically from official repositories."
-        read -r -p "Install missing prerequisites? [y/N] " INSTALL_CONFIRM
+    # ── Required prerequisites ────────────────────────────────────────
+    if [[ ${#MISSING_BASIC[@]} -gt 0 || "$NEED_DOCKER" == "true" || "$NEED_CADDY" == "true" ]]; then
         echo ""
-
-        if [[ "${INSTALL_CONFIRM,,}" != "y" ]]; then
-            err "Cannot continue without prerequisites. Install them manually and re-run."
-            exit 1
-        fi
-
-        # Install in order: basic tools first (curl needed by Docker/Caddy installers)
+        warn "Missing required prerequisites:"
         if [[ ${#MISSING_BASIC[@]} -gt 0 ]]; then
-            install_basic_tools "${MISSING_BASIC[@]}"
+            warn "  - Basic tools: ${MISSING_BASIC[*]}"
         fi
         if [[ "$NEED_DOCKER" == "true" ]]; then
-            install_docker
+            warn "  - Docker Engine + Compose plugin"
         fi
         if [[ "$NEED_CADDY" == "true" ]]; then
-            install_caddy
+            warn "  - Caddy web server"
         fi
+        echo ""
 
-        # Final verification
-        for cmd in git docker curl openssl caddy; do
-            if ! command -v "$cmd" &>/dev/null; then
-                err "Installation completed but '$cmd' still not found"
+        if [[ "$IS_UBUNTU_DEBIAN" == "yes" ]]; then
+            echo -e "This script can install them automatically from official repositories."
+            read -r -p "Install missing prerequisites? [y/N] " INSTALL_CONFIRM
+            echo ""
+
+            if [[ "${INSTALL_CONFIRM,,}" != "y" ]]; then
+                err "Cannot continue without prerequisites. Install them manually and re-run."
                 exit 1
             fi
-        done
-        if ! docker compose version &>/dev/null; then
-            err "Installation completed but 'docker compose' still not working"
+
+            # Install in order: basic tools first (curl needed by Docker/Caddy installers)
+            if [[ ${#MISSING_BASIC[@]} -gt 0 ]]; then
+                install_basic_tools "${MISSING_BASIC[@]}"
+            fi
+            if [[ "$NEED_DOCKER" == "true" ]]; then
+                install_docker
+            fi
+            if [[ "$NEED_CADDY" == "true" ]]; then
+                install_caddy
+            fi
+
+            # Final verification
+            for cmd in git docker curl openssl caddy; do
+                if ! command -v "$cmd" &>/dev/null; then
+                    err "Installation completed but '$cmd' still not found"
+                    exit 1
+                fi
+            done
+            if ! docker compose version &>/dev/null; then
+                err "Installation completed but 'docker compose' still not working"
+                exit 1
+            fi
+            ok "All required prerequisites installed and verified"
+        else
+            err "Automatic install is only supported on Ubuntu/Debian."
+            err "Please install the missing tools manually:"
+            err "  Docker: https://docs.docker.com/engine/install/"
+            err "  Caddy:  https://caddyserver.com/docs/install"
             exit 1
         fi
-        ok "All prerequisites installed and verified"
     else
-        err "Automatic install is only supported on Ubuntu/Debian."
-        err "Please install the missing tools manually:"
-        err "  Docker: https://docs.docker.com/engine/install/"
-        err "  Caddy:  https://caddyserver.com/docs/install"
-        exit 1
+        ok "All required prerequisites found"
+    fi
+
+    # ── Optional: UFW firewall ────────────────────────────────────────
+    if [[ "$NEED_UFW" == "true" ]]; then
+        echo ""
+        warn "UFW firewall is not installed."
+        warn "It's recommended for VPS deployments but not strictly required"
+        warn "(you may have iptables, nftables, or a provider-level firewall)."
+
+        if [[ "$IS_UBUNTU_DEBIAN" == "yes" ]]; then
+            read -r -p "Install UFW? [y/N] " UFW_CONFIRM
+            echo ""
+            if [[ "${UFW_CONFIRM,,}" == "y" ]]; then
+                log "Installing UFW..."
+                apt-get update -qq
+                apt-get install -y -qq ufw
+                ok "UFW installed"
+            else
+                warn "Skipping UFW — make sure you have another firewall in place."
+            fi
+        else
+            warn "Install a firewall manually if your provider doesn't offer one."
+        fi
     fi
 fi
 
