@@ -1,8 +1,12 @@
 """Setup and onboarding API endpoints."""
 
+import json
 import os
+import platform
+import shutil
 import socket
 import subprocess
+from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
@@ -12,7 +16,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.agents import Agent, AgentStatus, TrustLevel
+from app.models.agents import Agent, AgentStatus, TrustLevel, generate_api_key
 from app.models.rules import Rule
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
@@ -57,7 +61,25 @@ class QuickRegisterRequest(BaseModel):
     host: str = "localhost"
     port: int = 8080
     name: Optional[str] = None
+    agent_type: str = "custom"  # openclaw, claude-code, custom
     security_profile: str = "recommended"  # strict, recommended, permissive
+
+
+class InstallConfigRequest(BaseModel):
+    """Request to install agent config to disk."""
+
+    agent_type: str  # openclaw, claude-code
+    agent_id: str
+    api_key: str
+    snapper_url: str = "http://localhost:8000"
+
+
+class InstallConfigResponse(BaseModel):
+    """Response from config installation attempt."""
+
+    installed: bool
+    message: str
+    config_snippet: str
 
 
 class QuickRegisterResponse(BaseModel):
@@ -229,11 +251,25 @@ async def quick_register_agent(
 
     Creates an agent with appropriate security rules based on the selected profile.
     """
-    # Generate identifiers
     agent_id = uuid4()
-    external_id = f"snapper-{request.host}-{request.port}"
-    api_key = f"oc_{uuid4().hex}"
-    name = request.name or f"AI agent @ {request.host}:{request.port}"
+    api_key = generate_api_key()
+    hostname = platform.node() or "local"
+
+    # Set identifiers based on agent type
+    if request.agent_type == "openclaw":
+        external_id = "openclaw-main"
+        name = request.name or "OpenClaw"
+        description = "OpenClaw AI assistant"
+    elif request.agent_type == "claude-code":
+        external_id = f"claude-code-{hostname}"
+        name = request.name or f"Claude Code on {hostname}"
+        description = f"Claude Code agent on {hostname}"
+    else:
+        external_id = f"snapper-{request.host}-{request.port}"
+        name = request.name or f"AI agent @ {request.host}:{request.port}"
+        description = (
+            f"Auto-registered AI agent instance at {request.host}:{request.port}"
+        )
 
     # Check if already registered
     existing = await db.execute(
@@ -258,7 +294,8 @@ async def quick_register_agent(
         id=agent_id,
         name=name,
         external_id=external_id,
-        description=f"Auto-registered AI agent instance at {request.host}:{request.port}",
+        description=description,
+        agent_type=request.agent_type if request.agent_type != "custom" else None,
         status=AgentStatus.ACTIVE,
         trust_level=trust_level,
         allowed_origins=[
@@ -266,7 +303,7 @@ async def quick_register_agent(
             f"https://{request.host}:{request.port}",
         ],
         require_localhost_only=request.host in ["localhost", "127.0.0.1"],
-        metadata={"api_key_hash": _hash_api_key(api_key)},
+        agent_metadata={"api_key_hash": _hash_api_key(api_key)},
     )
     db.add(agent)
 
@@ -282,6 +319,7 @@ async def quick_register_agent(
         agent_id=str(agent_id),
         api_key=api_key,
         rules_manager_url="http://localhost:8000",
+        agent_type=request.agent_type,
     )
 
     return QuickRegisterResponse(
@@ -409,6 +447,33 @@ async def mark_setup_complete(db: AsyncSession = Depends(get_db)):
     return {"status": "complete", "message": "Setup completed successfully"}
 
 
+@router.post("/install-config", response_model=InstallConfigResponse)
+async def install_config(request: InstallConfigRequest):
+    """Attempt to write agent config directly to disk.
+
+    For known agent types (OpenClaw, Claude Code), writes config files
+    to the expected locations. Falls back to a copyable snippet if the
+    write fails (missing directory, permissions, etc.).
+    """
+    snippet = _generate_config_snippet(
+        agent_id=request.agent_id,
+        api_key=request.api_key,
+        rules_manager_url=request.snapper_url,
+        agent_type=request.agent_type,
+    )
+
+    if request.agent_type == "openclaw":
+        return _install_openclaw_config(request, snippet)
+    elif request.agent_type == "claude-code":
+        return _install_claude_code_config(request, snippet)
+    else:
+        return InstallConfigResponse(
+            installed=False,
+            message="Manual configuration required for custom agents.",
+            config_snippet=snippet,
+        )
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -457,16 +522,227 @@ def _hash_api_key(api_key: str) -> str:
 
 
 def _generate_config_snippet(
-    agent_id: str, api_key: str, rules_manager_url: str
+    agent_id: str,
+    api_key: str,
+    rules_manager_url: str,
+    agent_type: str = "custom",
 ) -> str:
-    """Generate a quick config snippet for display."""
-    return f"""# Add to .snapper/config.yaml
-rules_manager:
-  enabled: true
-  url: {rules_manager_url}
-  agent_id: {agent_id}
-  api_key: {api_key}
-"""
+    """Generate an agent-specific config snippet for display."""
+    if agent_type == "openclaw":
+        return json.dumps(
+            {
+                "plugins": {
+                    "entries": {
+                        "snapper-guard": {
+                            "enabled": True,
+                            "config": {
+                                "snapperUrl": rules_manager_url,
+                                "agentId": agent_id,
+                                "apiKey": api_key,
+                            },
+                        }
+                    }
+                }
+            },
+            indent=2,
+        )
+    elif agent_type == "claude-code":
+        hook_path = "~/.claude/hooks/snapper_pre_tool_use.sh"
+        settings_block = json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": hook_path,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+            indent=2,
+        )
+        return (
+            f"# 1. Add to ~/.claude/.env.snapper (sourced by hook)\n"
+            f"SNAPPER_URL={rules_manager_url}\n"
+            f"SNAPPER_AGENT_ID={agent_id}\n"
+            f"SNAPPER_API_KEY={api_key}\n"
+            f"\n"
+            f"# 2. Merge into ~/.claude/settings.json\n"
+            f"{settings_block}"
+        )
+    else:
+        return (
+            f"# Add to your agent's config\n"
+            f"rules_manager:\n"
+            f"  enabled: true\n"
+            f"  url: {rules_manager_url}\n"
+            f"  agent_id: {agent_id}\n"
+            f"  api_key: {api_key}\n"
+        )
+
+
+def _install_openclaw_config(
+    request: InstallConfigRequest, snippet: str
+) -> InstallConfigResponse:
+    """Write Snapper config into OpenClaw's openclaw.json and copy plugin files."""
+    oc_dir = Path.home() / ".openclaw"
+    config_path = oc_dir / "openclaw.json"
+
+    if not oc_dir.is_dir():
+        return InstallConfigResponse(
+            installed=False,
+            message=f"{oc_dir} not found. Merge this into your openclaw.json:",
+            config_snippet=snippet,
+        )
+
+    try:
+        # Read existing config or start fresh
+        if config_path.exists():
+            config = json.loads(config_path.read_text())
+        else:
+            config = {}
+
+        # Merge plugin config
+        plugins = config.setdefault("plugins", {})
+        entries = plugins.setdefault("entries", {})
+        sg = entries.setdefault("snapper-guard", {})
+        sg["enabled"] = True
+        sg_config = sg.setdefault("config", {})
+        sg_config["snapperUrl"] = request.snapper_url
+        sg_config["agentId"] = request.agent_id
+        sg_config["apiKey"] = request.api_key
+
+        config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        # Copy plugin files if missing
+        ext_dir = oc_dir / "extensions" / "snapper-guard"
+        plugin_src = Path(__file__).resolve().parent.parent.parent / "plugins" / "snapper-guard"
+        if plugin_src.is_dir() and not ext_dir.exists():
+            shutil.copytree(plugin_src, ext_dir)
+
+        return InstallConfigResponse(
+            installed=True,
+            message=f"Config written to {config_path}. Restart OpenClaw to activate.",
+            config_snippet=snippet,
+        )
+    except Exception as exc:
+        return InstallConfigResponse(
+            installed=False,
+            message=f"Could not write config: {exc}",
+            config_snippet=snippet,
+        )
+
+
+def _install_claude_code_config(
+    request: InstallConfigRequest, snippet: str
+) -> InstallConfigResponse:
+    """Write Snapper hook + env + settings for Claude Code."""
+    claude_dir = Path.home() / ".claude"
+
+    if not claude_dir.is_dir():
+        return InstallConfigResponse(
+            installed=False,
+            message=f"{claude_dir} not found. Create it or install Claude Code first.",
+            config_snippet=snippet,
+        )
+
+    try:
+        # 1. Write env file
+        env_path = claude_dir / ".env.snapper"
+        env_path.write_text(
+            f"SNAPPER_URL={request.snapper_url}\n"
+            f"SNAPPER_AGENT_ID={request.agent_id}\n"
+            f"SNAPPER_API_KEY={request.api_key}\n"
+        )
+
+        # 2. Copy hook script
+        hooks_dir = claude_dir / "hooks"
+        hooks_dir.mkdir(exist_ok=True)
+        hook_dest = hooks_dir / "snapper_pre_tool_use.sh"
+        hook_src = (
+            Path(__file__).resolve().parent.parent.parent
+            / "scripts"
+            / "claude-code-hook.sh"
+        )
+        if hook_src.exists():
+            shutil.copy2(hook_src, hook_dest)
+            hook_dest.chmod(0o755)
+        else:
+            return InstallConfigResponse(
+                installed=False,
+                message=f"Hook source not found at {hook_src}.",
+                config_snippet=snippet,
+            )
+
+        # Patch hook to source env file instead of using hardcoded defaults
+        hook_text = hook_dest.read_text()
+        env_source_line = (
+            '# Source Snapper env\n'
+            '[ -f ~/.claude/.env.snapper ] && set -a && . ~/.claude/.env.snapper && set +a\n\n'
+        )
+        if ".env.snapper" not in hook_text:
+            hook_text = hook_text.replace(
+                "#!/bin/bash\n",
+                f"#!/bin/bash\n{env_source_line}",
+                1,
+            )
+            hook_dest.write_text(hook_text)
+
+        # 3. Merge PreToolUse hook into settings.json
+        settings_path = claude_dir / "settings.json"
+        if settings_path.exists():
+            settings = json.loads(settings_path.read_text())
+        else:
+            settings = {}
+
+        hooks = settings.setdefault("hooks", {})
+        pre_tool_use = hooks.setdefault("PreToolUse", [])
+
+        hook_command = str(hook_dest)
+        # Check if our hook is already registered
+        already_registered = any(
+            any(
+                h.get("command", "").endswith("snapper_pre_tool_use.sh")
+                for h in entry.get("hooks", [])
+            )
+            for entry in pre_tool_use
+        )
+
+        if not already_registered:
+            pre_tool_use.append(
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": hook_command,
+                        }
+                    ],
+                }
+            )
+
+        settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
+        return InstallConfigResponse(
+            installed=True,
+            message=(
+                f"Hook installed to {hook_dest}, env written to {env_path}, "
+                f"settings updated at {settings_path}. "
+                f"Restart Claude Code to activate."
+            ),
+            config_snippet=snippet,
+        )
+    except Exception as exc:
+        return InstallConfigResponse(
+            installed=False,
+            message=f"Could not write config: {exc}",
+            config_snippet=snippet,
+        )
 
 
 async def _apply_security_profile(

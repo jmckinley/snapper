@@ -113,16 +113,55 @@
     <div id="step2" class="step-content hidden">
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="p-6 sm:p-8">
-                <h2 class="text-xl font-bold text-gray-900 mb-6">Register Your Agent</h2>
+                <h2 class="text-xl font-bold text-gray-900 mb-2">Register Your Agent</h2>
+                <p class="text-gray-600 mb-6">What type of AI agent are you protecting?</p>
 
                 <div id="quick-register-form" class="space-y-4">
-                    <div>
+                    <!-- Agent Type Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" id="agent-type-cards">
+                        <button type="button" onclick="selectAgentType('openclaw')" data-type="openclaw"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-orange-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">OpenClaw</span>
+                            </div>
+                            <p class="text-xs text-gray-500">AI assistant with browser, shell, and tool capabilities</p>
+                        </button>
+
+                        <button type="button" onclick="selectAgentType('claude-code')" data-type="claude-code"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-purple-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">Claude Code</span>
+                            </div>
+                            <p class="text-xs text-gray-500">Anthropic's CLI coding agent</p>
+                        </button>
+
+                        <button type="button" onclick="selectAgentType('custom')" data-type="custom"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">Custom Agent</span>
+                            </div>
+                            <p class="text-xs text-gray-500">Other agent -- enter host and port manually</p>
+                        </button>
+                    </div>
+
+                    <!-- Agent Name (shown for all types) -->
+                    <div id="agent-name-field" class="hidden">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
                         <input type="text" id="agent-name" placeholder="My Agent"
                                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <!-- Host/Port (shown only for custom) -->
+                    <div id="custom-host-port" class="hidden grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Host</label>
                             <input type="text" id="agent-host" value="localhost"
@@ -143,7 +182,7 @@
                     <button onclick="prevStep(1)" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
                         Back
                     </button>
-                    <button onclick="registerAgent()" id="register-btn" class="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium">
+                    <button onclick="registerAgent()" id="register-btn" class="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                         Register Agent
                     </button>
                 </div>
@@ -362,8 +401,12 @@
                     <code id="display-agent-id" class="block text-sm bg-white px-3 py-2 rounded border font-mono break-all"></code>
                 </div>
 
-                <div class="mb-6">
-                    <h3 class="text-sm font-medium text-gray-700 mb-2">Add this to your agent configuration:</h3>
+                <!-- Install result banner -->
+                <div id="install-result" class="hidden mb-6"></div>
+
+                <!-- Config snippet (shown as fallback or for custom agents) -->
+                <div id="config-snippet-section" class="mb-6">
+                    <h3 id="config-snippet-heading" class="text-sm font-medium text-gray-700 mb-2">Add this to your agent configuration:</h3>
                     <div class="relative">
                         <pre id="config-snippet" class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto"></pre>
                         <button onclick="copyConfig()" class="absolute top-2 right-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded">
@@ -372,14 +415,14 @@
                     </div>
                 </div>
 
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div id="next-steps" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                     <div class="flex">
                         <svg class="h-5 w-5 text-blue-400 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
                         </svg>
                         <div class="text-sm text-blue-700">
                             <p class="font-medium">Next Steps:</p>
-                            <ol class="mt-1 list-decimal list-inside space-y-1">
+                            <ol id="next-steps-list" class="mt-1 list-decimal list-inside space-y-1">
                                 <li>Add the config above to your agent setup</li>
                                 <li>Restart your agent to apply changes</li>
                                 <li>Test by running a command through your agent</li>
@@ -404,9 +447,49 @@
     let discoveredInstances = [];
     let registeredAgentId = '';
     let registeredApiKey = '';
+    let selectedAgentType = '';
     let selectedProfile = 'recommended';
 
-    // Profile selection
+    // ---- Agent type selection ----
+
+    function selectAgentType(type) {
+        selectedAgentType = type;
+
+        // Highlight selected card
+        document.querySelectorAll('.agent-type-card').forEach(card => {
+            card.classList.remove('border-primary-500', 'bg-primary-50');
+            card.classList.add('border-gray-200');
+        });
+        const selected = document.querySelector(`.agent-type-card[data-type="${type}"]`);
+        selected.classList.remove('border-gray-200');
+        selected.classList.add('border-primary-500', 'bg-primary-50');
+
+        // Show/hide fields
+        const nameField = document.getElementById('agent-name-field');
+        const hostPort = document.getElementById('custom-host-port');
+        const registerBtn = document.getElementById('register-btn');
+
+        nameField.classList.remove('hidden');
+        registerBtn.disabled = false;
+
+        if (type === 'custom') {
+            hostPort.classList.remove('hidden');
+            document.getElementById('agent-name').placeholder = 'My Agent';
+            document.getElementById('agent-name').value = '';
+        } else {
+            hostPort.classList.add('hidden');
+            if (type === 'openclaw') {
+                document.getElementById('agent-name').placeholder = 'OpenClaw';
+                document.getElementById('agent-name').value = '';
+            } else {
+                document.getElementById('agent-name').placeholder = 'Claude Code';
+                document.getElementById('agent-name').value = '';
+            }
+        }
+    }
+
+    // ---- Profile selection ----
+
     document.querySelectorAll('.profile-option').forEach(option => {
         option.addEventListener('click', function() {
             const profile = this.dataset.profile;
@@ -422,6 +505,8 @@
             this.querySelector('input[type="radio"]').checked = true;
         });
     });
+
+    // ---- Discovery ----
 
     async function discoverAgents() {
         const btn = document.getElementById('discover-btn');
@@ -460,12 +545,6 @@
                         </button>
                     </div>
                 `).join('');
-
-                // Pre-fill form with first instance
-                if (discoveredInstances.length > 0) {
-                    document.getElementById('agent-host').value = discoveredInstances[0].host;
-                    document.getElementById('agent-port').value = discoveredInstances[0].port;
-                }
             } else {
                 empty.classList.remove('hidden');
             }
@@ -478,18 +557,21 @@
 
     function useInstance(index) {
         const inst = discoveredInstances[index];
+        selectAgentType('custom');
         document.getElementById('agent-host').value = inst.host;
         document.getElementById('agent-port').value = inst.port;
         document.getElementById('agent-name').value = `Agent @ ${inst.host}:${inst.port}`;
         nextStep(2);
     }
 
+    // ---- Registration ----
+
     async function registerAgent() {
         const btn = document.getElementById('register-btn');
         const errorDiv = document.getElementById('register-error');
         const successDiv = document.getElementById('register-success');
 
-        const name = document.getElementById('agent-name').value || `Agent`;
+        const name = document.getElementById('agent-name').value || '';
         const host = document.getElementById('agent-host').value || 'localhost';
         const port = parseInt(document.getElementById('agent-port').value) || 8080;
 
@@ -503,9 +585,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: name,
+                    name: name || undefined,
                     host: host,
                     port: port,
+                    agent_type: selectedAgentType,
                     security_profile: selectedProfile
                 })
             });
@@ -519,7 +602,7 @@
             registeredAgentId = data.agent_id;
             registeredApiKey = data.api_key;
 
-            successDiv.textContent = `Agent registered successfully!`;
+            successDiv.textContent = `Agent "${data.name}" registered successfully!`;
             successDiv.classList.remove('hidden');
 
             // Move to step 3
@@ -534,30 +617,22 @@
         }
     }
 
+    // ---- Security profile ----
+
     async function applyProfile() {
         const btn = document.getElementById('apply-btn');
         btn.disabled = true;
         btn.textContent = 'Applying...';
 
         // Profile was already applied during registration
-        // Just move to next step and show config
-
-        document.getElementById('display-agent-id').textContent = registeredAgentId;
-        document.getElementById('config-snippet').textContent = `# Add to .claude/settings.json
-rules_manager:
-  enabled: true
-  url: http://localhost:8000
-  agent_id: ${registeredAgentId}
-  api_key: ${registeredApiKey}
-  enforce_rules: true`;
-
         nextStep(4);
 
         btn.disabled = false;
         btn.textContent = 'Apply Security Rules';
     }
 
-    // Notification channel toggle
+    // ---- Notifications ----
+
     document.querySelectorAll('.notification-option').forEach(option => {
         option.addEventListener('click', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
@@ -594,7 +669,6 @@ rules_manager:
         const telegramEnabled = document.getElementById('notify-telegram').checked;
         const slackEnabled = document.getElementById('notify-slack').checked;
 
-        // Build env config for display
         let envLines = [];
 
         if (telegramEnabled) {
@@ -603,22 +677,17 @@ rules_manager:
             if (token) envLines.push(`TELEGRAM_BOT_TOKEN=${token}`);
             if (chatId) envLines.push(`TELEGRAM_CHAT_ID=${chatId}`);
 
-            // Test Telegram if configured
             if (token && chatId) {
                 try {
-                    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             chat_id: chatId,
-                            text: '🐢 *Snapper Connected!*\n\nYou will receive security alerts here.',
+                            text: '\ud83d\udc22 *Snapper Connected!*\n\nYou will receive security alerts here.',
                             parse_mode: 'Markdown'
                         })
                     });
-                    const data = await response.json();
-                    if (!data.ok) {
-                        console.warn('Telegram test failed:', data.description);
-                    }
                 } catch (e) {
                     console.warn('Telegram test error:', e);
                 }
@@ -630,38 +699,130 @@ rules_manager:
             if (webhook) envLines.push(`SLACK_WEBHOOK_URL=${webhook}`);
         }
 
-        // Store for display in final step
         window.notificationEnvConfig = envLines.join('\n');
-
         showFinalStep();
     }
 
-    function showFinalStep() {
+    // ---- Final step with auto-install ----
+
+    async function showFinalStep() {
         document.getElementById('display-agent-id').textContent = registeredAgentId;
 
-        let configText = `# Add to your agent's config
-rules_manager:
-  enabled: true
-  url: http://localhost:8000
-  agent_id: ${registeredAgentId}
-  api_key: ${registeredApiKey}
-  enforce_rules: true`;
+        const installResult = document.getElementById('install-result');
+        const snippetSection = document.getElementById('config-snippet-section');
+        const snippetHeading = document.getElementById('config-snippet-heading');
+        const nextStepsList = document.getElementById('next-steps-list');
 
-        if (window.notificationEnvConfig) {
-            configText += `\n\n# Add to Snapper's .env file
-${window.notificationEnvConfig}`;
+        installResult.classList.add('hidden');
+        snippetSection.classList.remove('hidden');
+
+        // Try auto-install for known agent types
+        if (selectedAgentType === 'openclaw' || selectedAgentType === 'claude-code') {
+            try {
+                const response = await fetch('/api/v1/setup/install-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        agent_type: selectedAgentType,
+                        agent_id: registeredAgentId,
+                        api_key: registeredApiKey,
+                        snapper_url: window.location.origin
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    installResult.classList.remove('hidden');
+
+                    if (data.installed) {
+                        // Success banner
+                        installResult.innerHTML = `
+                            <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
+                                <div class="flex">
+                                    <svg class="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    <div class="text-sm text-green-800">
+                                        <p class="font-medium">Config installed automatically</p>
+                                        <p class="mt-1">${escapeHtml(data.message)}</p>
+                                    </div>
+                                </div>
+                            </div>`;
+
+                        // Hide the snippet since it was auto-installed
+                        snippetSection.classList.add('hidden');
+
+                        // Update next steps
+                        const agentName = selectedAgentType === 'openclaw' ? 'OpenClaw' : 'Claude Code';
+                        nextStepsList.innerHTML = `
+                            <li>Restart ${agentName} to activate the integration</li>
+                            <li>Test by running a command through your agent</li>`;
+                    } else {
+                        // Fallback: show snippet with message
+                        installResult.innerHTML = `
+                            <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div class="flex">
+                                    <svg class="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                    </svg>
+                                    <div class="text-sm text-yellow-800">
+                                        <p class="font-medium">Manual setup required</p>
+                                        <p class="mt-1">${escapeHtml(data.message)}</p>
+                                    </div>
+                                </div>
+                            </div>`;
+
+                        snippetHeading.textContent = selectedAgentType === 'openclaw'
+                            ? 'Merge this into ~/.openclaw/openclaw.json:'
+                            : 'Add this configuration manually:';
+
+                        document.getElementById('config-snippet').textContent = data.config_snippet;
+                    }
+                } else {
+                    // API error, show generic snippet
+                    document.getElementById('config-snippet').textContent = buildFallbackSnippet();
+                }
+            } catch (e) {
+                console.error('Install config failed:', e);
+                document.getElementById('config-snippet').textContent = buildFallbackSnippet();
+            }
+        } else {
+            // Custom agent: show generic snippet
+            let configText = buildFallbackSnippet();
+
+            if (window.notificationEnvConfig) {
+                configText += `\n\n# Add to Snapper's .env file\n${window.notificationEnvConfig}`;
+            }
+
+            document.getElementById('config-snippet').textContent = configText;
         }
 
-        document.getElementById('config-snippet').textContent = configText;
         nextStep(5);
     }
 
+    function buildFallbackSnippet() {
+        return `# Add to your agent's config
+rules_manager:
+  enabled: true
+  url: ${window.location.origin}
+  agent_id: ${registeredAgentId}
+  api_key: ${registeredApiKey}
+  enforce_rules: true`;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ---- Navigation ----
+
     function nextStep(step) {
-        // Hide all steps
         document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
         document.getElementById(`step${step}`).classList.remove('hidden');
 
-        // Update progress indicators
         for (let i = 1; i <= 5; i++) {
             const indicator = document.getElementById(`step${i}-indicator`);
             const progressBar = document.getElementById(`progress-${i-1}-${i}`);
