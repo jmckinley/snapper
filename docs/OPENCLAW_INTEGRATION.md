@@ -127,6 +127,78 @@ docker compose logs openclaw-gateway | grep snapper-guard
 
 ---
 
+## Gateway Listener (Alternative)
+
+The gateway listener connects directly to OpenClaw's WebSocket gateway and intercepts `exec.approval.requested` events in real-time. It evaluates commands against Snapper rules and auto-approves, auto-denies, or leaves them pending for manual Telegram approval.
+
+**When to use:** You want real-time command interception without modifying OpenClaw's shell or installing a plugin. The listener runs as a standalone systemd service alongside your OpenClaw stack.
+
+```
+OpenClaw Gateway (WebSocket :18789)
+        │
+        ▼ exec.approval.requested
+snapper-approval-listener.js
+        │
+        ▼
+Snapper API (/api/v1/rules/evaluate)
+        │
+        ├── allow → auto-resolve (allow-once)
+        ├── deny → auto-resolve (deny)
+        └── require_approval → leave pending for Telegram
+```
+
+### 1. Copy Listener Files
+
+```bash
+cp -r /opt/snapper/scripts/snapper-gate ~/.openclaw/hooks/snapper-gate
+cd ~/.openclaw/hooks/snapper-gate
+```
+
+### 2. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Fill in the required values:
+
+| Variable | Required | Source |
+|----------|----------|--------|
+| `OPENCLAW_GATEWAY_TOKEN` | Yes | `grep OPENCLAW_GATEWAY_TOKEN /opt/openclaw/.env` |
+| `SNAPPER_API_KEY` | Yes | From Snapper agent registration (`snp_xxx`) |
+| `SNAPPER_URL` | Yes | Default: `http://127.0.0.1:8000` |
+| `SNAPPER_AGENT_ID` | No | Default: `openclaw-main` |
+| `OPENCLAW_GATEWAY_URL` | No | Default: `ws://127.0.0.1:18789` |
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Install Systemd Service
+
+```bash
+cp snapper-listener.service /etc/systemd/system/
+# Edit WorkingDirectory if you used a different path:
+#   sed -i 's|/root/.openclaw/hooks/snapper-gate|/your/path|g' /etc/systemd/system/snapper-listener.service
+systemctl daemon-reload
+systemctl enable --now snapper-listener
+```
+
+### 5. Verify
+
+```bash
+journalctl -u snapper-listener -f
+# Should show: "Gateway connect acknowledged" and then event handling
+```
+
+### Auth Failure Protection
+
+If the gateway token is missing or wrong, the listener uses exponential backoff (5s → 10s → 20s → 40s → 60s) and exits after 5 consecutive auth failures with clear fix instructions. The `start.sh` wrapper also validates required env vars before launching Node, so a missing token won't even start the reconnect loop.
+
+---
+
 ## Shell Hook Setup (Legacy)
 
 The shell hook method intercepts shell commands only. Use this if you don't need browser/PII features.

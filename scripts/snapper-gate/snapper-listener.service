@@ -1,0 +1,15 @@
+[Unit]
+Description=Snapper Approval Listener for OpenClaw
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/hooks/snapper-gate
+ExecStart=/root/.openclaw/hooks/snapper-gate/start.sh
+Restart=on-failure
+RestartSec=10
+Environment=NODE_OPTIONS=--no-warnings
+
+[Install]
+WantedBy=multi-user.target

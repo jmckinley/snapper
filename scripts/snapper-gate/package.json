@@ -1,0 +1,13 @@
+{
+  "name": "snapper-gate",
+  "version": "1.0.0",
+  "description": "Snapper approval listener for OpenClaw gateway",
+  "main": "snapper-approval-listener.js",
+  "scripts": {
+    "start": "./start.sh"
+  },
+  "dependencies": {
+    "ws": "^8.19.0"
+  },
+  "license": "ISC"
+}
