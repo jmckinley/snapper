@@ -236,7 +236,7 @@ def _send_telegram_alert(
         # Show monetary amounts if detected
         amounts = pii_context.get("amounts", [])
         if amounts:
-            text += f"*Amount:* {', '.join(amounts)}\n"
+            text += f"*Amount:* `{', '.join(amounts)}`\n"
 
         # List detected data
         vault_token_details = pii_context.get("vault_token_details", [])
