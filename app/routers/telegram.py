@@ -1054,7 +1054,7 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
             f"🔐 *Vault entry created!*\n\n"
             f"*Label:* {entry.label}\n"
             f"*Category:* {pending['category']}\n"
-            f"*Masked:* {entry.masked_value}\n"
+            f"*Masked:* `{entry.masked_value}`\n"
             f"*Token:* `{entry.token}`\n\n"
             "Give this token to your AI agent instead of the real value.\n"
             "Snapper will intercept and require approval before it's submitted."
@@ -1181,7 +1181,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                     cat = e.category.value if hasattr(e.category, "value") else e.category
                     lines.append(f"  {cat}: *{e.label}*")
                     lines.append(f"    `{e.token}`")
-                    lines.append(f"    Masked: {e.masked_value}")
+                    lines.append(f"    Masked: `{e.masked_value}`")
                     if e.allowed_domains:
                         lines.append(f"    Domains: {', '.join(e.allowed_domains)}")
                     if e.use_count > 0:
@@ -1288,7 +1288,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
         await _send_message(
             chat_id=chat_id,
             text=(
-                f"🔐 *Adding vault entry:* {label} ({category_str})\n\n"
+                f"🔐 *Adding vault entry:* {label} (`{category_str}`)\n\n"
                 f"Please reply with your {hint}.\n\n"
                 "⚠️ The value will be encrypted immediately and the message should be deleted.\n"
                 "_Type /cancel to abort._"
