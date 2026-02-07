@@ -33,21 +33,12 @@ Works on macOS, Linux, or Windows with Docker Desktop.
 ```bash
 git clone https://github.com/jmckinley/snapper.git
 cd snapper
-docker compose up -d
+./setup.sh
 ```
 
-Open http://localhost:8000 — the setup wizard walks you through:
+The setup script validates prerequisites, starts containers, runs migrations, and opens the dashboard in your browser. The setup wizard walks you through agent registration, security profile selection, and Telegram setup.
 
-1. **Register your OpenClaw agent** (~1 min)
-2. **Pick a security profile** — Recommended, Strict, or Permissive
-3. **Set up Telegram notifications** (optional)
-4. **Get your config snippet** — paste into OpenClaw's config
-
-Rules start in **learning mode** — logs without blocking so you can tune before enforcing.
-
-To customize settings, copy `.env.example` to `.env` and edit — defaults work out of the box.
-
-For the full walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
+For manual setup or production deployment, see [Getting Started](docs/GETTING_STARTED.md).
 
 ### Production (Ubuntu VPS)
 

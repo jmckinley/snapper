@@ -43,7 +43,7 @@ AI Agent wants to run: rm -rf /important-data
 
 ### First Steps
 
-1. **Install Snapper** — See [INSTALL.md](INSTALL.md) for Docker setup
+1. **Install Snapper** — See [Getting Started](GETTING_STARTED.md) for Docker setup
 2. **Set up Telegram** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for bot creation
 3. **Connect your agent** — See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md)
 4. **Configure rules** — Use templates or create custom rules (this guide covers both)
