@@ -149,8 +149,18 @@ def mask_value(raw_value: str, category: PIICategory) -> str:
 
 
 def domain_matches(domain: str, pattern: str) -> bool:
-    """Check if a domain matches a whitelist pattern (supports wildcards)."""
-    return fnmatch.fnmatch(domain.lower(), pattern.lower())
+    """Check if a domain matches a whitelist pattern (supports wildcards).
+
+    *.example.com matches both sub.example.com and example.com itself.
+    """
+    domain = domain.lower()
+    pattern = pattern.lower()
+    if fnmatch.fnmatch(domain, pattern):
+        return True
+    # *.example.com should also match example.com (bare domain)
+    if pattern.startswith("*.") and domain == pattern[2:]:
+        return True
+    return False
 
 
 async def create_entry(
