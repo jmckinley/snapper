@@ -610,6 +610,7 @@ class RuleEngine:
                     break
             if not path_allowed:
                 return True, RuleAction.DENY
+            return True, RuleAction.ALLOW
 
         return False, rule.action
 

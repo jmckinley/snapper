@@ -137,6 +137,27 @@ services:
     profiles:
       - monitoring
 
+  # Test runner (includes Playwright for E2E tests)
+  test-runner:
+    build:
+      context: .
+      target: test
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://snapper:snapper@postgres:5432/snapper}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      - DENY_BY_DEFAULT=${DENY_BY_DEFAULT:-true}
+      - E2E_BASE_URL=http://app:8000
+    volumes:
+      - .:/app
+    depends_on:
+      app:
+        condition: service_healthy
+    profiles:
+      - test
+
   # Snapper Sandbox - Isolated AI agent environment
   snapper-sandbox:
     build:

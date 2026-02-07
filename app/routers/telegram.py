@@ -1,4 +1,7 @@
-"""Telegram bot webhook for approval handling and rule testing."""
+"""
+@module telegram
+@description Telegram bot webhook for approval handling and rule testing.
+"""
 
 import json
 import logging
@@ -948,8 +951,8 @@ async def _get_rule_info(rule_id_partial: str) -> str:
         f"📋 *Rule Details*\n",
         f"*Name:* {rule.name}",
         f"*ID:* `{rule_id[:8]}...`",
-        f"*Type:* {rule.rule_type.value}",
-        f"*Action:* {emoji} {rule.action.value.upper()}",
+        f"*Type:* {rule.rule_type.value if hasattr(rule.rule_type, 'value') else rule.rule_type}",
+        f"*Action:* {emoji} {(rule.action.value if hasattr(rule.action, 'value') else rule.action).upper()}",
         f"*Priority:* {rule.priority}",
         f"*Scope:* {scope}",
         f"*Active:* {'Yes' if rule.is_active else 'No'}",

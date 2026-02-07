@@ -56,6 +56,17 @@ USER snapper
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
+# Test stage (includes Playwright browsers for E2E tests)
+FROM base as test
+
+USER root
+RUN pip install --no-cache-dir watchfiles && \
+    playwright install --with-deps chromium
+USER snapper
+
+CMD ["pytest", "tests/", "-v"]
+
+
 # Production stage
 FROM base as production
 
