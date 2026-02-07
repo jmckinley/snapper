@@ -730,7 +730,9 @@ class RuleEngine:
         detect_vault = params.get("detect_vault_tokens", True)
         detect_raw = params.get("detect_raw_pii", True)
         pii_categories = params.get("pii_categories", [
-            "credit_card", "email", "phone_us_ca", "street_address", "name_with_title"
+            "credit_card", "email", "phone_us_ca", "street_address", "name_with_title",
+            "api_key_openai", "api_key_anthropic", "api_key_aws", "api_key_github",
+            "api_key_google", "api_key_stripe", "api_key_slack", "generic_secret",
         ])
         exempt_domains = params.get("exempt_domains", [])
         require_vault_for_approval = params.get("require_vault_for_approval", False)

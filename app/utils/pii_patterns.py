@@ -85,10 +85,53 @@ PII_PATTERNS = {
     # IPv4 address
     "ipv4": r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
 
+    # === API Keys & Secrets ===
+
+    # OpenAI API key: sk-... (51+ chars) or sk-proj-... (variable)
+    "api_key_openai": r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b",
+
+    # Anthropic API key: sk-ant-... (40+ chars)
+    "api_key_anthropic": r"\bsk-ant-[A-Za-z0-9_-]{20,}\b",
+
+    # AWS Access Key ID: AKIA... (20 chars)
+    "api_key_aws": r"\bAKIA[0-9A-Z]{16}\b",
+
+    # AWS Secret Access Key (40 chars base64-ish, after known prefixes)
+    "api_key_aws_secret": r"(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY|SecretAccessKey)[\"'=:>\s]+[A-Za-z0-9/+=]{40}\b",
+
+    # GitHub personal access token: ghp_, gho_, ghu_, ghs_, ghr_ (40+ chars)
+    "api_key_github": r"\bg(?:hp|ho|hu|hs|hr)_[A-Za-z0-9_]{36,}\b",
+
+    # Google API key
+    "api_key_google": r"\bAIza[0-9A-Za-z_-]{35}\b",
+
+    # Stripe API key: sk_live_ or sk_test_ or pk_live_ or pk_test_
+    "api_key_stripe": r"\b[sp]k_(?:live|test)_[A-Za-z0-9]{24,}\b",
+
+    # Slack Bot/User/Webhook tokens
+    "api_key_slack": r"\bxox[bpras]-[A-Za-z0-9-]{10,}\b",
+
+    # Twilio API key: SK... (32 hex)
+    "api_key_twilio": r"\bSK[0-9a-fA-F]{32}\b",
+
+    # SendGrid API key: SG. prefix
+    "api_key_sendgrid": r"\bSG\.[A-Za-z0-9_-]{22,}\.[A-Za-z0-9_-]{20,}\b",
+
+    # Generic Bearer token in JSON/headers
+    "bearer_token": r"(?:Bearer|bearer|Authorization|authorization)[\"':\s]+Bearer\s+[A-Za-z0-9._~+/=-]{20,}\b",
+
+    # Generic high-entropy secret (key=... or token=... with 32+ hex/base64 chars)
+    "generic_secret": r"(?:api_key|apikey|api_secret|secret_key|access_token|auth_token|private_key)[\"'=:>\s]+[A-Za-z0-9/+=_-]{32,}\b",
+
     # === Names (aggressive - may have false positives) ===
 
     # Full name with title: Mr. John Smith, Dr. Jane Doe
     "name_with_title": r"\b(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sir|Dame)\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b",
+}
+
+# API key pattern names for easy referencing
+API_KEY_PATTERNS = {
+    k: PII_PATTERNS[k] for k in PII_PATTERNS if k.startswith("api_key_")
 }
 
 # Shorter list for quick/default redaction (most reliable patterns)
@@ -102,6 +145,15 @@ PII_PATTERNS_DEFAULT = {
     "phone_us_ca": PII_PATTERNS["phone_us_ca"],
     "phone_uk": PII_PATTERNS["phone_uk"],
     "phone_au": PII_PATTERNS["phone_au"],
+    # API keys — high-signal, low false-positive
+    "api_key_openai": PII_PATTERNS["api_key_openai"],
+    "api_key_anthropic": PII_PATTERNS["api_key_anthropic"],
+    "api_key_aws": PII_PATTERNS["api_key_aws"],
+    "api_key_github": PII_PATTERNS["api_key_github"],
+    "api_key_google": PII_PATTERNS["api_key_google"],
+    "api_key_stripe": PII_PATTERNS["api_key_stripe"],
+    "api_key_slack": PII_PATTERNS["api_key_slack"],
+    "generic_secret": PII_PATTERNS["generic_secret"],
 }
 
 # Full list for thorough redaction
