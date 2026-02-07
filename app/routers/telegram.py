@@ -247,6 +247,49 @@ async def telegram_webhook(request: Request):
                     )
                 return {"ok": True, "action": "cancel_purge"}
 
+            elif action == "vault_delall":
+                from app.services import pii_vault as vault_service
+
+                if data == "cancel":
+                    await _answer_callback(callback_id=callback_id, text="Cancelled")
+                    if cb_chat_id and cb_message_id:
+                        await _edit_message(
+                            chat_id=cb_chat_id,
+                            message_id=cb_message_id,
+                            text="✅ Vault delete cancelled. No entries were deleted.",
+                        )
+                    return {"ok": True, "action": "cancel_vault_delall"}
+
+                # data is the owner_chat_id
+                owner_chat_id = data
+                async with async_session_factory() as db:
+                    entries = await vault_service.list_entries(db=db, owner_chat_id=owner_chat_id)
+                    deleted_count = 0
+                    for entry in entries:
+                        success = await vault_service.delete_entry(
+                            db=db, entry_id=str(entry.id), requester_chat_id=owner_chat_id,
+                        )
+                        if success:
+                            deleted_count += 1
+
+                    audit_log = AuditLog(
+                        action=AuditAction.PII_VAULT_DELETED,
+                        severity=AuditSeverity.WARNING,
+                        message=f"All vault entries ({deleted_count}) deleted via Telegram by {username}",
+                        details={"owner_chat_id": owner_chat_id, "deleted_by": username, "count": deleted_count},
+                    )
+                    db.add(audit_log)
+                    await db.commit()
+
+                await _answer_callback(callback_id=callback_id, text=f"Deleted {deleted_count} entries")
+                if cb_chat_id and cb_message_id:
+                    await _edit_message(
+                        chat_id=cb_chat_id,
+                        message_id=cb_message_id,
+                        text=f"🗑️ *Deleted {deleted_count} vault entries.*",
+                    )
+                return {"ok": True, "action": "vault_delall", "count": deleted_count}
+
     # Handle messages
     message = data.get("message", {})
     text = message.get("text", "")
@@ -1557,21 +1600,44 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
         return
 
     elif subcommand == "delete":
-        # /vault delete {{SNAPPER_VAULT:a7f3b2c1}}
+        # /vault delete * — delete all entries (with confirm)
+        # /vault delete {{SNAPPER_VAULT:a7f3b2c1}} — delete specific entry
         if len(parts) < 3:
             await _send_message(
                 chat_id=chat_id,
-                text="Usage: `/vault delete <token>`\n\nExample: `/vault delete {{SNAPPER_VAULT:a7f3b2c1}}`",
+                text="Usage: `/vault delete <token>` or `/vault delete *`",
             )
             return
 
-        token = parts[2].strip()
+        target = parts[2].strip()
 
-        # Find entry by token
+        if target == "*":
+            # Count entries first
+            async with async_session_factory() as db:
+                entries = await vault_service.list_entries(db=db, owner_chat_id=user_chat_id)
+                if not entries:
+                    await _send_message(chat_id=chat_id, text="You have no vault entries to delete.")
+                    return
+
+                await _send_message_with_keyboard(
+                    chat_id=chat_id,
+                    text=f"⚠️ This will delete *all {len(entries)}* vault entries. Are you sure?",
+                    reply_markup={
+                        "inline_keyboard": [
+                            [
+                                {"text": "🗑️ DELETE ALL", "callback_data": f"vault_delall:{user_chat_id}"},
+                                {"text": "❌ Cancel", "callback_data": "vault_delall:cancel"},
+                            ]
+                        ]
+                    },
+                )
+            return
+
+        # Single token delete
         async with async_session_factory() as db:
-            entry = await vault_service.get_entry_by_token(db=db, token=token)
+            entry = await vault_service.get_entry_by_token(db=db, token=target)
             if not entry:
-                await _send_message(chat_id=chat_id, text=f"Entry not found for token: `{token}`")
+                await _send_message(chat_id=chat_id, text=f"Entry not found for token: `{target}`")
                 return
 
             success = await vault_service.delete_entry(
@@ -1581,7 +1647,6 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
             )
 
             if success:
-                # Audit log
                 audit_log = AuditLog(
                     action=AuditAction.PII_VAULT_DELETED,
                     severity=AuditSeverity.WARNING,
