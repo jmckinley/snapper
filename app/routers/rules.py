@@ -801,6 +801,65 @@ RULE_TEMPLATES = {
         "tags": ["openclaw", "approval", "install", "sensitive"],
         "is_recommended": True,
     },
+    # =========================================================================
+    # PII PROTECTION TEMPLATES
+    # =========================================================================
+    "pii-gate-protection": {
+        "id": "pii-gate-protection",
+        "name": "PII Gate Protection",
+        "description": "Detect and require approval when PII or vault tokens are about to be submitted via browser or other tools",
+        "category": "pii",
+        "severity": "critical",
+        "rule_type": RuleType.PII_GATE,
+        "default_action": RuleAction.REQUIRE_APPROVAL,
+        "default_parameters": {
+            "scan_tool_input": True,
+            "scan_command": True,
+            "detect_vault_tokens": True,
+            "detect_raw_pii": True,
+            "pii_categories": [
+                "credit_card",
+                "email",
+                "phone_us_ca",
+                "street_address",
+                "name_with_title",
+            ],
+            "exempt_domains": [],
+            "require_vault_for_approval": False,
+        },
+        "default_priority": 200,
+        "tags": ["pii", "vault", "browser", "approval"],
+        "is_recommended": True,
+    },
+    "pii-gate-strict": {
+        "id": "pii-gate-strict",
+        "name": "PII Gate (Strict - Vault Required)",
+        "description": "Deny raw PII submissions outright - only vault tokens are allowed (with approval)",
+        "category": "pii",
+        "severity": "critical",
+        "rule_type": RuleType.PII_GATE,
+        "default_action": RuleAction.REQUIRE_APPROVAL,
+        "default_parameters": {
+            "scan_tool_input": True,
+            "scan_command": True,
+            "detect_vault_tokens": True,
+            "detect_raw_pii": True,
+            "pii_categories": [
+                "credit_card",
+                "us_ssn",
+                "email",
+                "phone_us_ca",
+                "street_address",
+                "name_with_title",
+                "passport",
+            ],
+            "exempt_domains": [],
+            "require_vault_for_approval": True,
+        },
+        "default_priority": 200,
+        "tags": ["pii", "vault", "strict", "browser"],
+        "is_recommended": False,
+    },
 }
 
 
@@ -1506,6 +1565,11 @@ async def evaluate_request(
             elif result.decision.value == "require_approval":
                 # Create approval request in Redis
                 from app.routers.approvals import create_approval_request
+
+                # Check if PII was detected (from PII gate evaluator)
+                pii_context = context.metadata.get("pii_detected")
+                vault_tokens = pii_context.get("vault_tokens", []) if pii_context else []
+
                 approval_request_id = await create_approval_request(
                     redis=redis,
                     agent_id=request.agent_id,
@@ -1516,23 +1580,35 @@ async def evaluate_request(
                     command=request.command,
                     file_path=request.file_path,
                     tool_name=request.tool_name,
+                    pii_context=pii_context,
+                    vault_tokens=vault_tokens if vault_tokens else None,
                 )
 
                 if notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
+                    alert_metadata = {
+                        "agent_id": request.agent_id,
+                        "agent_name": agent.name,
+                        "command": request.command,
+                        "file_path": request.file_path,
+                        "tool_name": request.tool_name,
+                        "rule_name": matched_rule_name,
+                        "request_id": approval_request_id,
+                        "requires_approval": True,
+                    }
+
+                    # Add PII context for rich Telegram notification
+                    if pii_context:
+                        alert_metadata["pii_context"] = pii_context
+
+                    title = f"Approval Required: {matched_rule_name or 'Security Rule'}"
+                    if pii_context:
+                        title = f"PII Submission Detected: {matched_rule_name or 'PII Gate'}"
+
                     send_alert.delay(
-                        title=f"Approval Required: {matched_rule_name or 'Security Rule'}",
+                        title=title,
                         message=f"Agent `{agent.name}` wants to: `{action_desc}`\n\nRule: {result.reason}",
                         severity="warning",
-                        metadata={
-                            "agent_id": request.agent_id,
-                            "agent_name": agent.name,
-                            "command": request.command,
-                            "file_path": request.file_path,
-                            "tool_name": request.tool_name,
-                            "rule_name": matched_rule_name,
-                            "request_id": approval_request_id,
-                            "requires_approval": True,
-                        },
+                        metadata=alert_metadata,
                     )
         except Exception as e:
             logger.warning(f"Failed to send alert notification: {e}")

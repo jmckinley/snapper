@@ -106,6 +106,7 @@ class RuleEngine:
             RuleType.FILE_ACCESS: self._evaluate_file_access,
             RuleType.VERSION_ENFORCEMENT: self._evaluate_version_enforcement,
             RuleType.SANDBOX_REQUIRED: self._evaluate_sandbox_required,
+            RuleType.PII_GATE: self._evaluate_pii_gate,
         }
 
     async def evaluate(self, context: EvaluationContext) -> EvaluationResult:
@@ -699,6 +700,153 @@ class RuleEngine:
             return True, RuleAction.DENY
 
         return False, rule.action
+
+
+    async def _evaluate_pii_gate(
+        self, rule: Rule, context: EvaluationContext
+    ) -> tuple[bool, RuleAction]:
+        """
+        Evaluate PII gate rule.
+
+        Scans tool_input and command text for:
+        1. Vault tokens: {{SNAPPER_VAULT:<hex>}}
+        2. Raw PII patterns (credit cards, emails, etc.)
+
+        When PII is detected, returns REQUIRE_APPROVAL (or DENY if
+        require_vault_for_approval is set and raw PII is found).
+        Stores detection details in context.metadata["pii_detected"].
+        """
+        from app.services.pii_vault import find_vault_tokens
+        from app.utils.pii_patterns import PII_PATTERNS, detect_pii
+
+        params = rule.parameters
+        scan_tool_input = params.get("scan_tool_input", True)
+        scan_command = params.get("scan_command", True)
+        detect_vault = params.get("detect_vault_tokens", True)
+        detect_raw = params.get("detect_raw_pii", True)
+        pii_categories = params.get("pii_categories", [
+            "credit_card", "email", "phone_us_ca", "street_address", "name_with_title"
+        ])
+        exempt_domains = params.get("exempt_domains", [])
+        require_vault_for_approval = params.get("require_vault_for_approval", False)
+
+        # Check domain exemption
+        tool_input = context.metadata.get("tool_input", {})
+        destination_url = None
+        destination_domain = None
+
+        if isinstance(tool_input, dict):
+            destination_url = (
+                tool_input.get("url")
+                or tool_input.get("page_url")
+                or tool_input.get("navigate_url")
+            )
+
+        if destination_url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(destination_url)
+                destination_domain = parsed.netloc or parsed.hostname
+            except Exception:
+                pass
+
+        if destination_domain and exempt_domains:
+            import fnmatch
+            for exempt in exempt_domains:
+                if fnmatch.fnmatch(destination_domain.lower(), exempt.lower()):
+                    return False, rule.action
+
+        # Build text to scan
+        scan_text_parts = []
+        if scan_command and context.command:
+            scan_text_parts.append(context.command)
+        if scan_tool_input and tool_input:
+            try:
+                scan_text_parts.append(json.dumps(tool_input))
+            except (TypeError, ValueError):
+                scan_text_parts.append(str(tool_input))
+
+        scan_text = " ".join(scan_text_parts)
+
+        if not scan_text:
+            return False, rule.action
+
+        # Detect vault tokens
+        vault_tokens = []
+        if detect_vault:
+            vault_tokens = find_vault_tokens(scan_text)
+
+        # Detect raw PII
+        raw_pii_findings = []
+        if detect_raw:
+            # Build pattern subset based on configured categories
+            scan_patterns = {
+                k: v for k, v in PII_PATTERNS.items()
+                if k in pii_categories
+            }
+            if scan_patterns:
+                raw_pii_findings = detect_pii(scan_text, scan_patterns)
+
+        # Nothing found
+        if not vault_tokens and not raw_pii_findings:
+            return False, rule.action
+
+        # Store detection details in context metadata for downstream use
+        pii_detected = {
+            "vault_tokens": vault_tokens,
+            "raw_pii": [
+                {
+                    "type": f["type"],
+                    "masked": self._mask_pii_value(f["match"], f["type"]),
+                }
+                for f in raw_pii_findings
+            ],
+            "destination_url": destination_url,
+            "destination_domain": destination_domain,
+            "tool_name": context.metadata.get("tool_name"),
+            "action": tool_input.get("action") if isinstance(tool_input, dict) else None,
+        }
+        context.metadata["pii_detected"] = pii_detected
+
+        # If raw PII found and require_vault_for_approval, deny outright
+        if raw_pii_findings and require_vault_for_approval:
+            return True, RuleAction.DENY
+
+        # Otherwise, require approval
+        return True, RuleAction.REQUIRE_APPROVAL
+
+    @staticmethod
+    def _mask_pii_value(value: str, pii_type: str) -> str:
+        """Generate a masked version of a PII value for display."""
+        if not value:
+            return "****"
+
+        if pii_type == "credit_card":
+            digits = re.sub(r"[^0-9]", "", value)
+            if len(digits) >= 4:
+                return f"****-****-****-{digits[-4:]}"
+        elif pii_type == "email":
+            parts = value.split("@")
+            if len(parts) == 2:
+                return f"{parts[0][0]}***@{parts[1]}"
+        elif pii_type in ("phone_us_ca", "phone_uk", "phone_au"):
+            digits = re.sub(r"[^0-9+]", "", value)
+            if len(digits) >= 4:
+                return f"***-***-{digits[-4:]}"
+        elif pii_type == "name_with_title":
+            words = value.split()
+            return " ".join(f"{w[0]}***" if len(w) > 1 else w for w in words)
+        elif pii_type == "us_ssn":
+            return f"***-**-{value[-4:]}" if len(value) >= 4 else "***-**-****"
+        elif pii_type == "street_address":
+            words = value.split()
+            if words:
+                return words[0] + " " + " ".join("****" for _ in words[1:])
+
+        # Generic masking
+        if len(value) > 4:
+            return f"{'*' * (len(value) - 4)}{value[-4:]}"
+        return "****"
 
 
 async def get_rule_engine(db: AsyncSession, redis: RedisClient) -> RuleEngine:

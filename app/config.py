@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     NOTIFY_ON_APPROVAL_REQUEST: bool = True  # Send notification for approval requests
     NOTIFY_ON_ALLOW: bool = False  # Send notification when action is allowed (verbose)
 
+    # PII Vault
+    PII_VAULT_TOKEN_TTL_SECONDS: int = 60  # Resolved value Redis TTL (one-time retrieval)
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

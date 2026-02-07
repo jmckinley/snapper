@@ -59,6 +59,9 @@ class RuleType(str, Enum):
     VERSION_ENFORCEMENT = "version_enforcement"
     SANDBOX_REQUIRED = "sandbox_required"
 
+    # PII protection (Feb 2026)
+    PII_GATE = "pii_gate"
+
 
 class RuleAction(str, Enum):
     """Action to take when rule matches."""
@@ -412,6 +415,48 @@ RULE_PARAMETER_SCHEMAS = {
                 "type": "boolean",
                 "default": False,
                 "description": "Whether to allow agents with unknown execution environment",
+            },
+        },
+    },
+    RuleType.PII_GATE: {
+        "type": "object",
+        "properties": {
+            "scan_tool_input": {
+                "type": "boolean",
+                "default": True,
+                "description": "Scan tool_input JSON for PII/vault tokens",
+            },
+            "scan_command": {
+                "type": "boolean",
+                "default": True,
+                "description": "Scan command text for PII/vault tokens",
+            },
+            "detect_vault_tokens": {
+                "type": "boolean",
+                "default": True,
+                "description": "Detect {{SNAPPER_VAULT:...}} tokens",
+            },
+            "detect_raw_pii": {
+                "type": "boolean",
+                "default": True,
+                "description": "Detect raw PII patterns (credit cards, emails, etc.)",
+            },
+            "pii_categories": {
+                "type": "array",
+                "items": {"type": "string"},
+                "default": ["credit_card", "email", "phone_us_ca", "street_address", "name_with_title"],
+                "description": "PII pattern categories to scan for",
+            },
+            "exempt_domains": {
+                "type": "array",
+                "items": {"type": "string"},
+                "default": [],
+                "description": "Domains exempt from PII gate (e.g., internal tools)",
+            },
+            "require_vault_for_approval": {
+                "type": "boolean",
+                "default": False,
+                "description": "If true, raw PII (not vault tokens) is denied outright instead of requiring approval",
             },
         },
     },

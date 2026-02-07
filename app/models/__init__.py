@@ -2,6 +2,7 @@
 
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
+from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.models.rules import Rule, RuleAction, RuleType
 from app.models.security_issues import SecurityIssue, IssueSeverity, IssueStatus
 from app.models.users import User
@@ -16,6 +17,8 @@ __all__ = [
     "AuditLog",
     "AuditAction",
     "AuditSeverity",
+    "PIICategory",
+    "PIIVaultEntry",
     "SecurityIssue",
     "IssueSeverity",
     "IssueStatus",

@@ -66,6 +66,14 @@ class AuditAction(str, Enum):
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
 
+    # PII Vault events
+    PII_VAULT_CREATED = "pii_vault_created"
+    PII_VAULT_ACCESSED = "pii_vault_accessed"
+    PII_VAULT_DELETED = "pii_vault_deleted"
+    PII_GATE_TRIGGERED = "pii_gate_triggered"
+    PII_SUBMISSION_APPROVED = "pii_submission_approved"
+    PII_SUBMISSION_DENIED = "pii_submission_denied"
+
 
 class AuditSeverity(str, Enum):
     """Severity levels for audit events."""

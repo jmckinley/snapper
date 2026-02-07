@@ -37,6 +37,12 @@ case "$TOOL_NAME" in
         REQUEST_TYPE="network"
         URL=$(echo "$TOOL_INPUT" | jq -r '.url // ""')
         ;;
+    browser|Browser|puppeteer|playwright)
+        REQUEST_TYPE="browser_action"
+        ACTION=$(echo "$TOOL_INPUT" | jq -r '.action // ""')
+        URL=$(echo "$TOOL_INPUT" | jq -r '.url // .page_url // ""')
+        # Full tool_input is included in payload for PII scanning
+        ;;
     *)
         REQUEST_TYPE="tool"
         ;;
@@ -143,6 +149,11 @@ case "$DECISION" in
             case "$STATUS" in
                 approved)
                     echo "✅ APPROVED: $STATUS_REASON" >&2
+                    # Output resolved vault data if present (for token replacement)
+                    RESOLVED_DATA=$(echo "$STATUS_RESPONSE" | jq -c '.resolved_data // null')
+                    if [ "$RESOLVED_DATA" != "null" ] && [ -n "$RESOLVED_DATA" ]; then
+                        echo "$RESOLVED_DATA"
+                    fi
                     exit 0
                     ;;
                 denied)

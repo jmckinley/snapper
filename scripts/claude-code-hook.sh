@@ -61,6 +61,11 @@ case "$TOOL_NAME" in
         FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.path // .pattern // ""')
         FILE_OP="read"
         ;;
+    browser|Browser|puppeteer|playwright)
+        REQUEST_TYPE="browser_action"
+        ACTION=$(echo "$TOOL_INPUT" | jq -r '.action // ""')
+        URL=$(echo "$TOOL_INPUT" | jq -r '.url // .page_url // ""')
+        ;;
     Task|task|Agent|agent)
         REQUEST_TYPE="tool"
         ;;
@@ -172,6 +177,11 @@ case "$DECISION" in
             case "$STATUS" in
                 approved)
                     echo "✅ APPROVED: $STATUS_REASON" >&2
+                    # Output resolved vault data if present (for token replacement)
+                    RESOLVED_DATA=$(echo "$STATUS_RESPONSE" | jq -c '.resolved_data // null')
+                    if [ "$RESOLVED_DATA" != "null" ] && [ -n "$RESOLVED_DATA" ]; then
+                        echo "$RESOLVED_DATA"
+                    fi
                     exit 0
                     ;;
                 denied)

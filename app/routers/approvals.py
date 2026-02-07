@@ -38,6 +38,9 @@ class ApprovalRequest(BaseModel):
     expires_at: str
     decided_at: Optional[str] = None
     decided_by: Optional[str] = None
+    # PII vault fields
+    pii_context: Optional[dict] = None  # Detection details from PII gate
+    vault_tokens: Optional[list] = None  # Vault tokens to resolve on approval
 
 
 class ApprovalStatusResponse(BaseModel):
@@ -46,6 +49,7 @@ class ApprovalStatusResponse(BaseModel):
     status: str  # pending, approved, denied, expired
     reason: Optional[str] = None
     wait_seconds: Optional[int] = None  # How long to wait before next poll
+    resolved_data: Optional[dict] = None  # Decrypted vault values (one-time retrieval)
 
 
 class ApprovalDecisionRequest(BaseModel):
@@ -65,6 +69,8 @@ async def create_approval_request(
     file_path: Optional[str] = None,
     tool_name: Optional[str] = None,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    pii_context: Optional[dict] = None,
+    vault_tokens: Optional[list] = None,
 ) -> str:
     """Create a new pending approval request in Redis."""
     approval_id = str(uuid4())
@@ -84,6 +90,8 @@ async def create_approval_request(
         status="pending",
         created_at=now.isoformat(),
         expires_at=expires_at.isoformat(),
+        pii_context=pii_context,
+        vault_tokens=vault_tokens,
     )
 
     # Store in Redis with TTL
@@ -174,10 +182,69 @@ async def check_approval_status(
     if approval.decided_by:
         reason += f" by {approval.decided_by}"
 
+    resolved_data = None
+
+    # If approved and vault tokens present, resolve them
+    if approval.status == "approved" and approval.vault_tokens:
+        resolved_key = f"resolved_pii:{approval_id}"
+        resolved_json = await redis.get(resolved_key)
+
+        if resolved_json:
+            # One-time retrieval: return and delete
+            resolved_data = json.loads(resolved_json)
+            await redis.delete(resolved_key)
+        else:
+            # Resolve tokens now
+            try:
+                from app.database import async_session_factory
+                from app.services.pii_vault import resolve_tokens
+
+                destination_domain = None
+                if approval.pii_context:
+                    destination_domain = approval.pii_context.get("destination_domain")
+
+                async with async_session_factory() as db:
+                    resolved_data = await resolve_tokens(
+                        db=db,
+                        tokens=approval.vault_tokens,
+                        destination_domain=destination_domain,
+                    )
+                    await db.commit()
+
+                if resolved_data:
+                    # Store briefly for one-time retrieval if hook polls again
+                    from app.config import get_settings
+                    vault_settings = get_settings()
+                    await redis.set(
+                        resolved_key,
+                        json.dumps(resolved_data),
+                        expire=vault_settings.PII_VAULT_TOKEN_TTL_SECONDS,
+                    )
+
+                    # Log the access
+                    from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
+                    async with async_session_factory() as audit_db:
+                        audit_log = AuditLog(
+                            action=AuditAction.PII_VAULT_ACCESSED,
+                            severity=AuditSeverity.WARNING,
+                            message=f"Vault tokens resolved for approved request {approval_id}",
+                            details={
+                                "approval_id": approval_id,
+                                "tokens_resolved": list(resolved_data.keys()),
+                                "destination_domain": destination_domain,
+                                "approved_by": approval.decided_by,
+                            },
+                        )
+                        audit_db.add(audit_log)
+                        await audit_db.commit()
+            except Exception as e:
+                logger.error(f"Failed to resolve vault tokens for approval {approval_id}: {e}")
+
     return ApprovalStatusResponse(
         id=approval_id,
         status=approval.status,
         reason=reason,
+        resolved_data=resolved_data,
     )
 
 

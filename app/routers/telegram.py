@@ -32,6 +32,7 @@ BOT_COMMANDS = [
     {"command": "pending", "description": "List pending approvals"},
     {"command": "test", "description": "Test rule enforcement"},
     {"command": "purge", "description": "Purge PII from agent data"},
+    {"command": "vault", "description": "Manage PII vault entries"},
     {"command": "block", "description": "Emergency block ALL actions"},
     {"command": "unblock", "description": "Resume normal operation"},
 ]
@@ -244,10 +245,22 @@ async def telegram_webhook(request: Request):
                     )
                 return {"ok": True, "action": "cancel_purge"}
 
-    # Handle /start and /help commands
+    # Handle messages
     message = data.get("message", {})
     text = message.get("text", "")
     chat_id = message.get("chat", {}).get("id")
+
+    # Check for pending vault value input (user replying with PII to encrypt)
+    if text and not text.startswith("/"):
+        user = message.get("from", {})
+        user_chat_id = str(user.get("id", chat_id))
+        from app.redis_client import redis_client as _redis
+        pending_json = await _redis.get(f"vault_pending:{user_chat_id}")
+        if pending_json:
+            await _handle_vault_value_reply(chat_id, text, message, user_chat_id, pending_json)
+            return {"ok": True}
+
+    # Handle /start and /help commands
 
     if text.startswith("/start"):
         await _send_message(
@@ -278,6 +291,10 @@ async def telegram_webhook(request: Request):
                 "*Rules:*\n"
                 "/rules - View active security rules\n"
                 "/test - Test rule enforcement\n\n"
+                "*PII Vault:*\n"
+                "/vault - Manage encrypted PII storage\n"
+                "/vault add <label> <category> - Add entry\n"
+                "/vault list - View your entries\n\n"
                 "*Data:*\n"
                 "/purge - 🗑️ Purge PII from agent data\n\n"
                 "*Emergency:*\n"
@@ -348,6 +365,8 @@ async def telegram_webhook(request: Request):
         await _handle_unblock_command(chat_id, message)
     elif text.startswith("/test"):
         await _handle_test_command(chat_id, text, message)
+    elif text.startswith("/vault"):
+        await _handle_vault_command(chat_id, text, message)
     elif text.startswith("/purge"):
         await _handle_purge_command(chat_id, text, message)
 
@@ -968,6 +987,389 @@ async def _get_rule_info(rule_id_partial: str) -> str:
         lines.append(f"\n*Parameters:*\n```\n{params_str}\n```")
 
     return "\n".join(lines)
+
+
+async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user_chat_id: str, pending_json: str):
+    """Handle a plain text reply that contains the PII value for a pending vault add."""
+    from app.models.pii_vault import PIICategory
+    from app.services import pii_vault as vault_service
+    from app.redis_client import redis_client
+
+    username = message.get("from", {}).get("username", message.get("from", {}).get("first_name", "Unknown"))
+
+    if text.strip() == "/cancel":
+        await redis_client.delete(f"vault_pending:{user_chat_id}")
+        await _send_message(chat_id=chat_id, text="Vault entry creation cancelled.")
+        return
+
+    pending = json.loads(pending_json)
+    raw_value = text.strip()
+    category = PIICategory(pending["category"])
+
+    async with async_session_factory() as db:
+        entry = await vault_service.create_entry(
+            db=db,
+            owner_chat_id=pending["owner_chat_id"],
+            owner_name=pending["owner_name"],
+            label=pending["label"],
+            category=category,
+            raw_value=raw_value,
+        )
+
+        audit_log = AuditLog(
+            action=AuditAction.PII_VAULT_CREATED,
+            severity=AuditSeverity.INFO,
+            message=f"Vault entry '{pending['label']}' created via Telegram by {username}",
+            details={
+                "entry_id": str(entry.id),
+                "category": pending["category"],
+                "owner_chat_id": pending["owner_chat_id"],
+            },
+        )
+        db.add(audit_log)
+        await db.commit()
+
+    await redis_client.delete(f"vault_pending:{user_chat_id}")
+
+    # Try to delete the user's message containing the raw PII
+    try:
+        msg_id = message.get("message_id")
+        if msg_id:
+            delete_url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/deleteMessage"
+            async with httpx.AsyncClient() as client:
+                await client.post(delete_url, json={"chat_id": chat_id, "message_id": msg_id}, timeout=10.0)
+    except Exception as e:
+        logger.warning(f"Could not delete PII message: {e}")
+
+    await _send_message(
+        chat_id=chat_id,
+        text=(
+            f"🔐 *Vault entry created!*\n\n"
+            f"*Label:* {entry.label}\n"
+            f"*Category:* {pending['category']}\n"
+            f"*Masked:* {entry.masked_value}\n"
+            f"*Token:* `{entry.token}`\n\n"
+            "Give this token to your AI agent instead of the real value.\n"
+            "Snapper will intercept and require approval before it's submitted."
+        ),
+    )
+
+
+async def _handle_vault_command(chat_id: int, text: str, message: dict):
+    """
+    Handle /vault command - manage PII vault entries.
+
+    Usage:
+        /vault              - Show help and list entries
+        /vault add <label> <category> - Start adding a new entry (prompts for value)
+        /vault list         - List your vault entries (masked)
+        /vault delete <token> - Delete a vault entry
+        /vault domains <token> add <domain> - Add allowed domain
+        /vault domains <token> remove <domain> - Remove allowed domain
+    """
+    from app.models.pii_vault import PIICategory
+    from app.services import pii_vault as vault_service
+
+    user = message.get("from", {})
+    user_chat_id = str(user.get("id", chat_id))
+    username = user.get("username", user.get("first_name", "Unknown"))
+
+    parts = text.split(maxsplit=3)
+    subcommand = parts[1].lower() if len(parts) > 1 else "help"
+
+    if subcommand == "help" or (subcommand == "list" and len(parts) == 2) or len(parts) == 1:
+        if subcommand == "list" or len(parts) == 1:
+            # Show entries + help
+            async with async_session_factory() as db:
+                entries = await vault_service.list_entries(db=db, owner_chat_id=user_chat_id)
+
+            if entries:
+                lines = ["🔐 *Your PII Vault*\n"]
+                for e in entries[:15]:
+                    cat = e.category.value if hasattr(e.category, "value") else e.category
+                    lines.append(f"  {cat}: *{e.label}*")
+                    lines.append(f"    `{e.token}`")
+                    lines.append(f"    Masked: {e.masked_value}")
+                    if e.allowed_domains:
+                        lines.append(f"    Domains: {', '.join(e.allowed_domains)}")
+                    if e.use_count > 0:
+                        lines.append(f"    Used: {e.use_count} time(s)")
+                    lines.append("")
+                lines.append(f"_Total: {len(entries)} entry(ies)_")
+            else:
+                lines = ["🔐 *Your PII Vault*\n", "_No entries yet._\n"]
+
+            lines.append("\n*Commands:*")
+            lines.append("`/vault add <label> <category>`")
+            lines.append("  Categories: credit\\_card, name, address, phone, email, ssn, passport, bank\\_account, custom")
+            lines.append("`/vault list` - List your entries")
+            lines.append("`/vault delete <token>` - Remove entry")
+            lines.append("`/vault domains <token> add <domain>`")
+
+            await _send_message(chat_id=chat_id, text="\n".join(lines))
+            return
+
+        # Explicit /vault help
+        await _send_message(
+            chat_id=chat_id,
+            text=(
+                "🔐 *PII Vault Help*\n\n"
+                "Store sensitive data (credit cards, addresses, etc.) encrypted in Snapper.\n"
+                "Get a token to give to your AI agent instead of raw data.\n\n"
+                "*Add entry:*\n"
+                "`/vault add \"My Visa\" credit_card`\n"
+                "Then reply with the value when prompted.\n\n"
+                "*List entries:*\n"
+                "`/vault list`\n\n"
+                "*Delete entry:*\n"
+                '`/vault delete {{SNAPPER_VAULT:a7f3b2c1}}`\n\n'
+                "*Manage domains:*\n"
+                '`/vault domains {{SNAPPER_VAULT:a7f3b2c1}} add *.expedia.com`\n\n'
+                "*Categories:*\n"
+                "credit\\_card, name, address, phone, email, ssn, passport, bank\\_account, custom"
+            ),
+        )
+        return
+
+    elif subcommand == "add":
+        # /vault add <label> <category>
+        # Parse: /vault add "My Visa" credit_card  OR  /vault add My-Visa credit_card
+        remaining = text[len("/vault add"):].strip()
+
+        if not remaining:
+            await _send_message(
+                chat_id=chat_id,
+                text="Usage: `/vault add <label> <category>`\n\nExample: `/vault add \"My Visa\" credit_card`",
+            )
+            return
+
+        # Try to parse label and category
+        # Support quoted labels: /vault add "My Visa Card" credit_card
+        import shlex
+        try:
+            tokens = shlex.split(remaining)
+        except ValueError:
+            tokens = remaining.split()
+
+        if len(tokens) < 2:
+            await _send_message(
+                chat_id=chat_id,
+                text="Usage: `/vault add <label> <category>`\n\nExample: `/vault add \"My Visa\" credit_card`",
+            )
+            return
+
+        category_str = tokens[-1].lower()
+        label = " ".join(tokens[:-1])
+
+        # Validate category
+        valid_categories = [c.value for c in PIICategory]
+        if category_str not in valid_categories:
+            await _send_message(
+                chat_id=chat_id,
+                text=f"Unknown category: `{category_str}`\n\nValid: {', '.join(valid_categories)}",
+            )
+            return
+
+        # Store pending add in Redis so we can receive the value in next message
+        from app.redis_client import redis_client
+        pending_data = json.dumps({
+            "label": label,
+            "category": category_str,
+            "owner_chat_id": user_chat_id,
+            "owner_name": username,
+        })
+        await redis_client.set(f"vault_pending:{user_chat_id}", pending_data, expire=300)
+
+        category_hints = {
+            "credit_card": "card number (e.g., 4111111111111234)",
+            "name": "full name",
+            "address": "full address",
+            "phone": "phone number",
+            "email": "email address",
+            "ssn": "SSN",
+            "passport": "passport number",
+            "bank_account": "account number",
+            "custom": "value",
+        }
+        hint = category_hints.get(category_str, "value")
+
+        await _send_message(
+            chat_id=chat_id,
+            text=(
+                f"🔐 *Adding vault entry:* {label} ({category_str})\n\n"
+                f"Please reply with your {hint}.\n\n"
+                "⚠️ The value will be encrypted immediately and the message should be deleted.\n"
+                "_Type /cancel to abort._"
+            ),
+        )
+        return
+
+    elif subcommand == "delete":
+        # /vault delete {{SNAPPER_VAULT:a7f3b2c1}}
+        if len(parts) < 3:
+            await _send_message(
+                chat_id=chat_id,
+                text="Usage: `/vault delete <token>`\n\nExample: `/vault delete {{SNAPPER_VAULT:a7f3b2c1}}`",
+            )
+            return
+
+        token = parts[2].strip()
+
+        # Find entry by token
+        async with async_session_factory() as db:
+            entry = await vault_service.get_entry_by_token(db=db, token=token)
+            if not entry:
+                await _send_message(chat_id=chat_id, text=f"Entry not found for token: `{token}`")
+                return
+
+            success = await vault_service.delete_entry(
+                db=db,
+                entry_id=str(entry.id),
+                requester_chat_id=user_chat_id,
+            )
+
+            if success:
+                # Audit log
+                audit_log = AuditLog(
+                    action=AuditAction.PII_VAULT_DELETED,
+                    severity=AuditSeverity.WARNING,
+                    message=f"Vault entry '{entry.label}' deleted via Telegram by {username}",
+                    details={"entry_id": str(entry.id), "deleted_by": username},
+                )
+                db.add(audit_log)
+                await db.commit()
+                await _send_message(chat_id=chat_id, text=f"🗑️ Vault entry *{entry.label}* deleted.")
+            else:
+                await _send_message(chat_id=chat_id, text="Failed to delete entry. You may not own it.")
+        return
+
+    elif subcommand == "domains":
+        # /vault domains <token> add|remove <domain>
+        if len(parts) < 4:
+            await _send_message(
+                chat_id=chat_id,
+                text="Usage: `/vault domains <token> add|remove <domain>`",
+            )
+            return
+
+        remaining = text[len("/vault domains"):].strip()
+        domain_parts = remaining.split(maxsplit=2)
+
+        if len(domain_parts) < 3:
+            await _send_message(
+                chat_id=chat_id,
+                text="Usage: `/vault domains <token> add|remove <domain>`",
+            )
+            return
+
+        token = domain_parts[0]
+        domain_action = domain_parts[1].lower()
+        domain = domain_parts[2].strip()
+
+        async with async_session_factory() as db:
+            entry = await vault_service.get_entry_by_token(db=db, token=token)
+            if not entry:
+                await _send_message(chat_id=chat_id, text=f"Entry not found for token: `{token}`")
+                return
+
+            if entry.owner_chat_id != user_chat_id:
+                await _send_message(chat_id=chat_id, text="You don't own this entry.")
+                return
+
+            domains = list(entry.allowed_domains or [])
+
+            if domain_action == "add":
+                if domain not in domains:
+                    domains.append(domain)
+                    entry.allowed_domains = domains
+                    await db.commit()
+                    await _send_message(chat_id=chat_id, text=f"Added domain `{domain}` to *{entry.label}*")
+                else:
+                    await _send_message(chat_id=chat_id, text=f"Domain `{domain}` already in list.")
+            elif domain_action == "remove":
+                if domain in domains:
+                    domains.remove(domain)
+                    entry.allowed_domains = domains
+                    await db.commit()
+                    await _send_message(chat_id=chat_id, text=f"Removed domain `{domain}` from *{entry.label}*")
+                else:
+                    await _send_message(chat_id=chat_id, text=f"Domain `{domain}` not in list.")
+            else:
+                await _send_message(chat_id=chat_id, text="Usage: `/vault domains <token> add|remove <domain>`")
+        return
+
+    else:
+        # Check if this might be a value reply for a pending vault add
+        from app.redis_client import redis_client
+        pending_json = await redis_client.get(f"vault_pending:{user_chat_id}")
+
+        if pending_json:
+            # This is a value reply to a /vault add
+            pending = json.loads(pending_json)
+
+            if text.strip() == "/cancel":
+                await redis_client.delete(f"vault_pending:{user_chat_id}")
+                await _send_message(chat_id=chat_id, text="Vault entry creation cancelled.")
+                return
+
+            raw_value = text.strip()
+            category = PIICategory(pending["category"])
+
+            async with async_session_factory() as db:
+                entry = await vault_service.create_entry(
+                    db=db,
+                    owner_chat_id=pending["owner_chat_id"],
+                    owner_name=pending["owner_name"],
+                    label=pending["label"],
+                    category=category,
+                    raw_value=raw_value,
+                )
+
+                # Audit log
+                audit_log = AuditLog(
+                    action=AuditAction.PII_VAULT_CREATED,
+                    severity=AuditSeverity.INFO,
+                    message=f"Vault entry '{pending['label']}' created via Telegram by {username}",
+                    details={
+                        "entry_id": str(entry.id),
+                        "category": pending["category"],
+                        "owner_chat_id": pending["owner_chat_id"],
+                    },
+                )
+                db.add(audit_log)
+                await db.commit()
+
+            # Clean up pending state
+            await redis_client.delete(f"vault_pending:{user_chat_id}")
+
+            # Try to delete the user's message containing the raw PII
+            try:
+                msg_id = message.get("message_id")
+                if msg_id:
+                    delete_url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/deleteMessage"
+                    async with httpx.AsyncClient() as client:
+                        await client.post(delete_url, json={"chat_id": chat_id, "message_id": msg_id}, timeout=10.0)
+            except Exception as e:
+                logger.warning(f"Could not delete PII message: {e}")
+
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"🔐 *Vault entry created!*\n\n"
+                    f"*Label:* {entry.label}\n"
+                    f"*Category:* {pending['category']}\n"
+                    f"*Masked:* {entry.masked_value}\n"
+                    f"*Token:* `{entry.token}`\n\n"
+                    "Give this token to your AI agent instead of the real value.\n"
+                    "Snapper will intercept and require approval before it's submitted."
+                ),
+            )
+            return
+
+        await _send_message(
+            chat_id=chat_id,
+            text=f"Unknown vault command: `{subcommand}`\n\nTry `/vault help`",
+        )
 
 
 async def _handle_purge_command(chat_id: int, text: str, message: dict):

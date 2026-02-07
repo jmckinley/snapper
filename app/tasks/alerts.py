@@ -218,8 +218,36 @@ def _send_telegram_alert(
     }
     emoji = severity_emojis.get(severity, "📢")
 
-    # Build Telegram message with Markdown
-    text = f"{emoji} *{severity.upper()}: {title}*\n\n{message}"
+    # Check if this is a PII-specific alert
+    pii_context = metadata.get("pii_context") if metadata else None
+
+    if pii_context:
+        # Build rich PII submission message
+        text = f"🔐 *PII SUBMISSION DETECTED*\n\n"
+        text += f"*Agent:* {metadata.get('agent_name', 'Unknown')}\n"
+
+        action = pii_context.get("action") or metadata.get("tool_name") or "tool call"
+        text += f"*Action:* {action}\n"
+
+        dest = pii_context.get("destination_url") or pii_context.get("destination_domain")
+        if dest:
+            text += f"*Site:* {dest}\n"
+
+        # List detected data
+        vault_tokens = pii_context.get("vault_tokens", [])
+        raw_pii = pii_context.get("raw_pii", [])
+
+        if vault_tokens or raw_pii:
+            text += "\n*Data being sent:*\n"
+            for token in vault_tokens:
+                text += f"  • Vault Token: `{token[:20]}...`\n"
+            for pii_item in raw_pii:
+                pii_type = pii_item.get("type", "unknown").replace("_", " ").title()
+                masked = pii_item.get("masked", "****")
+                text += f"  • {pii_type}: {masked}\n"
+    else:
+        # Standard alert message
+        text = f"{emoji} *{severity.upper()}: {title}*\n\n{message}"
 
     reply_markup = None
 
@@ -272,8 +300,8 @@ def _send_telegram_alert(
         except Exception as e:
             logger.exception(f"Failed to store context for Telegram buttons: {e}")
 
-    # Add metadata footer
-    if metadata:
+    # Add metadata footer (skip if PII context already provided details)
+    if metadata and not pii_context:
         agent = metadata.get("agent_id", "Unknown")
         command = metadata.get("command", "")
         if command:
