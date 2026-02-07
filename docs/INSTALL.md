@@ -228,6 +228,10 @@ Expected response:
 
 If you're running OpenClaw on the same server:
 
+### Option A: snapper-guard Plugin (Recommended)
+
+Supports PII vault token resolution and browser form fill interception.
+
 1. Register OpenClaw agent:
 ```bash
 curl -X POST http://localhost:8000/api/v1/agents \
@@ -235,9 +239,41 @@ curl -X POST http://localhost:8000/api/v1/agents \
   -d '{"name": "OpenClaw", "external_id": "openclaw-main"}'
 ```
 
-2. Create shell wrapper at `/opt/openclaw/hooks/snapper-shell.sh`
+2. Copy plugin to OpenClaw extensions:
+```bash
+cp -r /opt/snapper/plugins/snapper-guard ~/.openclaw/extensions/
+```
 
-3. Add to OpenClaw's docker-compose.yml:
+3. Add plugin config to `~/.openclaw/openclaw.json`:
+```json
+{
+  "plugins": {
+    "entries": {
+      "snapper-guard": {
+        "enabled": true,
+        "config": {
+          "snapperUrl": "http://127.0.0.1:8000",
+          "agentId": "openclaw-main",
+          "apiKey": "snp_your_key_here"
+        }
+      }
+    }
+  }
+}
+```
+
+4. Restart OpenClaw:
+```bash
+docker compose restart openclaw-gateway
+```
+
+### Option B: Shell Hook
+
+Intercepts shell commands only (no browser/PII support).
+
+1. Create shell wrapper at `/opt/openclaw/hooks/snapper-shell.sh`
+
+2. Add to OpenClaw's docker-compose.yml:
 ```yaml
 services:
   openclaw-gateway:
@@ -249,12 +285,16 @@ services:
       - "host.docker.internal:host-gateway"
 ```
 
-4. Restart OpenClaw:
+3. Restart OpenClaw:
 ```bash
 docker compose up -d --force-recreate openclaw-gateway
 ```
 
 See [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) for full details.
+
+## PII Vault Notes
+
+The PII vault uses `SECRET_KEY` from your `.env` to derive the Fernet encryption key via HKDF. Changing `SECRET_KEY` after vault entries are created will make them unrecoverable. Back up your `SECRET_KEY` securely.
 
 ## Uninstalling
 

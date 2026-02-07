@@ -134,7 +134,7 @@ echo -e "${YELLOW}Applying $PROFILE security profile...${NC}"
 
 case $PROFILE in
     strict)
-        TEMPLATES="cve-2026-25253-mitigation credential-protection malicious-skill-blocker rate-limit-standard localhost-only human-approval-sensitive"
+        TEMPLATES="cve-2026-25253-mitigation credential-protection malicious-skill-blocker rate-limit-standard localhost-only human-approval-sensitive pii-gate-protection"
         ;;
     permissive)
         TEMPLATES="credential-protection"
@@ -212,7 +212,11 @@ echo "  • CVE-2026-25253 (WebSocket RCE)"
 echo "  • Credential exposure (.env, .pem, SSH keys)"
 echo "  • Malicious ClawHub skills"
 echo "  • Runaway agent abuse (rate limiting)"
+echo "  • PII leakage in browser forms (strict profile)"
 echo ""
-echo -e "${BOLD}Next step:${NC} Set up Telegram notifications for approve/deny buttons"
-echo "  → http://localhost:8000/settings"
+echo -e "${BOLD}Next steps:${NC}"
+echo "  1. Set up Telegram notifications → http://localhost:8000/settings"
+echo "  2. Store PII via Telegram: /vault add \"My Card\" credit_card"
+echo "  3. Install snapper-guard plugin for browser PII protection"
+echo "     → See docs/OPENCLAW_INTEGRATION.md"
 echo ""

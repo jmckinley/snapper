@@ -65,7 +65,31 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm app ale
 
 ### OpenClaw
 
-For OpenClaw running in Docker alongside Snapper:
+Two integration methods (can be used together):
+
+**Option A: snapper-guard plugin (recommended)** — Intercepts tool calls natively, supports PII vault token resolution and browser form filling:
+
+1. Copy `plugins/snapper-guard/` to `~/.openclaw/extensions/snapper-guard/`
+2. Add plugin config to `openclaw.json`:
+   ```json
+   {
+     "plugins": {
+       "entries": {
+         "snapper-guard": {
+           "enabled": true,
+           "config": {
+             "snapperUrl": "http://127.0.0.1:8000",
+             "agentId": "openclaw-main",
+             "apiKey": "snp_your_key_here"
+           }
+         }
+       }
+     }
+   }
+   ```
+3. Restart OpenClaw
+
+**Option B: Shell hook** — Intercepts shell commands via SHELL wrapper:
 
 1. Register OpenClaw as an agent in Snapper
 2. Create the shell wrapper hook
@@ -73,15 +97,6 @@ For OpenClaw running in Docker alongside Snapper:
 4. Restart OpenClaw
 
 See the full [OpenClaw Integration Guide](docs/OPENCLAW_INTEGRATION.md) for step-by-step instructions.
-
-**Quick test after setup:**
-```bash
-# Should work
-docker compose exec openclaw-gateway /app/hooks/snapper-shell.sh -c "ls /tmp"
-
-# Should be blocked
-docker compose exec openclaw-gateway /app/hooks/snapper-shell.sh -c "rm -rf /"
-```
 
 ### Claude Code
 
@@ -143,6 +158,7 @@ export SNAPPER_AGENT_ID=claude-code-$(hostname)
 | **Version Enforcement** | Block vulnerable agent versions |
 | **Sandbox Required** | Require containerized execution |
 | **Human-in-Loop** | Require approval for sensitive actions |
+| **PII Gate** | Detect and intercept PII in browser/tool actions |
 
 ### Telegram Bot
 
@@ -161,6 +177,13 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 | `/test install <skill>` | Test if a skill install is allowed |
 | `/test access <file>` | Test if file access is allowed |
 | `/test network <host>` | Test if network egress is allowed |
+| `/vault` | Manage encrypted PII vault (add/list/delete/domains) |
+| `/vault add <label> <category>` | Store PII securely, get a vault token |
+| `/vault list` | List your vault entries (masked values) |
+| `/vault delete <token>` | Remove a vault entry |
+| `/pii` | Show current PII gate mode |
+| `/pii protected` | Require human approval for PII submissions |
+| `/pii auto` | Auto-resolve vault tokens without approval |
 | `/purge` | List agents for PII purge |
 | `/purge <agent_id>` | Purge PII from agent (with confirm) |
 | `/purge *` | Purge PII from ALL agents (with confirm) |
@@ -174,10 +197,25 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 
 See [Telegram Setup Guide](docs/TELEGRAM_SETUP.md) for configuration.
 
+### PII Vault
+
+Store sensitive data (credit cards, addresses, etc.) encrypted in Snapper's vault. Agents reference data via tokens like `{{SNAPPER_VAULT:a7f3b2c1}}` instead of raw values. When the agent submits a form with vault tokens, Snapper detects the PII, requires approval (or auto-resolves in auto mode), and replaces tokens with real values at the last moment.
+
+| Mode | Behavior |
+|------|----------|
+| **Protected** (default) | PII submissions require human approval via Telegram |
+| **Auto** | Vault tokens auto-resolve without approval (raw PII still blocked) |
+
+Toggle via Telegram: `/pii protected` or `/pii auto`
+
 ### Additional Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
+| `POST /api/v1/vault/entries` | Store PII in encrypted vault, get token |
+| `GET /api/v1/vault/entries` | List vault entries (masked values only) |
+| `DELETE /api/v1/vault/entries/{id}` | Soft-delete a vault entry |
+| `PUT /api/v1/vault/entries/{id}/domains` | Manage allowed domains for entry |
 | `POST /agents/{id}/purge-pii` | Remove PII from agent data (GDPR compliance) |
 | `POST /agents/{id}/whitelist-ip` | Whitelist IP for network egress |
 | `GET /agents/{id}/whitelist-ip` | List whitelisted IPs |
@@ -310,6 +348,7 @@ Each agent has adaptive trust metrics:
 | **Network** | Block exfiltration domains, backdoor ports, with IP whitelist |
 | **Rate Limiting** | Prevent abuse and brute force |
 | **Approval Workflow** | Human-in-the-loop for sensitive operations |
+| **PII Vault** | Encrypted storage with per-field approval for browser form fills |
 | **Trust Scoring** | Adaptive trust based on agent behavior |
 | **Audit Trail** | Immutable logging of all security events |
 
@@ -332,12 +371,15 @@ Each agent has adaptive trust metrics:
 Swagger docs at `/api/docs`. Key endpoints:
 
 ```
-GET    /api/v1/agents          # List agents
-POST   /api/v1/rules           # Create a rule
-POST   /api/v1/rules/evaluate  # Evaluate a request (used by hooks)
-GET    /api/v1/audit/logs      # Get audit logs
-GET    /health                 # Health check
-GET    /health/ready           # Readiness check (DB + Redis)
+GET    /api/v1/agents              # List agents
+POST   /api/v1/rules              # Create a rule
+POST   /api/v1/rules/evaluate     # Evaluate a request (used by hooks/plugin)
+POST   /api/v1/vault/entries      # Store PII in encrypted vault
+GET    /api/v1/vault/entries      # List vault entries (masked)
+GET    /api/v1/approvals/{id}/status  # Check approval status (polled by plugin)
+GET    /api/v1/audit/logs         # Get audit logs
+GET    /health                    # Health check
+GET    /health/ready              # Readiness check (DB + Redis)
 ```
 
 ## Configuration
@@ -389,16 +431,18 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   AI Assistant  │────▶│  PreToolUse     │────▶│    Snapper      │
-│  (Claude Code)  │     │  Hook           │     │  Rule Engine    │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                        │
-                                                        ▼
-                                                ┌─────────────────┐
-                                                │   Allow / Deny  │
-                                                │ / Ask Approval  │
-                                                └─────────────────┘
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   AI Assistant   │────▶│  Hook / Plugin   │────▶│     Snapper      │
+│ (OpenClaw/Claude)│     │                  │     │   Rule Engine    │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+                                                          │
+                                  ┌───────────────────────┼───────────────┐
+                                  ▼                       ▼               ▼
+                          ┌──────────────┐   ┌──────────────────┐  ┌──────────┐
+                          │    Allow     │   │ Require Approval │  │   Deny   │
+                          │ + resolve   │   │ (Telegram vote)  │  │          │
+                          │ vault tokens │   │ then resolve     │  │          │
+                          └──────────────┘   └──────────────────┘  └──────────┘
 ```
 
 **Stack:** FastAPI, PostgreSQL, Redis, Celery, Gunicorn, Docker Compose.
@@ -454,7 +498,7 @@ E2E tests cover:
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 181 | API, rule engine, middleware, Telegram callbacks |
+| Unit tests | 234 | API, rule engine, middleware, Telegram, PII vault/gate |
 | Integration tests | 41 | Live app testing (skipped in CI) |
 | E2E tests | 65 | Browser-based UI testing (Playwright) |
 

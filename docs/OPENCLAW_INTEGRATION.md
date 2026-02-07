@@ -4,11 +4,30 @@ Complete guide for integrating Snapper with OpenClaw AI assistant.
 
 ## Overview
 
-Snapper acts as a security gateway for OpenClaw, validating every shell command before execution. When OpenClaw tries to run a command:
+Snapper acts as a security gateway for OpenClaw, validating tool calls and shell commands before execution. Two integration methods are available:
 
-1. The shell wrapper intercepts the command
-2. Snapper evaluates it against security rules
-3. Command is allowed, denied, or held for approval
+| Method | Intercepts | Can Modify Tool Input | PII Vault Support |
+|--------|-----------|----------------------|-------------------|
+| **snapper-guard plugin** (recommended) | All tool calls (browser, exec, etc.) | Yes | Full (token replacement in form fields) |
+| **Shell hook** | Shell commands only | No | Partial (stdout only) |
+
+### Plugin Flow (recommended)
+
+```
+OpenClaw Agent
+      │
+      ▼ (before_tool_call hook)
+snapper-guard plugin
+      │
+      ▼
+Snapper API (/api/v1/rules/evaluate)
+      │
+      ├── allow + resolved_data → replace vault tokens in params → execute
+      ├── require_approval → poll for decision → replace tokens → execute
+      └── deny → block tool call with error
+```
+
+### Shell Hook Flow (legacy)
 
 ```
 OpenClaw Agent
@@ -23,6 +42,94 @@ Snapper API (/api/v1/rules/evaluate)
       ├── deny → block with error
       └── require_approval → wait for human
 ```
+
+## Plugin Setup (Recommended)
+
+The snapper-guard plugin intercepts all tool calls natively through OpenClaw's plugin API. This is required for PII vault token resolution in browser form fills.
+
+### 1. Register OpenClaw Agent
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "OpenClaw",
+    "external_id": "openclaw-main",
+    "description": "OpenClaw AI assistant",
+    "trust_level": "standard"
+  }'
+```
+
+Save the returned `api_key` (starts with `snp_`).
+
+### 2. Install the Plugin
+
+```bash
+# Copy plugin files to OpenClaw's extensions directory
+cp -r /opt/snapper/plugins/snapper-guard ~/.openclaw/extensions/snapper-guard
+```
+
+### 3. Configure the Plugin
+
+Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "snapper-guard": {
+        "enabled": true,
+        "config": {
+          "snapperUrl": "http://127.0.0.1:8000",
+          "agentId": "openclaw-main",
+          "apiKey": "snp_your_key_here",
+          "approvalTimeoutMs": 300000,
+          "pollIntervalMs": 5000
+        }
+      }
+    }
+  }
+}
+```
+
+| Config | Default | Description |
+|--------|---------|-------------|
+| `snapperUrl` | `http://127.0.0.1:8000` | Snapper API URL |
+| `agentId` | `openclaw-main` | Agent external_id in Snapper |
+| `apiKey` | — | Snapper API key (`snp_...`) |
+| `approvalTimeoutMs` | `300000` | Max wait for human approval (5 min) |
+| `pollIntervalMs` | `5000` | Approval status poll interval |
+
+### 4. Restart OpenClaw
+
+```bash
+cd /opt/openclaw && docker compose restart openclaw-gateway
+```
+
+### 5. Verify Plugin Loaded
+
+```bash
+docker compose logs openclaw-gateway | grep snapper-guard
+# Should show: snapper-guard: registered (snapper=http://127.0.0.1:8000, agent=openclaw-main)
+```
+
+### PII Vault Token Flow
+
+1. User stores PII via Telegram `/vault add "My Visa" credit_card`
+2. Snapper returns a token: `{{SNAPPER_VAULT:a7f3b2c1}}`
+3. User tells OpenClaw: "Fill in my credit card using `{{SNAPPER_VAULT:a7f3b2c1}}`"
+4. OpenClaw calls `browser fill` with the token in a field value
+5. snapper-guard plugin intercepts → calls Snapper evaluate
+6. PII gate detects the vault token → requires approval (or auto-resolves)
+7. After approval, Snapper returns `resolved_data` with decrypted value
+8. Plugin replaces the token in the browser params with the real card number
+9. Browser fills the form field with the actual value
+
+---
+
+## Shell Hook Setup (Legacy)
+
+The shell hook method intercepts shell commands only. Use this if you don't need browser/PII features.
 
 ## Quick Setup (VPS with Both Services)
 
@@ -383,26 +490,28 @@ Add `+ *.md` or other patterns as needed. The `- *` at the end excludes everythi
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        VPS Server                                │
-│  ┌─────────────────────────┐    ┌─────────────────────────────┐ │
-│  │     OpenClaw Stack      │    │      Snapper Stack          │ │
-│  │  ┌───────────────────┐  │    │  ┌───────────────────────┐  │ │
-│  │  │  openclaw-gateway │  │    │  │    snapper-app        │  │ │
-│  │  │                   │  │    │  │    (FastAPI)          │  │ │
-│  │  │  SHELL=snapper-   │──────────▶  POST /rules/evaluate │  │ │
-│  │  │    shell.sh       │  │    │  │                       │  │ │
-│  │  └───────────────────┘  │    │  └───────────────────────┘  │ │
-│  │           │             │    │            │                │ │
-│  │           ▼             │    │            ▼                │ │
-│  │    Telegram Bot         │    │    ┌───────────────┐        │ │
-│  │    @redfuzzydog_bot     │    │    │   PostgreSQL  │        │ │
-│  │                         │    │    │   + Redis     │        │ │
-│  └─────────────────────────┘    │    └───────────────┘        │ │
-│                                 │            │                │ │
-│                                 │            ▼                │ │
-│                                 │    Telegram Bot             │ │
-│                                 │    @Snapper_approval_bot    │ │
-│                                 └─────────────────────────────┘ │
+│                          VPS Server                              │
+│  ┌──────────────────────────┐    ┌────────────────────────────┐ │
+│  │      OpenClaw Stack      │    │      Snapper Stack         │ │
+│  │  ┌────────────────────┐  │    │  ┌──────────────────────┐  │ │
+│  │  │  openclaw-gateway  │  │    │  │    snapper-app       │  │ │
+│  │  │                    │  │    │  │    (FastAPI)         │  │ │
+│  │  │  snapper-guard     │─────────▶ POST /rules/evaluate  │  │ │
+│  │  │  plugin (native)   │  │    │  │                      │  │ │
+│  │  │                    │  │    │  │  PII Vault (AES)     │  │ │
+│  │  │  SHELL=snapper-    │─────────▶ (shell hook fallback) │  │ │
+│  │  │    shell.sh        │  │    │  └──────────────────────┘  │ │
+│  │  └────────────────────┘  │    │            │               │ │
+│  │           │              │    │            ▼               │ │
+│  │           ▼              │    │    ┌──────────────┐        │ │
+│  │    Telegram Bot          │    │    │  PostgreSQL  │        │ │
+│  │    @redfuzzydog_bot      │    │    │  + Redis     │        │ │
+│  └──────────────────────────┘    │    └──────────────┘        │ │
+│                                  │            │               │ │
+│                                  │            ▼               │ │
+│                                  │    Telegram Bot            │ │
+│                                  │    @Snapper_approval_bot   │ │
+│                                  └────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -422,22 +531,57 @@ X-API-Key: snp_xxx (optional)
 }
 ```
 
-Response:
+### Evaluate Browser Action (with PII)
+
+```http
+POST /api/v1/rules/evaluate
+Content-Type: application/json
+X-API-Key: snp_xxx
+
+{
+  "agent_id": "openclaw-main",
+  "request_type": "browser_action",
+  "tool_name": "browser",
+  "tool_input": {
+    "action": "fill",
+    "fields": [{"ref": "15", "value": "{{SNAPPER_VAULT:a7f3b2c1}}"}],
+    "url": "https://expedia.com/checkout"
+  }
+}
+```
+
+Response (protected mode):
+```json
+{
+  "decision": "require_approval",
+  "reason": "Requires approval: PII Gate Protection",
+  "matched_rule_id": "uuid",
+  "matched_rule_name": "PII Gate Protection",
+  "approval_request_id": "uuid",
+  "approval_timeout_seconds": 300
+}
+```
+
+Response (auto mode with resolved tokens):
 ```json
 {
   "decision": "allow",
   "reason": "Allowed by matching rules",
-  "matched_rule_id": null,
-  "matched_rule_name": null
+  "resolved_data": {
+    "{{SNAPPER_VAULT:a7f3b2c1}}": {
+      "value": "4111111111111234",
+      "category": "credit_card",
+      "label": "My Visa",
+      "masked_value": "****-****-****-1234"
+    }
+  }
 }
 ```
 
-Or when blocked:
-```json
-{
-  "decision": "deny",
-  "reason": "Denied by rule: Block Dangerous Commands",
-  "matched_rule_id": "uuid",
-  "matched_rule_name": "Block Dangerous Commands"
-}
-```
+### Response Decisions
+
+| Decision | Description |
+|----------|-------------|
+| `allow` | Request permitted. May include `resolved_data` with decrypted vault tokens. |
+| `deny` | Request blocked. `reason` explains why. |
+| `require_approval` | Waiting for human. `approval_request_id` used to poll status. |

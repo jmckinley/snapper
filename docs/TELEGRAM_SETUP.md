@@ -83,6 +83,14 @@ Once configured, your bot supports these commands:
 | `/test install <skill>` | Test a skill installation |
 | `/test access <file>` | Test file access |
 | `/test network <host>` | Test network egress |
+| `/vault` | Manage encrypted PII vault |
+| `/vault add <label> <category>` | Store PII, get vault token |
+| `/vault list` | List your entries (masked) |
+| `/vault delete <token>` | Remove a vault entry |
+| `/vault domains <token> add <domain>` | Manage allowed domains |
+| `/pii` | Show current PII gate mode |
+| `/pii protected` | Require approval for PII submissions |
+| `/pii auto` | Auto-resolve vault tokens (no approval) |
 | `/purge` | List agents for PII purge |
 | `/purge <agent_id>` | Purge PII from agent data |
 | `/purge *` | Purge PII from ALL agents |
@@ -182,6 +190,68 @@ The bot will show a confirmation dialog. Tap "CONFIRM PURGE" to proceed.
 
 **Note:** For complete PII removal from OpenClaw agents, also run `openclaw agent --purge-pii` on the agent's host.
 
+## PII Vault
+
+The PII vault lets you store sensitive data (credit cards, names, addresses) encrypted in Snapper and give AI agents tokens to reference them instead of raw values.
+
+### Storing PII
+
+```
+/vault add "My Visa" credit_card
+```
+
+The bot will prompt you to enter the actual card number. Once entered, it's encrypted and you receive a token:
+
+```
+Vault entry created:
+  Label: My Visa
+  Token: {{SNAPPER_VAULT:a7f3b2c1}}
+  Masked: ****-****-****-1234
+
+Give this token to your AI agent instead of the real value.
+```
+
+### Using Vault Tokens
+
+Tell your AI agent: "Use `{{SNAPPER_VAULT:a7f3b2c1}}` for the credit card field"
+
+When the agent fills a browser form with this token, Snapper intercepts it and:
+- **Protected mode** (`/pii protected`): Sends a Telegram approval request showing the masked data and destination site
+- **Auto mode** (`/pii auto`): Resolves the token automatically without approval
+
+### PII Approval Notifications
+
+When PII is detected in protected mode:
+
+```
+PII Submission Detected: PII Gate Protection
+
+Agent OpenClaw wants to: browser fill
+
+Site: https://expedia.com/checkout
+Data being sent:
+  Credit Card: ****-****-****-1234
+
+[Approve]  [Deny]
+```
+
+### Managing Vault Entries
+
+```
+/vault list              # See all your entries (masked)
+/vault delete a7f3b2c1   # Remove an entry
+/vault domains a7f3b2c1 add *.expedia.com  # Restrict to specific sites
+```
+
+### Domain Restrictions
+
+You can restrict a vault entry to specific domains. If the agent tries to use the token on an unauthorized site, the token won't resolve:
+
+```
+/vault domains a7f3b2c1 add *.expedia.com
+/vault domains a7f3b2c1 add *.delta.com
+```
+
 ## Multiple Bots
 
 If you run multiple services (e.g., Snapper and OpenClaw), use **separate bots** for each:
@@ -236,6 +306,16 @@ When OpenClaw is integrated with Snapper, approval requests appear in Telegram:
 The decision is sent back to OpenClaw, which either executes or blocks the command.
 
 See [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) for setup details.
+
+### PII Approval via Telegram
+
+When PII is detected in a browser form fill (protected mode), the approval notification shows:
+- Which agent is submitting data
+- The destination website URL
+- What PII categories are being sent (masked values)
+- Approve/Deny buttons
+
+After approval, vault tokens are decrypted and the real values are passed to the agent's browser tool.
 
 ## Security Notes
 

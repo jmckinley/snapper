@@ -115,7 +115,7 @@ echo -e "${YELLOW}Applying $PROFILE security profile...${NC}"
 
 case $PROFILE in
     strict)
-        TEMPLATES="cve-2026-25253-mitigation credential-protection malicious-skill-blocker rate-limit-standard localhost-only human-approval-sensitive"
+        TEMPLATES="cve-2026-25253-mitigation credential-protection malicious-skill-blocker rate-limit-standard localhost-only human-approval-sensitive pii-gate-protection"
         ;;
     permissive)
         TEMPLATES="credential-protection"
@@ -209,6 +209,7 @@ echo "  • CVE-2026-25253 (WebSocket RCE)"
 echo "  • Credential exposure (.env, .pem, SSH keys)"
 echo "  • Malicious ClawHub skills"
 echo "  • Runaway agent abuse (rate limiting)"
+echo "  • PII leakage in browser forms (strict profile)"
 echo ""
 echo -e "${BOLD}Note:${NC} Restart Claude Code for hooks to take effect"
 echo ""

@@ -182,7 +182,86 @@ When `LEARNING_MODE=true`, denied requests show what would happen:
 | `file_access` | File read/write | `file_path`, `file_operation` |
 | `network` | Network egress | `url`, `host`, `port` |
 | `tool` | Generic tool call | `tool_name`, `tool_input` |
+| `browser_action` | Browser tool call (fill, type, navigate) | `tool_name`, `tool_input` |
 | `skill_install` | Skill installation | `skill_name`, `publisher` |
+
+#### PII Detection in Evaluate Response
+
+When the PII gate rule matches, the evaluate response includes additional fields:
+
+```json
+{
+  "decision": "require_approval",
+  "reason": "Requires approval: PII Gate Protection",
+  "matched_rule_id": "uuid",
+  "matched_rule_name": "PII Gate Protection",
+  "approval_request_id": "uuid",
+  "approval_timeout_seconds": 300,
+  "resolved_data": null
+}
+```
+
+In **auto mode**, vault tokens are resolved inline:
+
+```json
+{
+  "decision": "allow",
+  "reason": "Allowed by matching rules",
+  "resolved_data": {
+    "{{SNAPPER_VAULT:a1b2c3d4}}": {
+      "value": "4111111111111234",
+      "category": "credit_card",
+      "label": "My Visa",
+      "masked_value": "****-****-****-1234"
+    }
+  }
+}
+```
+
+The `resolved_data` field maps vault tokens to their decrypted values. The snapper-guard plugin uses this to replace tokens in tool params before execution.
+
+### Vault (PII Storage)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/vault/entries` | Create encrypted vault entry |
+| GET | `/api/v1/vault/entries` | List entries (masked values only) |
+| DELETE | `/api/v1/vault/entries/{id}` | Soft-delete entry (ownership check) |
+| PUT | `/api/v1/vault/entries/{id}/domains` | Update allowed domains |
+
+#### Create Vault Entry
+
+```bash
+curl -X POST http://localhost:8000/api/v1/vault/entries \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner_chat_id": "12345",
+    "owner_name": "John",
+    "label": "My Visa",
+    "category": "credit_card",
+    "raw_value": "4111111111111234",
+    "allowed_domains": ["*.expedia.com", "*.delta.com"]
+  }'
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "token": "{{SNAPPER_VAULT:a7f3b2c1}}",
+  "label": "My Visa",
+  "category": "credit_card",
+  "masked_value": "****-****-****-1234",
+  "allowed_domains": ["*.expedia.com", "*.delta.com"],
+  "created_at": "2026-02-07T12:00:00Z"
+}
+```
+
+The `token` is what agents use in place of raw PII. The raw value is encrypted at rest with Fernet (AES-128-CBC) and never returned via API.
+
+#### Supported PII Categories
+
+`credit_card`, `email`, `phone`, `name`, `address`, `ssn`, `passport`, `bank_account`, `custom`
 
 ### Audit
 
@@ -229,9 +308,45 @@ curl "http://localhost:8000/api/v1/audit/logs?page=1&page_size=50"
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/approvals` | List pending approvals |
-| GET | `/api/v1/approvals/{id}` | Get approval details |
+| GET | `/api/v1/approvals/pending` | List pending approvals |
+| GET | `/api/v1/approvals/{id}/status` | Check approval status (polled by hooks/plugin) |
 | POST | `/api/v1/approvals/{id}/decide` | Approve or deny |
+
+#### Check Approval Status
+
+Polled by hooks and the snapper-guard plugin while waiting for human decision:
+
+```bash
+curl http://localhost:8000/api/v1/approvals/{id}/status
+```
+
+Response (pending):
+```json
+{
+  "id": "uuid",
+  "status": "pending",
+  "wait_seconds": 5
+}
+```
+
+Response (approved with PII):
+```json
+{
+  "id": "uuid",
+  "status": "approved",
+  "reason": "Approved by john",
+  "resolved_data": {
+    "{{SNAPPER_VAULT:a7f3b2c1}}": {
+      "value": "4111111111111234",
+      "category": "credit_card",
+      "label": "My Visa",
+      "masked_value": "****-****-****-1234"
+    }
+  }
+}
+```
+
+Note: `resolved_data` is a one-time retrieval — it's deleted from Redis after the first read.
 
 #### Decide on Approval
 
@@ -240,7 +355,7 @@ curl -X POST http://localhost:8000/api/v1/approvals/{id}/decide \
   -H "Content-Type: application/json" \
   -d '{
     "decision": "approve",
-    "reason": "Approved by admin"
+    "decided_by": "admin"
   }'
 ```
 
@@ -288,6 +403,8 @@ The Telegram bot uses inline buttons with specific callback data formats:
 | `origin_validation` | Validate request origin | `allowed_origins: string[]` |
 | `version_enforcement` | Require minimum version | `min_version: string` |
 | `sandbox_required` | Require containerized execution | `allowed_environments: string[]` |
+| `pii_gate` | Detect PII in tool/browser actions | `scan_tool_input: bool, detect_vault_tokens: bool, pii_categories: string[], pii_mode: "protected"\|"auto"` |
+| `human_in_loop` | Require approval for matching requests | `patterns: string[]` |
 
 ## Error Responses
 
