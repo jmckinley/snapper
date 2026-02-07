@@ -1,6 +1,7 @@
 #!/bin/bash
 # Snapper Shell Wrapper for OpenClaw
 REAL_SHELL="/bin/bash"
+SNAPPER_API_KEY="${SNAPPER_API_KEY:?Set SNAPPER_API_KEY env var}"
 
 # If interactive or no args, just run shell
 [ -t 0 ] && [ $# -eq 0 ] && exec $REAL_SHELL
@@ -12,7 +13,7 @@ REAL_SHELL="/bin/bash"
 # Call Snapper
 RESP=$(curl -sf -X POST "http://host.docker.internal:8000/api/v1/rules/evaluate" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: snp_DFlHdJhpjhBfb_WRE8RB7j0CuPUnISRZSVv2x07WWBI" \
+  -H "X-API-Key: $SNAPPER_API_KEY" \
   -d "{\"agent_id\": \"openclaw-main\", \"request_type\": \"command\", \"command\": \"$CMD\"}" 2>/dev/null)
 
 # Check decision

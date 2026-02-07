@@ -1,6 +1,7 @@
 #!/bin/sh
 # Bash wrapper that validates commands with Snapper
 REAL_BASH="/bin/bash.real"
+SNAPPER_API_KEY="${SNAPPER_API_KEY:?Set SNAPPER_API_KEY env var}"
 
 # Get command from -c flag
 CMD=""
@@ -18,7 +19,7 @@ done
 # Call Snapper
 RESP=$(curl -sf -X POST "http://host.docker.internal:8000/api/v1/rules/evaluate" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: snp_DFlHdJhpjhBfb_WRE8RB7j0CuPUnISRZSVv2x07WWBI" \
+  -H "X-API-Key: $SNAPPER_API_KEY" \
   -d "{\"agent_id\": \"openclaw-main\", \"request_type\": \"command\", \"command\": \"$CMD\"}" 2>/dev/null)
 
 # Check for deny
