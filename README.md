@@ -6,13 +6,21 @@
 
 ## What is Snapper?
 
-Snapper sits between your AI coding assistants (OpenClaw, Claude Code, Cursor, GitHub Copilot) and the actions they take. It lets you:
+Snapper sits between your AI agent (OpenClaw, running in Docker) and the actions it takes. It lets you:
 
 - **Allow** specific commands, tools, or integrations
 - **Deny** dangerous operations (like `rm -rf /` or accessing `.env` files)
 - **Require approval** for sensitive actions before they execute
 
 Think of it as a firewall for AI agents.
+
+## Prerequisites
+
+- **Docker 24.0+** with Compose v2 — check: `docker compose version`
+- **Git** — check: `git --version`
+- **OpenClaw running in Docker** on the same machine or network
+
+Snapper runs entirely in Docker. No bare-metal install.
 
 ## Installation
 
@@ -28,9 +36,18 @@ cd snapper
 docker compose up -d
 ```
 
-That's it. Dashboard at http://localhost:8000, API docs at http://localhost:8000/api/docs.
+Open http://localhost:8000 — the setup wizard walks you through:
+
+1. **Register your OpenClaw agent** (~1 min)
+2. **Pick a security profile** — Recommended, Strict, or Permissive
+3. **Set up Telegram notifications** (optional)
+4. **Get your config snippet** — paste into OpenClaw's config
+
+Rules start in **learning mode** — logs without blocking so you can tune before enforcing.
 
 To customize settings, copy `.env.example` to `.env` and edit — defaults work out of the box.
+
+For the full walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
 
 ### Production (Ubuntu VPS)
 
@@ -97,51 +114,6 @@ Two integration methods (can be used together):
 4. Restart OpenClaw
 
 See the full [OpenClaw Integration Guide](docs/OPENCLAW_INTEGRATION.md) for step-by-step instructions.
-
-### Claude Code
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash
-```
-
-Restart Claude Code after setup for hooks to take effect.
-
-<details>
-<summary>Manual Claude Code setup</summary>
-
-1. Install the hook:
-```bash
-mkdir -p ~/.claude/hooks
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-hook.sh \
-  -o ~/.claude/hooks/pre_tool_use.sh
-chmod +x ~/.claude/hooks/pre_tool_use.sh
-```
-
-2. Add to `~/.claude/settings.json`:
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/pre_tool_use.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-3. Optionally set environment variables:
-```bash
-export SNAPPER_URL=http://localhost:8000
-export SNAPPER_AGENT_ID=claude-code-$(hostname)
-```
-</details>
 
 ## Features
 
@@ -433,7 +405,7 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
 ```
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │   AI Assistant   │────▶│  Hook / Plugin   │────▶│     Snapper      │
-│ (OpenClaw/Claude)│     │                  │     │   Rule Engine    │
+│    (OpenClaw)    │     │                  │     │   Rule Engine    │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
                                                           │
                                   ┌───────────────────────┼───────────────┐

@@ -25,7 +25,7 @@ This guide walks through everything you need as a Snapper user, from first setup
 
 ### What Snapper Does
 
-When your AI agent (e.g., OpenClaw, Claude Code) tries to run a command or use a tool, Snapper intercepts the request and checks it against your rules:
+When your AI agent (OpenClaw) tries to run a command or use a tool, Snapper intercepts the request and checks it against your rules:
 
 ```
 AI Agent wants to run: rm -rf /important-data
@@ -45,7 +45,7 @@ AI Agent wants to run: rm -rf /important-data
 
 1. **Install Snapper** — See [INSTALL.md](INSTALL.md) for Docker setup
 2. **Set up Telegram** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for bot creation
-3. **Connect your agent** — See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) or the README for Claude Code
+3. **Connect your agent** — See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md)
 4. **Configure rules** — Use templates or create custom rules (this guide covers both)
 
 Once set up, Snapper runs silently in the background. You'll only hear from it when something needs your attention.
@@ -437,16 +437,6 @@ The `snapper-guard` plugin integrates directly with OpenClaw's tool pipeline:
 4. Restart OpenClaw
 
 See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) for full setup.
-
-### Claude Code (Shell Hook)
-
-Claude Code uses shell-based hooks that call Snapper before each tool execution:
-
-1. Register your agent in Snapper
-2. Install the hook script
-3. Configure Claude Code to use the hook
-
-See the [README](../README.md) for Claude Code setup details.
 
 ### How the Hook Works
 

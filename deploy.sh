@@ -79,6 +79,13 @@ if [[ -f "$INSTALL_DIR/.env" ]]; then
 else
     # Detect the server's public IP
     SERVER_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+
+    if [[ -z "$SERVER_IP" ]]; then
+        err "Could not detect server IP automatically."
+        err "Re-run with: SERVER_IP=your.ip.here ./deploy.sh"
+        exit 1
+    fi
+
     SECRET_KEY=$(openssl rand -hex 32)
 
     log "Generating .env for server IP: $SERVER_IP"
@@ -121,17 +128,31 @@ fi
 log "Building and starting containers..."
 
 cd "$INSTALL_DIR"
-$COMPOSE_CMD up -d --build --force-recreate
+if ! $COMPOSE_CMD up -d --build --force-recreate; then
+    err "Docker Compose failed. Check: $COMPOSE_CMD logs app"
+    exit 1
+fi
 
 # Wait for postgres and redis to be healthy
 log "Waiting for database and cache to be ready..."
-$COMPOSE_CMD exec -T postgres sh -c 'until pg_isready -U snapper -d snapper; do sleep 1; done' 2>/dev/null
+RETRIES=0
+while ! $COMPOSE_CMD exec -T postgres pg_isready -U snapper -d snapper 2>/dev/null; do
+    RETRIES=$((RETRIES + 1))
+    if [[ $RETRIES -ge 30 ]]; then
+        err "PostgreSQL not ready after 30s. Check: $COMPOSE_CMD logs postgres"
+        exit 1
+    fi
+    sleep 1
+done
 ok "Containers started"
 
 # ─── Step 4: Run Database Migrations ───────────────────────────────────────
 log "Running database migrations..."
 
-$COMPOSE_CMD run --rm app alembic upgrade head
+if ! $COMPOSE_CMD run --rm app alembic upgrade head; then
+    err "Migration failed. Check: $COMPOSE_CMD run --rm app alembic current"
+    exit 1
+fi
 ok "Migrations complete"
 
 # ─── Step 5: Restart App (pick up migrated schema) ─────────────────────────
@@ -170,8 +191,10 @@ else
 }
 CADDYEOF
 
-        caddy reload --config "$CADDYFILE" 2>/dev/null
-        ok "Caddy configured and reloaded"
+        if ! caddy reload --config "$CADDYFILE" 2>/dev/null; then
+            warn "Caddy reload failed. Validate config: caddy validate --config $CADDYFILE"
+        fi
+        ok "Caddy configured"
     fi
 fi
 

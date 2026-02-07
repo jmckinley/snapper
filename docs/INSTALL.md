@@ -10,6 +10,13 @@ Complete guide for installing Snapper in development and production environments
 | Git | 2.30+ | For cloning repository |
 | Python | 3.11+ | Only for E2E tests on host |
 
+**Verify your setup:**
+```bash
+docker compose version        # Must show v2.x
+git --version                 # Must show 2.30+
+docker info --format '{{.ServerVersion}}'  # Must show 24.0+
+```
+
 ## Quick Start (Development)
 
 ```bash
@@ -20,6 +27,19 @@ docker compose up -d
 
 Dashboard: http://localhost:8000
 API Docs: http://localhost:8000/api/docs
+
+## First Run
+
+When you open the dashboard for the first time, Snapper automatically launches the **setup wizard**:
+
+1. Register your OpenClaw agent
+2. Choose a security profile (Recommended / Strict / Permissive)
+3. Configure Telegram notifications (optional)
+4. Get your OpenClaw config snippet to paste
+
+After the wizard, your agent is protected with rules applied.
+
+For the full walkthrough, see [Getting Started](GETTING_STARTED.md).
 
 ## Production Deployment (Ubuntu VPS)
 

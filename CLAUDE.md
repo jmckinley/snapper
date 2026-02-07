@@ -148,7 +148,7 @@ async def protected_endpoint():
 - **Agent Integration**: Study the agent hooks and permissions system before implementing integrations
 - **Security Priority**: All rule evaluations must fail-safe (deny by default)
 - **Performance**: Use Redis for caching rules and rate limiting counters
-- **Compatibility**: Design rule schema to adapt to various AI agent frameworks
+- **Compatibility**: Currently supports OpenClaw (running in Docker); design rule schema to adapt to future agent frameworks
 - **Security Research**: Implement background job for weekly security research updates since 1/28/26
 - **Rate Limiting**: Use sliding window algorithm with Redis for accurate rate limiting
 - **Audit Trail**: Log all rule changes and enforcement actions
