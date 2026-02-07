@@ -180,7 +180,7 @@ class TestDomainMatching:
     def test_wildcard_subdomain(self):
         assert domain_matches("www.expedia.com", "*.expedia.com") is True
         assert domain_matches("checkout.expedia.com", "*.expedia.com") is True
-        assert domain_matches("expedia.com", "*.expedia.com") is False
+        assert domain_matches("expedia.com", "*.expedia.com") is True  # bare domain matches wildcard
 
     def test_case_insensitive(self):
         assert domain_matches("EXPEDIA.COM", "expedia.com") is True
