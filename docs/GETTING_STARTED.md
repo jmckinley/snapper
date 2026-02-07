@@ -57,7 +57,7 @@ The script handles:
 
 Result: Snapper at `https://your-server-ip:8443`
 
-**Prerequisites:** `git`, `docker` with compose plugin, `caddy`, `ufw` (all standard on Ubuntu 24.04).
+If Docker, Caddy, or basic tools are missing, `deploy.sh` will detect them and offer to install from official repositories (Ubuntu/Debian only). You don't need to install these manually first.
 
 #### Option 2: Manual
 
