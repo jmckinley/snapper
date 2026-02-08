@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Snapper CLI - Security for AI Agents
+Snapper CLI - Agent Application Firewall
 
 Usage:
     snapper init               # Auto-detect agent, register, install hooks (recommended)
     snapper init --agent cursor # Specify agent type explicitly
+    snapper security-check     # Assess security posture of deployment
     snapper setup              # Legacy: full setup for OpenClaw only
     snapper integrate          # Legacy: just configure OpenClaw hooks
     snapper status             # Check Snapper and agent status
@@ -630,6 +631,220 @@ def cmd_status(args):
         print(f"  {RED}Error checking status: {e}{RESET}")
 
 
+def cmd_security_check(args):
+    """Assess the security posture of the Snapper deployment."""
+    print_banner()
+    print(f"{BOLD}Security Posture Assessment{RESET}\n")
+
+    pass_count = 0
+    warn_count = 0
+    fail_count = 0
+
+    def sec_pass(msg):
+        nonlocal pass_count
+        print(f"  {GREEN}PASS{RESET}  {msg}")
+        pass_count += 1
+
+    def sec_warn(msg, action=None):
+        nonlocal warn_count
+        print(f"  {YELLOW}WARN{RESET}  {msg}")
+        if action:
+            print(f"         {action}")
+        warn_count += 1
+
+    def sec_fail(msg, fix=None):
+        nonlocal fail_count
+        print(f"  {RED}FAIL{RESET}  {msg}")
+        if fix:
+            print(f"         Fix: {fix}")
+        fail_count += 1
+
+    # 1. Snapper running
+    if check_snapper_running():
+        sec_pass(f"Snapper is running at {SNAPPER_URL}")
+    else:
+        sec_fail(f"Snapper is not running at {SNAPPER_URL}",
+                 "Start with: docker compose up -d")
+        # Can't do API checks if not running
+        print(f"\n  {RED}Cannot continue checks without Snapper running.{RESET}")
+        return
+
+    # 2. HTTPS vs HTTP
+    if SNAPPER_URL.startswith("https://"):
+        sec_pass("SNAPPER_URL uses HTTPS")
+    else:
+        sec_warn("SNAPPER_URL uses HTTP — traffic is unencrypted",
+                 "Set SNAPPER_URL=https://... for production")
+
+    # 3. Check health/ready for DB + Redis
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"{SNAPPER_URL}/health/ready")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            if data.get("status") == "ready":
+                sec_pass("Database and Redis connected")
+            else:
+                sec_warn(f"Health check returned: {data.get('status', 'unknown')}")
+    except Exception:
+        sec_warn("Could not reach /health/ready endpoint")
+
+    # 4. Check Docker (are we in a container environment?)
+    docker_check = shutil.which("docker")
+    if docker_check:
+        import subprocess as sp
+        try:
+            result = sp.run(["docker", "compose", "ps", "--format", "json"],
+                            capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and "app" in result.stdout:
+                sec_pass("Running in Docker containers")
+            else:
+                sec_warn("Docker detected but Snapper containers not found")
+        except Exception:
+            sec_warn("Could not verify Docker container status")
+    else:
+        sec_warn("Docker not found on this host",
+                 "Snapper must run in Docker for security isolation")
+
+    # 5. Check .env file for security settings
+    env_file = Path.cwd() / ".env"
+    if not env_file.exists():
+        env_file = Path("/opt/snapper/.env")
+
+    if env_file.exists():
+        env_content = env_file.read_text()
+        env_vars = {}
+        for line in env_content.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                env_vars[key.strip()] = val.strip()
+
+        # SECRET_KEY
+        sk = env_vars.get("SECRET_KEY", "")
+        if not sk:
+            sec_fail("SECRET_KEY is empty")
+        elif sk == "development-secret-key-change-in-production":
+            sec_fail("SECRET_KEY is the development default",
+                     "Generate with: openssl rand -hex 32")
+        elif len(sk) < 32:
+            sec_fail(f"SECRET_KEY too short ({len(sk)} chars, need 32+)")
+        else:
+            sec_pass(f"SECRET_KEY is set ({len(sk)} chars)")
+
+        # LEARNING_MODE
+        lm = env_vars.get("LEARNING_MODE", "true").lower()
+        if lm == "true":
+            sec_warn("Learning mode is ON — violations logged but not blocked",
+                     "Set LEARNING_MODE=false when ready to enforce")
+        else:
+            sec_pass("Learning mode is OFF — rules are enforced")
+
+        # DENY_BY_DEFAULT
+        dbd = env_vars.get("DENY_BY_DEFAULT", "false").lower()
+        if dbd == "true":
+            sec_pass("Deny-by-default is ON")
+        else:
+            sec_warn("Deny-by-default is OFF — unknown requests are allowed",
+                     "Set DENY_BY_DEFAULT=true for production")
+
+        # REQUIRE_API_KEY
+        rak = env_vars.get("REQUIRE_API_KEY", "false").lower()
+        if rak == "true":
+            sec_pass("API key authentication required")
+        else:
+            sec_warn("API key authentication not required",
+                     "Set REQUIRE_API_KEY=true for production")
+
+        # REQUIRE_VAULT_AUTH
+        rva = env_vars.get("REQUIRE_VAULT_AUTH", "false").lower()
+        if rva == "true":
+            sec_pass("Vault write authentication required")
+        else:
+            sec_warn("Vault writes don't require authentication",
+                     "Set REQUIRE_VAULT_AUTH=true for production")
+
+        # Telegram
+        tg = env_vars.get("TELEGRAM_BOT_TOKEN", "")
+        if tg:
+            sec_pass("Telegram bot configured for approval alerts")
+        else:
+            sec_warn("Telegram not configured — no approval notifications",
+                     "Add TELEGRAM_BOT_TOKEN to .env")
+
+        # ALLOWED_HOSTS
+        ah = env_vars.get("ALLOWED_HOSTS", "")
+        if ah and ah not in ("localhost", "localhost,127.0.0.1"):
+            sec_pass(f"ALLOWED_HOSTS configured ({ah})")
+        else:
+            sec_warn("ALLOWED_HOSTS may need your server IP")
+
+        # ALLOWED_ORIGINS
+        ao = env_vars.get("ALLOWED_ORIGINS", "")
+        if ao and ao != "http://localhost:8000":
+            sec_pass(f"ALLOWED_ORIGINS configured")
+        else:
+            sec_warn("ALLOWED_ORIGINS may need your server URL")
+
+        # DEBUG
+        debug = env_vars.get("DEBUG", "false").lower()
+        if debug == "true":
+            sec_fail("DEBUG mode is ON in production!",
+                     "Set DEBUG=false")
+        else:
+            sec_pass("DEBUG mode is OFF")
+    else:
+        sec_warn(f"Could not find .env file to check settings")
+
+    # 6. Check if rules exist
+    try:
+        req = urllib.request.Request(
+            f"{SNAPPER_URL}/api/v1/rules?page_size=1",
+            headers={"Origin": SNAPPER_URL},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            total = data.get("total", 0)
+            if total > 0:
+                sec_pass(f"{total} security rules configured")
+            else:
+                sec_warn("No security rules configured",
+                         "Run: python scripts/snapper-cli.py init")
+    except Exception:
+        sec_warn("Could not check rules")
+
+    # 7. Check if agents exist
+    try:
+        req = urllib.request.Request(
+            f"{SNAPPER_URL}/api/v1/agents?page_size=1",
+            headers={"Origin": SNAPPER_URL},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            total = data.get("total", 0)
+            if total > 0:
+                sec_pass(f"{total} agent(s) registered")
+            else:
+                sec_warn("No agents registered",
+                         "Run: python scripts/snapper-cli.py init")
+    except Exception:
+        sec_warn("Could not check agents")
+
+    # Summary
+    print(f"\n  ─────────────────────────────────────")
+    print(f"  {GREEN}{pass_count} passed{RESET}  "
+          f"{YELLOW}{warn_count} warnings{RESET}  "
+          f"{RED}{fail_count} failed{RESET}")
+
+    if fail_count > 0:
+        print(f"\n  {RED}Fix the failures above before exposing Snapper to the network.{RESET}")
+    elif warn_count > 0:
+        print(f"\n  {YELLOW}Review warnings. See docs/SECURITY.md for details.{RESET}")
+    else:
+        print(f"\n  {GREEN}All security checks passed!{RESET}")
+    print()
+
+
 def cmd_test(args):
     """Test the integration."""
     print_banner()
@@ -709,8 +924,8 @@ Examples:
   snapper init                     Auto-detect agent, register, install hooks
   snapper init --agent cursor      Specify agent type explicitly
   snapper init --profile strict    Use strict security profile
+  snapper security-check           Assess security posture of deployment
   snapper setup                    Legacy: full setup for OpenClaw only
-  snapper integrate                Legacy: just configure OpenClaw hooks
   snapper status                   Check status
   snapper test                     Test the integration
         """,
@@ -759,6 +974,9 @@ Examples:
         help="Security profile to apply",
     )
 
+    # security-check command
+    subparsers.add_parser("security-check", help="Assess security posture")
+
     # status command
     subparsers.add_parser("status", help="Check status")
 
@@ -778,6 +996,8 @@ Examples:
         cmd_setup(args)
     elif args.command == "integrate":
         cmd_integrate(args)
+    elif args.command == "security-check":
+        cmd_security_check(args)
     elif args.command == "status":
         cmd_status(args)
     elif args.command == "test":

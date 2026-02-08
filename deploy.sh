@@ -445,6 +445,169 @@ else
     warn "External HTTPS check failed — Caddy may need configuration"
 fi
 
+# ─── Step 9: Security Posture Assessment ─────────────────────────────────
+echo ""
+log "Running security posture assessment..."
+echo ""
+
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
+
+sec_pass() { echo -e "  ${GREEN}PASS${NC}  $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
+sec_warn() { echo -e "  ${YELLOW}WARN${NC}  $1"; WARN_COUNT=$((WARN_COUNT + 1)); }
+sec_fail() { echo -e "  ${RED}FAIL${NC}  $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
+
+# Docker deployment
+if docker compose version &>/dev/null; then
+    sec_pass "Running in Docker containers"
+else
+    sec_fail "Docker not detected — Snapper must run in Docker"
+fi
+
+# App port binding (check if bound to 127.0.0.1 only)
+APP_PORT_BINDING=$($COMPOSE_CMD port app 8000 2>/dev/null || echo "")
+if echo "$APP_PORT_BINDING" | grep -q "^127\.0\.0\.1:"; then
+    sec_pass "App bound to 127.0.0.1 (not externally accessible)"
+elif echo "$APP_PORT_BINDING" | grep -q "^0\.0\.0\.0:"; then
+    sec_fail "App bound to 0.0.0.0 — accessible from network, bypassing TLS"
+    echo -e "         Fix: Use docker-compose.prod.yml (binds to 127.0.0.1)"
+else
+    sec_warn "Could not detect app port binding"
+fi
+
+# PostgreSQL not exposed
+PG_PORT_BINDING=$($COMPOSE_CMD port postgres 5432 2>/dev/null || echo "")
+if [[ -z "$PG_PORT_BINDING" ]]; then
+    sec_pass "PostgreSQL not exposed to host (Docker-internal only)"
+else
+    sec_fail "PostgreSQL exposed on $PG_PORT_BINDING — no auth by default!"
+    echo -e "         Fix: Remove ports from postgres service in docker-compose"
+fi
+
+# Redis not exposed
+REDIS_PORT_BINDING=$($COMPOSE_CMD port redis 6379 2>/dev/null || echo "")
+if [[ -z "$REDIS_PORT_BINDING" ]]; then
+    sec_pass "Redis not exposed to host (Docker-internal only)"
+else
+    sec_fail "Redis exposed on $REDIS_PORT_BINDING — no auth by default!"
+    echo -e "         Fix: Remove ports from redis service in docker-compose"
+fi
+
+# SECRET_KEY strength
+if [[ -f "$INSTALL_DIR/.env" ]]; then
+    SK=$(grep "^SECRET_KEY=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [[ -z "$SK" ]]; then
+        sec_fail "SECRET_KEY is empty"
+    elif [[ "$SK" == "development-secret-key-change-in-production" ]]; then
+        sec_fail "SECRET_KEY is the development default — change it!"
+    elif [[ ${#SK} -lt 32 ]]; then
+        sec_fail "SECRET_KEY is too short (${#SK} chars, need 32+)"
+    else
+        sec_pass "SECRET_KEY is set (${#SK} chars)"
+    fi
+fi
+
+# TLS / Caddy
+if curl -skf "https://127.0.0.1:${SNAPPER_PORT}/health" >/dev/null 2>&1; then
+    sec_pass "TLS termination working (Caddy on port $SNAPPER_PORT)"
+else
+    sec_fail "TLS not working on port $SNAPPER_PORT — no HTTPS access"
+    echo -e "         Fix: Configure Caddy with TLS certificate"
+fi
+
+# Firewall
+if command -v ufw &>/dev/null; then
+    if ufw status 2>/dev/null | grep -q "Status: active"; then
+        sec_pass "UFW firewall is active"
+        # Check that port 8000 is NOT open
+        if ufw status 2>/dev/null | grep -q "8000"; then
+            sec_warn "Port 8000 is open in UFW — only $SNAPPER_PORT should be exposed"
+        fi
+    else
+        sec_warn "UFW is installed but not active"
+    fi
+else
+    sec_warn "UFW not installed — ensure another firewall is in place"
+fi
+
+# DENY_BY_DEFAULT / LEARNING_MODE
+if [[ -f "$INSTALL_DIR/.env" ]]; then
+    DBD=$(grep "^DENY_BY_DEFAULT=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
+    LM=$(grep "^LEARNING_MODE=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$LM" == "true" || -z "$LM" ]]; then
+        sec_warn "Learning mode is ON — violations are logged but not blocked"
+        echo -e "         Action: Set LEARNING_MODE=false when ready to enforce"
+    else
+        sec_pass "Learning mode is OFF — rules are enforced"
+    fi
+
+    if [[ "$DBD" == "true" ]]; then
+        sec_pass "Deny-by-default is ON"
+    else
+        sec_warn "Deny-by-default is OFF — unknown requests are allowed"
+        echo -e "         Action: Set DENY_BY_DEFAULT=true for enforcement"
+    fi
+
+    # REQUIRE_API_KEY
+    RAK=$(grep "^REQUIRE_API_KEY=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
+    if [[ "$RAK" == "true" ]]; then
+        sec_pass "API key authentication required"
+    else
+        sec_warn "API key authentication not required"
+        echo -e "         Action: Set REQUIRE_API_KEY=true for production"
+    fi
+
+    # Telegram
+    TG_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [[ -n "$TG_TOKEN" ]]; then
+        sec_pass "Telegram bot configured for approval alerts"
+    else
+        sec_warn "Telegram not configured — no approval notifications"
+        echo -e "         Action: Add TELEGRAM_BOT_TOKEN to .env"
+    fi
+
+    # ALLOWED_HOSTS / ALLOWED_ORIGINS
+    AH=$(grep "^ALLOWED_HOSTS=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    AO=$(grep "^ALLOWED_ORIGINS=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [[ -n "$AH" && "$AH" != "localhost" ]]; then
+        sec_pass "ALLOWED_HOSTS configured"
+    else
+        sec_warn "ALLOWED_HOSTS may need your server IP"
+    fi
+    if [[ -n "$AO" && "$AO" != "http://localhost:8000" ]]; then
+        sec_pass "ALLOWED_ORIGINS configured"
+    else
+        sec_warn "ALLOWED_ORIGINS may need your server URL"
+    fi
+fi
+
+# Non-root user in container
+APP_USER=$($COMPOSE_CMD exec -T app whoami 2>/dev/null || echo "unknown")
+if [[ "$APP_USER" == "snapper" ]]; then
+    sec_pass "App running as non-root user (snapper)"
+elif [[ "$APP_USER" == "root" ]]; then
+    sec_fail "App running as root inside container!"
+    echo -e "         Fix: Use production Dockerfile target"
+fi
+
+# Print summary
+echo ""
+echo -e "  ─────────────────────────────────────"
+echo -e "  ${GREEN}$PASS_COUNT passed${NC}  ${YELLOW}$WARN_COUNT warnings${NC}  ${RED}$FAIL_COUNT failed${NC}"
+
+if [[ $FAIL_COUNT -gt 0 ]]; then
+    echo ""
+    echo -e "  ${RED}Fix the failures above before exposing Snapper to the network.${NC}"
+elif [[ $WARN_COUNT -gt 0 ]]; then
+    echo ""
+    echo -e "  ${YELLOW}Review warnings above. See docs/SECURITY.md for details.${NC}"
+else
+    echo ""
+    echo -e "  ${GREEN}All security checks passed!${NC}"
+fi
+
 # ─── Done ───────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
