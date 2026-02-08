@@ -477,8 +477,9 @@ else
 fi
 
 # PostgreSQL not exposed
+# `docker compose port` returns ":0" when no host port is mapped
 PG_PORT_BINDING=$($COMPOSE_CMD port postgres 5432 2>/dev/null || echo "")
-if [[ -z "$PG_PORT_BINDING" ]]; then
+if [[ -z "$PG_PORT_BINDING" || "$PG_PORT_BINDING" == ":0" ]]; then
     sec_pass "PostgreSQL not exposed to host (Docker-internal only)"
 else
     sec_fail "PostgreSQL exposed on $PG_PORT_BINDING — no auth by default!"
@@ -487,7 +488,7 @@ fi
 
 # Redis not exposed
 REDIS_PORT_BINDING=$($COMPOSE_CMD port redis 6379 2>/dev/null || echo "")
-if [[ -z "$REDIS_PORT_BINDING" ]]; then
+if [[ -z "$REDIS_PORT_BINDING" || "$REDIS_PORT_BINDING" == ":0" ]]; then
     sec_pass "Redis not exposed to host (Docker-internal only)"
 else
     sec_fail "Redis exposed on $REDIS_PORT_BINDING — no auth by default!"
