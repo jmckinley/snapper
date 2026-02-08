@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Snapper is a security-focused application that enables users to impose granular restrictions on AI agents. The system provides rule-based control over agent commands, time-based restrictions, rate limiting, and other security constraints to enhance AI agent operational safety.
+Snapper is an Agent Application Firewall (AAF) that inspects and enforces security policy on traffic in both directions between AI agents and the outside world. It provides rule-based control over agent commands, PII detection and encryption, malicious skill blocking, time-based restrictions, rate limiting, and human-in-the-loop approval workflows.
 
 ## Tech Stack
 

@@ -1,6 +1,6 @@
 # Security Guide
 
-This document covers every security mechanism in Snapper — how data is encrypted, how requests are validated, how PII is detected and protected, and how the system fails safe.
+Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces security policy on traffic in both directions between AI agents and the outside world. This document covers every security mechanism: how data is encrypted, how requests are validated, how PII is detected and protected, and how the system fails safe.
 
 ## Table of Contents
 

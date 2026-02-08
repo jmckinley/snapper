@@ -1,18 +1,24 @@
 # Snapper
 
-**Security rules manager for AI agents** — Fine-grained control over what AI assistants can do.
+**Agent Application Firewall (AAF)** — Fine-grained control over what AI assistants can do.
 
 ![Snapper Dashboard](https://img.shields.io/badge/status-beta-yellow) ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## What is Snapper?
 
-Snapper sits between your AI agent and the actions it takes. It lets you:
+Snapper is an Agent Application Firewall — it inspects and enforces policy on traffic in both directions between AI agents and the outside world.
 
+**Outbound (agent actions):**
 - **Allow** specific commands, tools, or integrations
 - **Deny** dangerous operations (like `rm -rf /` or accessing `.env` files)
 - **Require approval** for sensitive actions before they execute
+- **Detect and block PII** in tool calls, even from external sources
 
-Think of it as a firewall for AI agents.
+**Inbound (threats to agents):**
+- **Block malicious skills/plugins** from being installed (44+ known threats, 11 regex patterns)
+- **Enforce version requirements** to prevent vulnerable agents from running
+- **Validate origins** to stop WebSocket hijacking (CVE-2026-25253)
+- **Require sandboxed execution** environments
 
 ### Supported Agents
 

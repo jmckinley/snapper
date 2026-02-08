@@ -1,8 +1,10 @@
 # Getting Started with Snapper
 
-Snapper is a security rules manager for AI agents. It controls what your AI agent
-can do — allow, deny, or require approval for commands, file access, network calls,
-and PII handling. Supports OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents.
+Snapper is an Agent Application Firewall (AAF) for AI agents. It inspects and
+enforces security policy on traffic in both directions — blocking dangerous actions,
+detecting PII exfiltration, preventing malicious skill installation, and requiring
+human approval for sensitive operations. Supports OpenClaw, Claude Code, Cursor,
+Windsurf, Cline, and custom agents.
 
 ## What You Need
 
