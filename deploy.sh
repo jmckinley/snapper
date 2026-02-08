@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # Snapper - One-Click Production Deployment Script
-# Usage: ./deploy.sh [--host HOST] [--port PORT] [--repo URL]
+#
+# Usage:
+#   ./deploy.sh                                    # IP-based, self-signed TLS on :8443
+#   ./deploy.sh --domain snapper.example.com       # Domain with auto Let's Encrypt
+#   ./deploy.sh --port 9443                        # Custom HTTPS port
+#   ./deploy.sh --repo https://github.com/you/snapper.git
+#
+# Options:
+#   --domain DOMAIN   Domain name (enables automatic Let's Encrypt TLS)
+#   --port PORT       External HTTPS port (default: 443 with domain, 8443 without)
+#   --repo URL        Git repository URL (default: jmckinley/snapper)
+#   --yes             Skip confirmation prompts (non-interactive mode)
 #
 # This script handles the full deployment lifecycle:
 #   1. Clone or update the repository
@@ -8,17 +19,72 @@
 #   3. Build and start Docker containers
 #   4. Run database migrations
 #   5. Configure Caddy reverse proxy
-#   6. Open firewall port
+#   6. Open firewall ports
 #   7. Verify deployment health
+#   8. Security posture assessment
 
 set -euo pipefail
 
+# ─── Parse Arguments ─────────────────────────────────────────────────────────
+DOMAIN=""
+SERVER_HOST=""
+SNAPPER_PORT=""
+REPO_URL="https://github.com/jmckinley/snapper.git"
+NON_INTERACTIVE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --domain)
+            DOMAIN="$2"
+            shift 2
+            ;;
+        --host)
+            SERVER_HOST="$2"
+            shift 2
+            ;;
+        --port)
+            SNAPPER_PORT="$2"
+            shift 2
+            ;;
+        --repo)
+            REPO_URL="$2"
+            shift 2
+            ;;
+        --yes|-y)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        --help|-h)
+            head -24 "$0" | tail -21
+            exit 0
+            ;;
+        *)
+            # Legacy: first positional arg is port
+            if [[ -z "$SNAPPER_PORT" && "$1" =~ ^[0-9]+$ ]]; then
+                SNAPPER_PORT="$1"
+            else
+                echo "Unknown option: $1" >&2
+                echo "Run ./deploy.sh --help for usage" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Default port: 443 for domain (standard HTTPS), 8443 for IP-only
+if [[ -z "$SNAPPER_PORT" ]]; then
+    if [[ -n "$DOMAIN" ]]; then
+        SNAPPER_PORT="443"
+    else
+        SNAPPER_PORT="8443"
+    fi
+fi
+
 # ─── Configuration ──────────────────────────────────────────────────────────
 INSTALL_DIR="/opt/snapper"
-REPO_URL="https://github.com/jmckinley/snapper.git"
 CADDY_CERT_DIR="/etc/caddy/certs"
 CADDYFILE="/etc/caddy/Caddyfile"
-SNAPPER_PORT="${1:-8443}"  # External HTTPS port
 COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
 # Colors
@@ -32,6 +98,17 @@ log()  { echo -e "${BLUE}[snapper]${NC} $1"; }
 ok()   { echo -e "${GREEN}[  ok  ]${NC} $1"; }
 warn() { echo -e "${YELLOW}[ warn ]${NC} $1"; }
 err()  { echo -e "${RED}[error ]${NC} $1" >&2; }
+
+confirm() {
+    # Usage: confirm "Install prerequisites?" || exit 1
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        return 0
+    fi
+    local prompt="$1"
+    read -r -p "$prompt [y/N] " response
+    echo ""
+    [[ "$response" == "y" || "$response" == "Y" ]]
+}
 
 # ─── Preflight Checks ──────────────────────────────────────────────────────
 log "Running preflight checks..."
@@ -190,10 +267,7 @@ else
 
         if [[ "$IS_UBUNTU_DEBIAN" == "yes" ]]; then
             echo -e "This script can install them automatically from official repositories."
-            read -r -p "Install missing prerequisites? [y/N] " INSTALL_CONFIRM
-            echo ""
-
-            if [[ "$INSTALL_CONFIRM" != "y" && "$INSTALL_CONFIRM" != "Y" ]]; then
+            if ! confirm "Install missing prerequisites?"; then
                 err "Cannot continue without prerequisites. Install them manually and re-run."
                 exit 1
             fi
@@ -240,9 +314,7 @@ else
         warn "(you may have iptables, nftables, or a provider-level firewall)."
 
         if [[ "$IS_UBUNTU_DEBIAN" == "yes" ]]; then
-            read -r -p "Install UFW? [y/N] " UFW_CONFIRM
-            echo ""
-            if [[ "$UFW_CONFIRM" == "y" || "$UFW_CONFIRM" == "Y" ]]; then
+            if confirm "Install UFW?"; then
                 log "Installing UFW..."
                 apt-get update -qq
                 apt-get install -y -qq ufw
@@ -254,6 +326,32 @@ else
             warn "Install a firewall manually if your provider doesn't offer one."
         fi
     fi
+fi
+
+# ─── Resolve Server Identity ─────────────────────────────────────────────
+# Determine the public-facing hostname: domain > --host flag > auto-detect IP
+
+if [[ -n "$DOMAIN" ]]; then
+    SERVER_LABEL="$DOMAIN"
+    log "Using domain: $DOMAIN"
+elif [[ -n "$SERVER_HOST" ]]; then
+    SERVER_LABEL="$SERVER_HOST"
+    log "Using provided host: $SERVER_HOST"
+else
+    SERVER_LABEL=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+    if [[ -z "$SERVER_LABEL" ]]; then
+        err "Could not detect server IP automatically."
+        err "Re-run with: ./deploy.sh --host YOUR_IP"
+        exit 1
+    fi
+    log "Detected server IP: $SERVER_LABEL"
+fi
+
+# Build the external URL
+if [[ "$SNAPPER_PORT" == "443" ]]; then
+    EXTERNAL_URL="https://${SERVER_LABEL}"
+else
+    EXTERNAL_URL="https://${SERVER_LABEL}:${SNAPPER_PORT}"
 fi
 
 # ─── Step 1: Clone or Update Repository ────────────────────────────────────
@@ -278,18 +376,12 @@ if [[ -f "$INSTALL_DIR/.env" ]]; then
     warn ".env already exists, keeping existing configuration"
     warn "To regenerate, delete $INSTALL_DIR/.env and re-run this script"
 else
-    # Detect the server's public IP
-    SERVER_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-
-    if [[ -z "$SERVER_IP" ]]; then
-        err "Could not detect server IP automatically."
-        err "Re-run with: SERVER_IP=your.ip.here ./deploy.sh"
-        exit 1
-    fi
-
     SECRET_KEY=$(openssl rand -hex 32)
 
-    log "Generating .env for server IP: $SERVER_IP"
+    log "Generating production .env..."
+
+    # Build ALLOWED_HOSTS: include domain/IP + internal names
+    ALLOWED_HOSTS_VALUE="${SERVER_LABEL},localhost,127.0.0.1,app,host.docker.internal"
 
     cat > "$INSTALL_DIR/.env" <<ENVEOF
 # Snapper Production Environment
@@ -304,25 +396,33 @@ REDIS_URL=redis://redis:6379/0
 CELERY_BROKER_URL=redis://redis:6379/1
 CELERY_RESULT_BACKEND=redis://redis:6379/2
 
-# Security settings
+# Security settings (production-hardened defaults)
+LEARNING_MODE=false
 DENY_BY_DEFAULT=true
+REQUIRE_API_KEY=true
+REQUIRE_VAULT_AUTH=true
 REQUIRE_LOCALHOST_ONLY=false
-ALLOWED_ORIGINS=https://${SERVER_IP}:${SNAPPER_PORT}
-ALLOWED_HOSTS=${SERVER_IP},localhost,app
-CORS_ORIGINS=https://${SERVER_IP}:${SNAPPER_PORT}
+VALIDATE_WEBSOCKET_ORIGIN=true
+ALLOWED_ORIGINS=${EXTERNAL_URL}
+ALLOWED_HOSTS=${ALLOWED_HOSTS_VALUE}
+CORS_ORIGINS=${EXTERNAL_URL}
 
 # Production mode
 DEBUG=false
 LOG_LEVEL=INFO
 ENVIRONMENT=production
 
-# Notifications (configure as needed)
+# Notifications (configure after deploy — see docs/TELEGRAM_SETUP.md)
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ENVEOF
 
     chmod 600 "$INSTALL_DIR/.env"
     ok "Production .env generated (SECRET_KEY: ${SECRET_KEY:0:8}...)"
+    log "  ALLOWED_ORIGINS=${EXTERNAL_URL}"
+    log "  ALLOWED_HOSTS=${ALLOWED_HOSTS_VALUE}"
+    log "  LEARNING_MODE=false, DENY_BY_DEFAULT=true"
+    log "  REQUIRE_API_KEY=true, REQUIRE_VAULT_AUTH=true"
 fi
 
 # ─── Step 3: Build and Start Containers ────────────────────────────────────
@@ -363,17 +463,51 @@ $COMPOSE_CMD up -d --force-recreate
 ok "App restarted"
 
 # ─── Step 6: Configure Caddy Reverse Proxy ─────────────────────────────────
-log "Configuring Caddy reverse proxy on port $SNAPPER_PORT..."
+
+if [[ -n "$DOMAIN" ]]; then
+    log "Configuring Caddy with automatic Let's Encrypt TLS for $DOMAIN..."
+else
+    log "Configuring Caddy reverse proxy on port $SNAPPER_PORT..."
+fi
 
 if [[ ! -f "$CADDYFILE" ]]; then
-    warn "Caddyfile not found at $CADDYFILE, skipping Caddy configuration"
-    warn "You'll need to manually configure your reverse proxy"
+    # No existing Caddyfile — create one from scratch
+    log "Creating Caddyfile at $CADDYFILE..."
+    mkdir -p "$(dirname "$CADDYFILE")"
+    echo "# Managed by Snapper deploy.sh" > "$CADDYFILE"
+fi
+
+# Determine if Snapper block already exists
+CADDY_ALREADY_CONFIGURED=false
+if [[ -n "$DOMAIN" ]]; then
+    grep -q "^${DOMAIN}" "$CADDYFILE" 2>/dev/null && CADDY_ALREADY_CONFIGURED=true
 else
-    # Check if snapper block already exists
-    if grep -q ":${SNAPPER_PORT}" "$CADDYFILE" 2>/dev/null; then
-        ok "Caddy already configured for port $SNAPPER_PORT"
+    grep -q ":${SNAPPER_PORT}" "$CADDYFILE" 2>/dev/null && CADDY_ALREADY_CONFIGURED=true
+fi
+
+if [[ "$CADDY_ALREADY_CONFIGURED" == "true" ]]; then
+    ok "Caddy already configured"
+else
+    if [[ -n "$DOMAIN" ]]; then
+        # Domain mode: Caddy auto-obtains Let's Encrypt certificate
+        if [[ "$SNAPPER_PORT" == "443" ]]; then
+            cat >> "$CADDYFILE" <<CADDYEOF
+
+${DOMAIN} {
+    reverse_proxy localhost:8000
+}
+CADDYEOF
+        else
+            cat >> "$CADDYFILE" <<CADDYEOF
+
+${DOMAIN}:${SNAPPER_PORT} {
+    reverse_proxy localhost:8000
+}
+CADDYEOF
+        fi
+        ok "Caddy configured with automatic Let's Encrypt for $DOMAIN"
     else
-        # Generate self-signed cert if none exists
+        # IP-only mode: self-signed certificate
         if [[ ! -f "$CADDY_CERT_DIR/cert.pem" ]]; then
             log "Generating self-signed TLS certificate..."
             mkdir -p "$CADDY_CERT_DIR"
@@ -383,7 +517,6 @@ else
             ok "Self-signed certificate generated"
         fi
 
-        # Append Snapper block to Caddyfile
         cat >> "$CADDYFILE" <<CADDYEOF
 
 :${SNAPPER_PORT} {
@@ -391,17 +524,18 @@ else
     reverse_proxy localhost:8000
 }
 CADDYEOF
+        ok "Caddy configured with self-signed TLS on port $SNAPPER_PORT"
+    fi
 
-        if ! caddy reload --config "$CADDYFILE" 2>/dev/null; then
-            warn "Caddy reload failed. Validate config: caddy validate --config $CADDYFILE"
-        fi
-        ok "Caddy configured"
+    if ! caddy reload --config "$CADDYFILE" 2>/dev/null; then
+        warn "Caddy reload failed. Validate config: caddy validate --config $CADDYFILE"
     fi
 fi
 
-# ─── Step 7: Open Firewall Port ────────────────────────────────────────────
+# ─── Step 7: Open Firewall Ports ──────────────────────────────────────────
 if command -v ufw &>/dev/null; then
     if ufw status | grep -q "Status: active"; then
+        # Always open the HTTPS port
         if ! ufw status | grep -q "${SNAPPER_PORT}/tcp"; then
             log "Opening port $SNAPPER_PORT in UFW..."
             ufw allow "${SNAPPER_PORT}/tcp" >/dev/null
@@ -409,11 +543,28 @@ if command -v ufw &>/dev/null; then
         else
             ok "Firewall port $SNAPPER_PORT already open"
         fi
+
+        # Domain mode needs ports 80+443 for Let's Encrypt ACME challenge
+        if [[ -n "$DOMAIN" ]]; then
+            if ! ufw status | grep -q "80/tcp"; then
+                log "Opening port 80 for Let's Encrypt ACME challenge..."
+                ufw allow 80/tcp >/dev/null
+                ok "Firewall port 80 opened (ACME)"
+            fi
+            if [[ "$SNAPPER_PORT" != "443" ]] && ! ufw status | grep -q "443/tcp"; then
+                log "Opening port 443 for Let's Encrypt..."
+                ufw allow 443/tcp >/dev/null
+                ok "Firewall port 443 opened"
+            fi
+        fi
     fi
 fi
 
 warn "If you use Hostinger, Hetzner, or another VPS provider, you may also"
 warn "need to open port $SNAPPER_PORT in your provider's firewall panel."
+if [[ -n "$DOMAIN" ]]; then
+    warn "For Let's Encrypt, ports 80 and 443 must also be open."
+fi
 
 # ─── Step 8: Verify Deployment ─────────────────────────────────────────────
 log "Verifying deployment..."
@@ -442,7 +593,12 @@ fi
 if curl -skf "https://127.0.0.1:${SNAPPER_PORT}/health" >/dev/null 2>&1; then
     ok "External access via Caddy working"
 else
-    warn "External HTTPS check failed — Caddy may need configuration"
+    if [[ -n "$DOMAIN" ]]; then
+        warn "External HTTPS check failed — Let's Encrypt may need a few seconds"
+        warn "Verify: curl -k ${EXTERNAL_URL}/health"
+    else
+        warn "External HTTPS check failed — Caddy may need configuration"
+    fi
 fi
 
 # ─── Step 9: Security Posture Assessment ─────────────────────────────────
@@ -511,7 +667,11 @@ fi
 
 # TLS / Caddy
 if curl -skf "https://127.0.0.1:${SNAPPER_PORT}/health" >/dev/null 2>&1; then
-    sec_pass "TLS termination working (Caddy on port $SNAPPER_PORT)"
+    if [[ -n "$DOMAIN" ]]; then
+        sec_pass "TLS termination working (Let's Encrypt via Caddy)"
+    else
+        sec_pass "TLS termination working (Caddy on port $SNAPPER_PORT)"
+    fi
 else
     sec_fail "TLS not working on port $SNAPPER_PORT — no HTTPS access"
     echo -e "         Fix: Configure Caddy with TLS certificate"
@@ -532,7 +692,7 @@ else
     sec_warn "UFW not installed — ensure another firewall is in place"
 fi
 
-# DENY_BY_DEFAULT / LEARNING_MODE
+# DENY_BY_DEFAULT / LEARNING_MODE / REQUIRE_API_KEY / REQUIRE_VAULT_AUTH
 if [[ -f "$INSTALL_DIR/.env" ]]; then
     DBD=$(grep "^DENY_BY_DEFAULT=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
     LM=$(grep "^LEARNING_MODE=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
@@ -560,6 +720,15 @@ if [[ -f "$INSTALL_DIR/.env" ]]; then
         echo -e "         Action: Set REQUIRE_API_KEY=true for production"
     fi
 
+    # REQUIRE_VAULT_AUTH
+    RVA=$(grep "^REQUIRE_VAULT_AUTH=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
+    if [[ "$RVA" == "true" ]]; then
+        sec_pass "Vault write authentication required"
+    else
+        sec_warn "Vault writes don't require authentication"
+        echo -e "         Action: Set REQUIRE_VAULT_AUTH=true for production"
+    fi
+
     # Telegram
     TG_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
     if [[ -n "$TG_TOKEN" ]]; then
@@ -575,7 +744,7 @@ if [[ -f "$INSTALL_DIR/.env" ]]; then
     if [[ -n "$AH" && "$AH" != "localhost" ]]; then
         sec_pass "ALLOWED_HOSTS configured"
     else
-        sec_warn "ALLOWED_HOSTS may need your server IP"
+        sec_warn "ALLOWED_HOSTS may need your server IP or domain"
     fi
     if [[ -n "$AO" && "$AO" != "http://localhost:8000" ]]; then
         sec_pass "ALLOWED_ORIGINS configured"
@@ -615,12 +784,17 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}  Snapper deployed successfully!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "  Dashboard:  ${BLUE}https://${SERVER_IP:-localhost}:${SNAPPER_PORT}/${NC}"
-echo -e "  API Docs:   ${BLUE}https://${SERVER_IP:-localhost}:${SNAPPER_PORT}/api/docs${NC}"
-echo -e "  Health:     ${BLUE}https://${SERVER_IP:-localhost}:${SNAPPER_PORT}/health${NC}"
+echo -e "  Dashboard:  ${BLUE}${EXTERNAL_URL}/${NC}"
+echo -e "  API Docs:   ${BLUE}${EXTERNAL_URL}/api/docs${NC}"
+echo -e "  Health:     ${BLUE}${EXTERNAL_URL}/health${NC}"
 echo ""
 echo -e "  Manage:     cd $INSTALL_DIR"
 echo -e "  Logs:       $COMPOSE_CMD logs -f"
 echo -e "  Stop:       $COMPOSE_CMD down"
 echo -e "  Update:     git pull && $COMPOSE_CMD up -d --build --force-recreate"
+echo ""
+echo -e "  ${YELLOW}Next steps:${NC}"
+echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/wizard${NC} to register your first agent"
+echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
+echo -e "    3. Run security check anytime: python3 scripts/snapper-cli.py security-check"
 echo ""

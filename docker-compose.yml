@@ -5,6 +5,7 @@ services:
     build:
       context: .
       target: development
+    restart: unless-stopped
     ports:
       - "${APP_PORT:-8000}:8000"
     environment:
@@ -42,6 +43,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-snapper}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-snapper}
@@ -59,6 +61,7 @@ services:
   # Redis
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -75,6 +78,7 @@ services:
     build:
       context: .
       target: development
+    restart: unless-stopped
     command: celery -A app.tasks worker -l INFO
     environment:
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
@@ -102,6 +106,7 @@ services:
     build:
       context: .
       target: development
+    restart: unless-stopped
     command: celery -A app.tasks beat -l INFO
     environment:
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
