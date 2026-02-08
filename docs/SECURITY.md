@@ -18,6 +18,7 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 - [Audit Trail](#audit-trail)
 - [Trust Scoring](#trust-scoring)
 - [Configuration Hardening](#configuration-hardening)
+- [Architecture Assumptions](#architecture-assumptions)
 
 ---
 
@@ -657,3 +658,118 @@ VALIDATE_WEBSOCKET_ORIGIN=true
 - [ ] PostgreSQL and Redis are not exposed outside the Docker network
 - [ ] PII gate rule is active with appropriate categories
 - [ ] Audit logs are being generated (check `/audit` dashboard)
+- [ ] Hook scripts use `https://` URLs (not `http://`)
+- [ ] App is bound to `127.0.0.1:8000` in production (not `0.0.0.0`)
+- [ ] Docker is the deployment method (no bare-metal installs)
+- [ ] Caddy (or equivalent reverse proxy) is the only external entry point
+
+---
+
+## Architecture Assumptions
+
+Snapper's security model depends on several architectural assumptions. If any of these are violated, security guarantees are weakened or broken entirely.
+
+### Docker Is Mandatory
+
+Snapper must run in Docker containers. The security model assumes:
+
+- **PostgreSQL and Redis are only accessible within the Docker network.** Neither service has authentication enabled by default. If their ports are exposed to the host or network (`ports: "5432:5432"`), anyone can connect with the default credentials (`snapper:snapper`) and read/modify the database, steal vault entries, or poison rate-limiting state.
+- **The app container runs as a non-root user** (`snapper`) in production. The Dockerfile creates a dedicated user and drops privileges. Running on bare metal as root removes this isolation.
+- **Container networking provides the security boundary** between services. Without Docker, you'd need to manually configure firewall rules, service authentication, and process isolation for every component.
+
+**What breaks:** Bare-metal deployment exposes PostgreSQL and Redis to the network without authentication. Database takeover is trivial.
+
+### App Must Bind to Localhost in Production
+
+In production, the app must bind to `127.0.0.1:8000`, not `0.0.0.0:8000`. The `docker-compose.prod.yml` enforces this with an `!override` directive.
+
+If the app binds to all interfaces (`0.0.0.0`), attackers can bypass the reverse proxy and connect directly to port 8000 — circumventing TLS, origin validation, and any rate limiting or IP restrictions configured in Caddy.
+
+**What breaks:** Direct network access to the app, bypassing TLS and proxy-layer security.
+
+### Reverse Proxy (Caddy) Required for Production
+
+Snapper must sit behind a TLS-terminating reverse proxy in production. The default is Caddy with self-signed certificates, but any reverse proxy with TLS works.
+
+Without a reverse proxy:
+- All traffic between agents and Snapper is unencrypted — tool commands, file paths, API keys, and approval decisions are visible to network observers
+- Hook scripts transmit evaluation requests (including `tool_input` with potential PII) over plaintext HTTP
+- The `ALLOWED_ORIGINS` setting has no effect if there's no TLS layer enforcing the origin
+
+**What breaks:** Plaintext transmission of all agent activity, evaluation requests, and approval decisions. Man-in-the-middle can return `"decision": "allow"` for any blocked command.
+
+### Hook Scripts Must Use HTTPS
+
+All hook scripts (`claude-code-hook.sh`, `cursor-hook.sh`, `windsurf-hook.sh`, `cline-hook.sh`) must communicate with Snapper over HTTPS. The `SNAPPER_URL` environment variable in the hook's env file controls this.
+
+If set to `http://` instead of `https://`:
+- Every tool call the agent makes is sent to Snapper in plaintext, including commands, file paths, and tool input
+- An attacker can intercept and modify the response, allowing any blocked action
+- API keys (`X-API-Key` header) are transmitted in cleartext
+
+Note: Hook scripts use `curl -k` (insecure mode) to accept self-signed certificates. This is acceptable for localhost/internal deployments but does not verify the server's identity. For production deployments exposed to untrusted networks, use valid TLS certificates.
+
+**What breaks:** Full plaintext exposure of all agent activity and credentials.
+
+### SECRET_KEY Is Immutable After Vault Use
+
+The `SECRET_KEY` environment variable is the root of all cryptographic operations. The PII vault derives its Fernet encryption key from `SECRET_KEY` via HKDF-SHA256 with a fixed salt (`snapper-pii-vault-v1`).
+
+If `SECRET_KEY` changes after vault entries have been created:
+- **All existing vault entries become permanently unrecoverable.** There is no re-encryption mechanism.
+- Vault tokens will fail to resolve, and the encrypted data cannot be decrypted.
+- Session tokens are also invalidated (requiring re-authentication).
+
+Key management requirements:
+- Generate with `openssl rand -hex 32` (64 hex characters = 256 bits of entropy)
+- Back up securely (password manager, secrets vault, or encrypted backup)
+- Never commit to version control
+- Never share between separate deployments
+- The HKDF salt (`snapper-pii-vault-v1`) is hardcoded and must never be modified in the source code
+
+**What breaks:** Permanent, irrecoverable loss of all encrypted PII vault entries.
+
+### Database Connections Are Local
+
+The default `DATABASE_URL` connects to PostgreSQL over the Docker network without SSL:
+
+```
+postgresql+asyncpg://snapper:snapper@postgres:5432/snapper
+```
+
+This is secure because PostgreSQL is only accessible within the Docker network. However, if you configure a remote PostgreSQL instance (e.g., AWS RDS, managed database), you **must** add `?sslmode=require` to the connection URL:
+
+```
+postgresql+asyncpg://user:pass@remote-host:5432/snapper?sslmode=require
+```
+
+Without SSL, database credentials and all query data (including PII vault operations) are transmitted in plaintext.
+
+**What breaks:** Plaintext database credentials and query data on the network.
+
+### Redis Has No Authentication
+
+Redis runs without authentication by default. This is safe within the Docker network but would be a critical vulnerability if Redis were exposed to the host or network.
+
+Redis stores:
+- Rate limiting counters and windows
+- Approval requests and decisions (including PII context)
+- Brute force lockout state
+- One-time approval keys
+- Temporarily resolved PII data (30-second TTL)
+
+If an attacker gains Redis access, they can clear rate limits, approve pending requests, bypass brute force protection, or read cached PII data.
+
+**What breaks:** Rate limiting, brute force protection, approval workflow integrity, and potential PII exposure.
+
+### Summary
+
+| Assumption | If Violated | Severity |
+|-----------|------------|----------|
+| Docker deployment | DB/Redis exposed without auth | **Critical** |
+| App bound to 127.0.0.1 | Bypass TLS and proxy security | **High** |
+| Reverse proxy with TLS | Plaintext agent traffic | **High** |
+| HTTPS in hook scripts | Plaintext commands and API keys | **High** |
+| SECRET_KEY immutable | All vault entries lost forever | **High** |
+| Database connections local | Plaintext credentials on network | **Medium** |
+| Redis unauthenticated internal | Rate limit/approval bypass | **Medium** |

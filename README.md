@@ -398,6 +398,21 @@ Each agent has adaptive trust metrics:
 | **Trust Scoring** | Adaptive trust based on agent behavior |
 | **Audit Trail** | Immutable logging of all security events |
 
+### Architecture Requirements
+
+Snapper's security model depends on these architectural constraints. **If any are violated, security guarantees are weakened or broken.**
+
+| Requirement | Why | What Breaks If Violated |
+|-------------|-----|------------------------|
+| **Docker deployment** | PostgreSQL and Redis have no authentication — Docker network isolation is the security boundary | Database takeover, vault entry theft, rate limit bypass |
+| **App bound to 127.0.0.1** | Production app must not be directly accessible from the network | Attacker bypasses TLS, origin validation, and proxy-level security |
+| **Reverse proxy with TLS** | All traffic between hooks and Snapper must be encrypted | Plaintext transmission of commands, API keys, and PII |
+| **HTTPS in hook scripts** | `SNAPPER_URL` must use `https://`, not `http://` | Every tool call the agent makes is visible to network observers |
+| **SECRET_KEY is permanent** | PII vault encryption key is derived from SECRET_KEY via HKDF | Changing it makes all existing vault entries **permanently unrecoverable** |
+| **Redis stays internal** | Redis stores approval decisions, rate limits, and cached PII | Attacker can approve requests, bypass rate limits, or read PII |
+
+See the [Security Guide](docs/SECURITY.md#architecture-assumptions) for full details on each assumption.
+
 ---
 
 ## Dashboard
