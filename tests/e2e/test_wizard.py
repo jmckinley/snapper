@@ -50,11 +50,14 @@ class TestWizardStep2AgentType:
         wizard_page.wait_for_selector("#step2", state="visible")
         return wizard_page
 
-    def test_three_agent_cards_visible(self, step2_page: Page):
+    def test_six_agent_cards_visible(self, step2_page: Page):
         cards = step2_page.locator(".agent-type-card")
-        expect(cards).to_have_count(3)
+        expect(cards).to_have_count(6)
         expect(step2_page.locator('[data-type="openclaw"]')).to_be_visible()
         expect(step2_page.locator('[data-type="claude-code"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="cursor"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="windsurf"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="cline"]')).to_be_visible()
         expect(step2_page.locator('[data-type="custom"]')).to_be_visible()
 
     def test_register_button_starts_disabled(self, step2_page: Page):
@@ -171,11 +174,11 @@ class TestWizardCustomFlow:
         page.wait_for_selector("#step5", state="visible", timeout=10000)
         page.screenshot(path=str(SCREENSHOT_DIR / "flow_custom_step5.png"))
 
-        # Config snippet should be visible with YAML content
+        # Config snippet should be visible with env var content
         snippet = page.locator("#config-snippet").text_content()
-        assert "rules_manager:" in snippet
-        assert "agent_id:" in snippet
-        assert "api_key:" in snippet
+        assert "SNAPPER_URL=" in snippet
+        assert "SNAPPER_AGENT_ID=" in snippet
+        assert "SNAPPER_API_KEY=" in snippet
         assert "snp_" in snippet
 
         # Install result should NOT be visible (custom doesn't auto-install)

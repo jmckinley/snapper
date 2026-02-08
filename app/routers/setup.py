@@ -264,6 +264,18 @@ async def quick_register_agent(
         external_id = f"claude-code-{hostname}"
         name = request.name or f"Claude Code on {hostname}"
         description = f"Claude Code agent on {hostname}"
+    elif request.agent_type == "cursor":
+        external_id = f"cursor-{hostname}"
+        name = request.name or f"Cursor on {hostname}"
+        description = f"Cursor AI editor on {hostname}"
+    elif request.agent_type == "windsurf":
+        external_id = f"windsurf-{hostname}"
+        name = request.name or f"Windsurf on {hostname}"
+        description = f"Windsurf AI IDE on {hostname}"
+    elif request.agent_type == "cline":
+        external_id = f"cline-{hostname}"
+        name = request.name or f"Cline on {hostname}"
+        description = f"Cline coding agent on {hostname}"
     else:
         external_id = f"snapper-{request.host}-{request.port}"
         name = request.name or f"AI agent @ {request.host}:{request.port}"
@@ -500,6 +512,12 @@ async def install_config(request: InstallConfigRequest):
         return _install_openclaw_config(request, snippet)
     elif request.agent_type == "claude-code":
         return _install_claude_code_config(request, snippet)
+    elif request.agent_type == "cursor":
+        return _install_cursor_config(request, snippet)
+    elif request.agent_type == "windsurf":
+        return _install_windsurf_config(request, snippet)
+    elif request.agent_type == "cline":
+        return _install_cline_config(request, snippet)
     else:
         return InstallConfigResponse(
             installed=False,
@@ -608,6 +626,55 @@ def _generate_config_snippet(
             f"\n"
             f"# 2. Merge into ~/.claude/settings.json\n"
             f"{settings_block}"
+        )
+    elif agent_type == "cursor":
+        hook_path = "~/.cursor/hooks/snapper_pre_tool_use.sh"
+        hooks_block = json.dumps(
+            {
+                "preToolUse": [
+                    {"command": hook_path}
+                ]
+            },
+            indent=2,
+        )
+        return (
+            f"# 1. Add to ~/.cursor/.env.snapper (sourced by hook)\n"
+            f"SNAPPER_URL={rules_manager_url}\n"
+            f"SNAPPER_AGENT_ID={agent_id}\n"
+            f"SNAPPER_API_KEY={api_key}\n"
+            f"\n"
+            f"# 2. Merge into ~/.cursor/hooks/hooks.json\n"
+            f"{hooks_block}"
+        )
+    elif agent_type == "windsurf":
+        hook_path = "~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh"
+        hooks_block = json.dumps(
+            {
+                "pre_run_command": [{"command": hook_path}],
+                "pre_write_code": [{"command": hook_path}],
+                "pre_mcp_tool_use": [{"command": hook_path}],
+            },
+            indent=2,
+        )
+        return (
+            f"# 1. Add to ~/.codeium/windsurf/.env.snapper (sourced by hook)\n"
+            f"SNAPPER_URL={rules_manager_url}\n"
+            f"SNAPPER_AGENT_ID={agent_id}\n"
+            f"SNAPPER_API_KEY={api_key}\n"
+            f"\n"
+            f"# 2. Merge into ~/.codeium/windsurf/hooks/hooks.json\n"
+            f"{hooks_block}"
+        )
+    elif agent_type == "cline":
+        return (
+            f"# 1. Add to ~/.cline/.env.snapper (sourced by hook)\n"
+            f"SNAPPER_URL={rules_manager_url}\n"
+            f"SNAPPER_AGENT_ID={agent_id}\n"
+            f"SNAPPER_API_KEY={api_key}\n"
+            f"\n"
+            f"# 2. Copy hook to ~/.cline/hooks/pre_tool_use\n"
+            f"# Cline auto-discovers executable scripts in the hooks directory\n"
+            f"# chmod +x ~/.cline/hooks/pre_tool_use"
         )
     else:
         return (
@@ -768,6 +835,213 @@ def _install_claude_code_config(
                 f"Hook installed to {hook_dest}, env written to {env_path}, "
                 f"settings updated at {settings_path}. "
                 f"Restart Claude Code to activate."
+            ),
+            config_snippet=snippet,
+        )
+    except Exception as exc:
+        return InstallConfigResponse(
+            installed=False,
+            message=f"Could not write config: {exc}",
+            config_snippet=snippet,
+        )
+
+
+def _install_cursor_config(
+    request: InstallConfigRequest, snippet: str
+) -> InstallConfigResponse:
+    """Write Snapper hook + env + hooks.json for Cursor."""
+    cursor_dir = Path.home() / ".cursor"
+
+    if not cursor_dir.is_dir():
+        return InstallConfigResponse(
+            installed=False,
+            message=f"{cursor_dir} not found. Install Cursor first.",
+            config_snippet=snippet,
+        )
+
+    try:
+        # 1. Write env file
+        env_path = cursor_dir / ".env.snapper"
+        env_path.write_text(
+            f"SNAPPER_URL={request.snapper_url}\n"
+            f"SNAPPER_AGENT_ID={request.agent_id}\n"
+            f"SNAPPER_API_KEY={request.api_key}\n"
+        )
+
+        # 2. Copy hook script
+        hooks_dir = cursor_dir / "hooks"
+        hooks_dir.mkdir(exist_ok=True)
+        hook_dest = hooks_dir / "snapper_pre_tool_use.sh"
+        hook_src = (
+            Path(__file__).resolve().parent.parent.parent
+            / "scripts"
+            / "cursor-hook.sh"
+        )
+        if hook_src.exists():
+            shutil.copy2(hook_src, hook_dest)
+            hook_dest.chmod(0o755)
+        else:
+            return InstallConfigResponse(
+                installed=False,
+                message=f"Hook source not found at {hook_src}.",
+                config_snippet=snippet,
+            )
+
+        # 3. Merge preToolUse into hooks.json
+        hooks_json_path = hooks_dir / "hooks.json"
+        if hooks_json_path.exists():
+            hooks_config = json.loads(hooks_json_path.read_text())
+        else:
+            hooks_config = {}
+
+        pre_tool_use = hooks_config.setdefault("preToolUse", [])
+        hook_command = str(hook_dest)
+
+        already_registered = any(
+            e.get("command", "").endswith("snapper_pre_tool_use.sh")
+            for e in pre_tool_use
+        )
+        if not already_registered:
+            pre_tool_use.append({"command": hook_command})
+
+        hooks_json_path.write_text(json.dumps(hooks_config, indent=2) + "\n")
+
+        return InstallConfigResponse(
+            installed=True,
+            message=(
+                f"Hook installed to {hook_dest}, env written to {env_path}, "
+                f"hooks.json updated at {hooks_json_path}. "
+                f"Restart Cursor to activate."
+            ),
+            config_snippet=snippet,
+        )
+    except Exception as exc:
+        return InstallConfigResponse(
+            installed=False,
+            message=f"Could not write config: {exc}",
+            config_snippet=snippet,
+        )
+
+
+def _install_windsurf_config(
+    request: InstallConfigRequest, snippet: str
+) -> InstallConfigResponse:
+    """Write Snapper hook + env + hooks.json for Windsurf."""
+    windsurf_dir = Path.home() / ".codeium" / "windsurf"
+
+    if not windsurf_dir.is_dir():
+        return InstallConfigResponse(
+            installed=False,
+            message=f"{windsurf_dir} not found. Install Windsurf first.",
+            config_snippet=snippet,
+        )
+
+    try:
+        # 1. Write env file
+        env_path = windsurf_dir / ".env.snapper"
+        env_path.write_text(
+            f"SNAPPER_URL={request.snapper_url}\n"
+            f"SNAPPER_AGENT_ID={request.agent_id}\n"
+            f"SNAPPER_API_KEY={request.api_key}\n"
+        )
+
+        # 2. Copy hook script
+        hooks_dir = windsurf_dir / "hooks"
+        hooks_dir.mkdir(exist_ok=True)
+        hook_dest = hooks_dir / "snapper_pre_tool_use.sh"
+        hook_src = (
+            Path(__file__).resolve().parent.parent.parent
+            / "scripts"
+            / "windsurf-hook.sh"
+        )
+        if hook_src.exists():
+            shutil.copy2(hook_src, hook_dest)
+            hook_dest.chmod(0o755)
+        else:
+            return InstallConfigResponse(
+                installed=False,
+                message=f"Hook source not found at {hook_src}.",
+                config_snippet=snippet,
+            )
+
+        # 3. Merge hooks into hooks.json
+        hooks_json_path = hooks_dir / "hooks.json"
+        if hooks_json_path.exists():
+            hooks_config = json.loads(hooks_json_path.read_text())
+        else:
+            hooks_config = {}
+
+        hook_command = str(hook_dest)
+        for hook_type in ("pre_run_command", "pre_write_code", "pre_mcp_tool_use"):
+            entries = hooks_config.setdefault(hook_type, [])
+            already_registered = any(
+                e.get("command", "").endswith("snapper_pre_tool_use.sh")
+                for e in entries
+            )
+            if not already_registered:
+                entries.append({"command": hook_command})
+
+        hooks_json_path.write_text(json.dumps(hooks_config, indent=2) + "\n")
+
+        return InstallConfigResponse(
+            installed=True,
+            message=(
+                f"Hook installed to {hook_dest}, env written to {env_path}, "
+                f"hooks.json updated at {hooks_json_path}. "
+                f"Restart Windsurf to activate."
+            ),
+            config_snippet=snippet,
+        )
+    except Exception as exc:
+        return InstallConfigResponse(
+            installed=False,
+            message=f"Could not write config: {exc}",
+            config_snippet=snippet,
+        )
+
+
+def _install_cline_config(
+    request: InstallConfigRequest, snippet: str
+) -> InstallConfigResponse:
+    """Write Snapper hook + env for Cline."""
+    cline_dir = Path.home() / ".cline"
+
+    try:
+        # Create dir if needed (Cline uses global dir)
+        cline_dir.mkdir(exist_ok=True)
+
+        # 1. Write env file
+        env_path = cline_dir / ".env.snapper"
+        env_path.write_text(
+            f"SNAPPER_URL={request.snapper_url}\n"
+            f"SNAPPER_AGENT_ID={request.agent_id}\n"
+            f"SNAPPER_API_KEY={request.api_key}\n"
+        )
+
+        # 2. Copy hook script (no extension — Cline auto-discovers executables)
+        hooks_dir = cline_dir / "hooks"
+        hooks_dir.mkdir(exist_ok=True)
+        hook_dest = hooks_dir / "pre_tool_use"
+        hook_src = (
+            Path(__file__).resolve().parent.parent.parent
+            / "scripts"
+            / "cline-hook.sh"
+        )
+        if hook_src.exists():
+            shutil.copy2(hook_src, hook_dest)
+            hook_dest.chmod(0o755)
+        else:
+            return InstallConfigResponse(
+                installed=False,
+                message=f"Hook source not found at {hook_src}.",
+                config_snippet=snippet,
+            )
+
+        return InstallConfigResponse(
+            installed=True,
+            message=(
+                f"Hook installed to {hook_dest}, env written to {env_path}. "
+                f"Restart VS Code / Cline to activate."
             ),
             config_snippet=snippet,
         )

@@ -12,6 +12,38 @@
 
 {% block content %}
 <div class="space-y-6">
+    <!-- Summary Stats -->
+    <div id="stats-cards" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <button onclick="filterByAction('')" class="stat-card bg-white shadow rounded-lg p-4 text-left hover:ring-2 hover:ring-primary-400 transition-shadow">
+            <p class="text-sm font-medium text-gray-500">Total Evaluations (24h)</p>
+            <p id="stat-total" class="mt-1 text-2xl font-bold text-gray-900">--</p>
+        </button>
+        <button onclick="filterByAction('request_allowed')" class="stat-card bg-white shadow rounded-lg p-4 text-left hover:ring-2 hover:ring-green-400 transition-shadow">
+            <p class="text-sm font-medium text-gray-500">Allowed</p>
+            <p class="mt-1"><span id="stat-allowed" class="text-2xl font-bold text-green-600">--</span> <span id="stat-allowed-pct" class="text-sm text-gray-400"></span></p>
+        </button>
+        <button onclick="filterByAction('request_denied')" class="stat-card bg-white shadow rounded-lg p-4 text-left hover:ring-2 hover:ring-red-400 transition-shadow">
+            <p class="text-sm font-medium text-gray-500">Blocked</p>
+            <p class="mt-1"><span id="stat-denied" class="text-2xl font-bold text-red-600">--</span> <span id="stat-denied-pct" class="text-sm text-gray-400"></span></p>
+        </button>
+        <button onclick="filterByAction('request_pending_approval')" class="stat-card bg-white shadow rounded-lg p-4 text-left hover:ring-2 hover:ring-yellow-400 transition-shadow">
+            <p class="text-sm font-medium text-gray-500">Pending Approval</p>
+            <p id="stat-pending" class="mt-1 text-2xl font-bold text-yellow-600">--</p>
+        </button>
+    </div>
+
+    <!-- Activity Timeline Chart -->
+    <div class="bg-white shadow rounded-lg p-4">
+        <h3 class="text-sm font-medium text-gray-700 mb-3">Activity (Last 24 Hours)</h3>
+        <div id="timeline-chart" class="flex items-end gap-1 h-32 overflow-x-auto">
+            <p class="text-sm text-gray-400 m-auto">Loading chart...</p>
+        </div>
+        <div class="flex items-center justify-end gap-4 mt-2 text-xs text-gray-500">
+            <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-green-400 rounded-sm"></span> Allowed</span>
+            <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-red-400 rounded-sm"></span> Blocked</span>
+        </div>
+    </div>
+
     <!-- Tabs -->
     <div class="border-b border-gray-200">
         <nav class="-mb-px flex space-x-8">
@@ -31,7 +63,7 @@
     <div id="tab-logs" class="tab-content">
         <!-- Filters -->
         <div class="bg-white shadow rounded-lg p-4 mb-4">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Severity</label>
                     <select id="filter-severity" onchange="loadAuditLogs()" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm">
@@ -48,14 +80,26 @@
                         <option value="">All</option>
                         <option value="request_denied">Request Denied</option>
                         <option value="request_allowed">Request Allowed</option>
+                        <option value="request_pending_approval">Pending Approval</option>
                         <option value="rule_created">Rule Created</option>
                         <option value="agent_registered">Agent Registered</option>
                     </select>
                 </div>
-                <div class="flex items-end">
-                    <button onclick="loadAuditLogs()" class="w-full px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Refresh
-                    </button>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Start Date</label>
+                    <input type="date" id="filter-start-date" onchange="loadAuditLogs()"
+                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">End Date</label>
+                    <input type="date" id="filter-end-date" onchange="loadAuditLogs()"
+                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Search</label>
+                    <input type="text" id="filter-search" placeholder="Filter messages..."
+                           oninput="debounceSearch()"
+                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 sm:text-sm">
                 </div>
             </div>
         </div>
@@ -76,6 +120,35 @@
                     <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
                 </tbody>
             </table>
+
+            <!-- Pagination -->
+            <div id="logs-pagination" class="bg-white px-6 py-3 flex items-center justify-between border-t border-gray-200">
+                <div class="text-sm text-gray-500">
+                    Page <span id="page-current">1</span> of <span id="page-total">1</span>
+                    (<span id="page-count">0</span> total)
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="changePage(-1)" id="btn-prev" disabled
+                            class="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                        Previous
+                    </button>
+                    <button onclick="changePage(1)" id="btn-next" disabled
+                            class="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Detail Modal -->
+    <div id="log-detail-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center z-50" onclick="closeModal(event)">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 class="text-lg font-medium text-gray-900">Log Details</h3>
+                <button onclick="document.getElementById('log-detail-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div id="log-detail-content" class="px-6 py-4 space-y-4"></div>
         </div>
     </div>
 
@@ -114,6 +187,69 @@
 {% block scripts %}
 <script>
     let currentTab = 'logs';
+    let currentPage = 1;
+    let totalPages = 1;
+    let allLogs = [];  // cached for client-side search filtering
+    let searchTimeout = null;
+
+    // ---- Stats ----
+
+    async function loadStats() {
+        try {
+            const response = await fetch('/api/v1/audit/stats?hours=24');
+            const data = await response.json();
+
+            document.getElementById('stat-total').textContent = data.total_evaluations;
+            document.getElementById('stat-allowed').textContent = data.allowed_count;
+            document.getElementById('stat-denied').textContent = data.denied_count;
+            document.getElementById('stat-pending').textContent = data.pending_count;
+
+            if (data.total_evaluations > 0) {
+                const aPct = Math.round(data.allowed_count / data.total_evaluations * 100);
+                const dPct = Math.round(data.denied_count / data.total_evaluations * 100);
+                document.getElementById('stat-allowed-pct').textContent = `(${aPct}%)`;
+                document.getElementById('stat-denied-pct').textContent = `(${dPct}%)`;
+            }
+
+            renderChart(data.hourly_breakdown);
+        } catch (error) {
+            console.error('Failed to load stats:', error);
+        }
+    }
+
+    function renderChart(breakdown) {
+        const container = document.getElementById('timeline-chart');
+        if (!breakdown || breakdown.length === 0) {
+            container.innerHTML = '<p class="text-sm text-gray-400 m-auto">No activity in the last 24 hours</p>';
+            return;
+        }
+
+        const maxVal = Math.max(...breakdown.map(b => b.allowed + b.denied), 1);
+
+        container.innerHTML = breakdown.map(b => {
+            const total = b.allowed + b.denied;
+            const height = Math.max(Math.round((total / maxVal) * 100), 2);
+            const allowedH = total > 0 ? Math.round((b.allowed / total) * height) : 0;
+            const deniedH = height - allowedH;
+            const hour = new Date(b.hour).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+
+            return `<div class="flex flex-col items-center flex-1 min-w-[20px]" title="${hour}: ${b.allowed} allowed, ${b.denied} blocked">
+                <div class="w-full flex flex-col justify-end" style="height: 100px">
+                    <div class="bg-red-400 rounded-t-sm" style="height: ${deniedH}px"></div>
+                    <div class="bg-green-400 ${deniedH === 0 ? 'rounded-t-sm' : ''}" style="height: ${allowedH}px"></div>
+                </div>
+                <span class="text-[10px] text-gray-400 mt-1 rotate-[-45deg] origin-top-left whitespace-nowrap">${hour}</span>
+            </div>`;
+        }).join('');
+    }
+
+    function filterByAction(action) {
+        document.getElementById('filter-action').value = action;
+        switchTab('logs');
+        loadAuditLogs();
+    }
+
+    // ---- Tabs ----
 
     function switchTab(tab) {
         currentTab = tab;
@@ -147,41 +283,167 @@
         }
     }
 
+    // ---- Audit Logs ----
+
     async function loadAuditLogs() {
         const severity = document.getElementById('filter-severity').value;
         const action = document.getElementById('filter-action').value;
+        const startDate = document.getElementById('filter-start-date').value;
+        const endDate = document.getElementById('filter-end-date').value;
 
-        let url = '/api/v1/audit/logs?page_size=50';
+        let url = `/api/v1/audit/logs?page=${currentPage}&page_size=50`;
         if (severity) url += `&severity=${severity}`;
         if (action) url += `&action=${action}`;
+        if (startDate) url += `&start_date=${startDate}T00:00:00`;
+        if (endDate) url += `&end_date=${endDate}T23:59:59`;
 
         try {
             const response = await fetch(url);
             const data = await response.json();
 
-            const tbody = document.getElementById('logs-table');
-            if (data.items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No audit logs found</td></tr>';
-                return;
-            }
+            allLogs = data.items;
+            totalPages = data.pages || 1;
+            currentPage = data.page;
 
-            tbody.innerHTML = data.items.map(log => `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(log.created_at).toLocaleString()}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(log.severity)}">${log.severity}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.action}</td>
-                    <td class="px-6 py-4 text-sm text-gray-500 max-w-md truncate">${log.message}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                        <button onclick="viewLogDetails('${log.id}')" class="text-primary-600 hover:text-primary-900">View</button>
-                    </td>
-                </tr>
-            `).join('');
+            renderLogs(data.items);
+            updatePagination(data);
         } catch (error) {
             console.error('Failed to load audit logs:', error);
         }
     }
+
+    function renderLogs(logs) {
+        const searchTerm = document.getElementById('filter-search').value.toLowerCase();
+        const filtered = searchTerm ? logs.filter(l => l.message.toLowerCase().includes(searchTerm)) : logs;
+
+        const tbody = document.getElementById('logs-table');
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No audit logs found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(log => `
+            <tr class="hover:bg-gray-50 cursor-pointer" onclick="viewLogDetails('${log.id}', this)" data-log='${JSON.stringify(log).replace(/'/g, "&#39;")}'>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(log.created_at).toLocaleString()}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(log.severity)}">${log.severity}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatAction(log.action)}</td>
+                <td class="px-6 py-4 text-sm text-gray-500 max-w-md truncate">${escapeHtml(log.message)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <button class="text-primary-600 hover:text-primary-900">View</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function debounceSearch() {
+        if (searchTimeout) clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => renderLogs(allLogs), 250);
+    }
+
+    function updatePagination(data) {
+        document.getElementById('page-current').textContent = data.page;
+        document.getElementById('page-total').textContent = data.pages || 1;
+        document.getElementById('page-count').textContent = data.total;
+        document.getElementById('btn-prev').disabled = data.page <= 1;
+        document.getElementById('btn-next').disabled = data.page >= (data.pages || 1);
+    }
+
+    function changePage(delta) {
+        const newPage = currentPage + delta;
+        if (newPage < 1 || newPage > totalPages) return;
+        currentPage = newPage;
+        loadAuditLogs();
+    }
+
+    function formatAction(action) {
+        const labels = {
+            'request_allowed': '<span class="text-green-700">Allowed</span>',
+            'request_denied': '<span class="text-red-700">Denied</span>',
+            'request_pending_approval': '<span class="text-yellow-700">Pending</span>',
+            'rule_created': 'Rule Created',
+            'rule_updated': 'Rule Updated',
+            'agent_registered': 'Agent Registered',
+            'rate_limit_exceeded': '<span class="text-red-700">Rate Limited</span>',
+        };
+        return labels[action] || action.replace(/_/g, ' ');
+    }
+
+    // ---- Log Detail Modal ----
+
+    function viewLogDetails(id, rowEl) {
+        let log;
+        if (rowEl) {
+            try { log = JSON.parse(rowEl.dataset.log); } catch(e) {}
+        }
+        if (!log) {
+            log = allLogs.find(l => l.id === id);
+        }
+        if (!log) return;
+
+        const modal = document.getElementById('log-detail-modal');
+        const content = document.getElementById('log-detail-content');
+
+        content.innerHTML = `
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">Time</label>
+                    <p class="text-sm text-gray-900">${new Date(log.created_at).toLocaleString()}</p>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">Severity</label>
+                    <p><span class="px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(log.severity)}">${log.severity}</span></p>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">Action</label>
+                    <p class="text-sm text-gray-900">${log.action}</p>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">Agent ID</label>
+                    <p class="text-sm text-gray-900 font-mono truncate">${log.agent_id || 'N/A'}</p>
+                </div>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-gray-500 uppercase">Message</label>
+                <p class="text-sm text-gray-900 mt-1">${escapeHtml(log.message)}</p>
+            </div>
+            ${log.details && Object.keys(log.details).length > 0 ? `
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">Details</label>
+                    <pre class="mt-1 p-3 bg-gray-50 rounded-md text-xs overflow-x-auto max-h-64 overflow-y-auto">${escapeHtml(JSON.stringify(log.details, null, 2))}</pre>
+                </div>
+            ` : ''}
+            ${log.new_value ? `
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">New Value</label>
+                    <pre class="mt-1 p-3 bg-gray-50 rounded-md text-xs overflow-x-auto max-h-64 overflow-y-auto">${escapeHtml(JSON.stringify(log.new_value, null, 2))}</pre>
+                </div>
+            ` : ''}
+            ${log.old_value ? `
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase">Old Value</label>
+                    <pre class="mt-1 p-3 bg-gray-50 rounded-md text-xs overflow-x-auto max-h-64 overflow-y-auto">${escapeHtml(JSON.stringify(log.old_value, null, 2))}</pre>
+                </div>
+            ` : ''}
+            <div class="grid grid-cols-2 gap-4 text-xs text-gray-500">
+                ${log.ip_address ? `<div><span class="font-medium">IP:</span> ${log.ip_address}</div>` : ''}
+                ${log.endpoint ? `<div><span class="font-medium">Endpoint:</span> ${log.method || ''} ${log.endpoint}</div>` : ''}
+                ${log.request_id ? `<div><span class="font-medium">Request ID:</span> <span class="font-mono">${log.request_id}</span></div>` : ''}
+                ${log.rule_id ? `<div><span class="font-medium">Rule ID:</span> <span class="font-mono">${log.rule_id}</span></div>` : ''}
+            </div>
+        `;
+
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal(event) {
+        if (event.target === event.currentTarget) {
+            event.currentTarget.classList.add('hidden');
+        }
+    }
+
+    // ---- Violations ----
 
     async function loadViolations() {
         try {
@@ -214,6 +476,8 @@
             console.error('Failed to load violations:', error);
         }
     }
+
+    // ---- Alerts ----
 
     async function loadAlerts() {
         try {
@@ -250,6 +514,8 @@
         }
     }
 
+    // ---- Helpers ----
+
     function getSeverityColor(severity) {
         switch (severity) {
             case 'critical': return 'bg-red-100 text-red-800';
@@ -258,6 +524,12 @@
             case 'info': return 'bg-blue-100 text-blue-800';
             default: return 'bg-gray-100 text-gray-800';
         }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     async function resolveViolation(id) {
@@ -286,10 +558,11 @@
         }
     }
 
-    function viewLogDetails(id) {
-        alert('Log details: ' + id);
-    }
+    // ---- Init ----
 
-    document.addEventListener('DOMContentLoaded', () => loadAuditLogs());
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadAuditLogs();
+    });
 </script>
 {% endblock %}

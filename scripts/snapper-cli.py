@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Snapper CLI - Easy integration for OpenClaw users
+Snapper CLI - Security for AI Agents
 
 Usage:
-    snapper setup          # One-command setup (install + configure OpenClaw)
-    snapper integrate      # Just configure OpenClaw hooks
-    snapper status         # Check Snapper and agent status
-    snapper test           # Test the integration
+    snapper init               # Auto-detect agent, register, install hooks (recommended)
+    snapper init --agent cursor # Specify agent type explicitly
+    snapper setup              # Legacy: full setup for OpenClaw only
+    snapper integrate          # Legacy: just configure OpenClaw hooks
+    snapper status             # Check Snapper and agent status
+    snapper test               # Test the integration
 """
 
 import argparse
@@ -75,6 +77,53 @@ def detect_openclaw():
         return config_dir
 
     return None
+
+
+def detect_claude_code():
+    """Detect Claude Code installation."""
+    claude_dir = Path.home() / ".claude"
+    if claude_dir.is_dir():
+        return claude_dir
+    return None
+
+
+def detect_cursor():
+    """Detect Cursor installation."""
+    cursor_dir = Path.home() / ".cursor"
+    if cursor_dir.is_dir():
+        return cursor_dir
+    return None
+
+
+def detect_windsurf():
+    """Detect Windsurf (Codeium) installation."""
+    windsurf_dir = Path.home() / ".codeium" / "windsurf"
+    if windsurf_dir.is_dir():
+        return windsurf_dir
+    return None
+
+
+def detect_cline():
+    """Detect Cline installation."""
+    # Check global config
+    cline_dir = Path.home() / ".cline"
+    if cline_dir.is_dir():
+        return cline_dir
+    # Check project-level config
+    cwd_rules = Path.cwd() / ".clinerules"
+    if cwd_rules.is_dir():
+        return cwd_rules
+    return None
+
+
+# All supported agent types with their detection functions and labels
+AGENT_TYPES = {
+    "openclaw": {"detect": detect_openclaw, "label": "OpenClaw"},
+    "claude-code": {"detect": detect_claude_code, "label": "Claude Code"},
+    "cursor": {"detect": detect_cursor, "label": "Cursor"},
+    "windsurf": {"detect": detect_windsurf, "label": "Windsurf"},
+    "cline": {"detect": detect_cline, "label": "Cline"},
+}
 
 
 def register_agent(agent_id: str, name: str = None):
@@ -260,6 +309,186 @@ SNAPPER_AGENT_ID={agent_id}
         env_file.write_text(env_content)
 
     return hook_path
+
+
+def _quick_register(agent_type, profile, name=None):
+    """Register agent via the quick-register API and install config.
+
+    Returns (agent_id, api_key) on success, or exits on failure.
+    """
+    import urllib.request
+
+    payload = json.dumps({
+        "agent_type": agent_type,
+        "name": name or "",
+        "security_profile": profile,
+    }).encode()
+
+    req = urllib.request.Request(
+        f"{SNAPPER_URL}/api/v1/setup/quick-register",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Origin": SNAPPER_URL,
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            return data["agent_id"], data["api_key"], data["name"], data["rules_applied"]
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        try:
+            detail = json.loads(body).get("detail", body)
+        except Exception:
+            detail = body
+        print(f"  {RED}✗{RESET} Registration failed: {detail}")
+        sys.exit(1)
+
+
+def _install_config(agent_type, agent_id, api_key):
+    """Call install-config API and return (installed: bool, message: str)."""
+    import urllib.request
+
+    payload = json.dumps({
+        "agent_type": agent_type,
+        "agent_id": agent_id,
+        "api_key": api_key,
+        "snapper_url": SNAPPER_URL,
+    }).encode()
+
+    req = urllib.request.Request(
+        f"{SNAPPER_URL}/api/v1/setup/install-config",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Origin": SNAPPER_URL,
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+            return data.get("installed", False), data.get("message", ""), data.get("config_snippet", "")
+    except Exception as e:
+        return False, str(e), ""
+
+
+def cmd_init(args):
+    """Auto-detect agent, register, apply profile, install config."""
+    print_banner()
+
+    # Step 1: Check Snapper
+    print(f"{BOLD}Step 1: Checking Snapper...{RESET}")
+    if check_snapper_running():
+        print(f"  {GREEN}✓{RESET} Snapper is running at {SNAPPER_URL}")
+    else:
+        print(f"  {RED}✗{RESET} Snapper is not running at {SNAPPER_URL}")
+        print(f"    Start it with: docker compose up -d")
+        print(f"    Or set SNAPPER_URL to point to your instance.")
+        sys.exit(1)
+
+    # Step 2: Detect agents
+    agent_type = getattr(args, "agent", None)
+
+    if agent_type:
+        # Explicit agent type provided
+        label = AGENT_TYPES.get(agent_type, {}).get("label", agent_type)
+        print(f"\n{BOLD}Step 2: Using specified agent type: {label}{RESET}")
+    else:
+        print(f"\n{BOLD}Step 2: Detecting AI agents...{RESET}")
+        found = []
+        for atype, info in AGENT_TYPES.items():
+            result = info["detect"]()
+            if result:
+                found.append((atype, info["label"], result))
+                print(f"  {GREEN}✓{RESET} {info['label']} found at {result}")
+
+        if len(found) == 0:
+            print(f"  {YELLOW}○{RESET} No agents detected.")
+            print(f"\n  Available agent types:")
+            for i, (atype, info) in enumerate(AGENT_TYPES.items(), 1):
+                print(f"    {i}. {info['label']} ({atype})")
+            print(f"    6. Custom agent")
+
+            try:
+                choice = input(f"\n  Select agent type [1-6]: ").strip()
+                idx = int(choice) - 1
+                if idx == 5:
+                    agent_type = "custom"
+                else:
+                    agent_type = list(AGENT_TYPES.keys())[idx]
+            except (ValueError, IndexError, KeyboardInterrupt):
+                print(f"\n{RED}Cancelled.{RESET}")
+                sys.exit(1)
+        elif len(found) == 1:
+            agent_type = found[0][0]
+            print(f"  Auto-selected: {found[0][1]}")
+        else:
+            print(f"\n  Multiple agents found. Select one:")
+            for i, (atype, label, path) in enumerate(found, 1):
+                print(f"    {i}. {label} ({path})")
+            try:
+                choice = input(f"\n  Select [1-{len(found)}]: ").strip()
+                idx = int(choice) - 1
+                agent_type = found[idx][0]
+            except (ValueError, IndexError, KeyboardInterrupt):
+                print(f"\n{RED}Cancelled.{RESET}")
+                sys.exit(1)
+
+    profile = getattr(args, "profile", "recommended")
+
+    # Step 3: Register
+    print(f"\n{BOLD}Step 3: Registering agent ({profile} profile)...{RESET}")
+    agent_id, api_key, name, rules_applied = _quick_register(agent_type, profile)
+    print(f"  {GREEN}✓{RESET} Registered: {name}")
+    print(f"  {GREEN}✓{RESET} {rules_applied} security rules applied")
+
+    # Step 4: Install config
+    print(f"\n{BOLD}Step 4: Installing configuration...{RESET}")
+    if agent_type == "custom":
+        print(f"  {YELLOW}○{RESET} Manual configuration required for custom agents.")
+        snippet = (
+            f"# Add to your agent's config\n"
+            f"SNAPPER_URL={SNAPPER_URL}\n"
+            f"SNAPPER_AGENT_ID={agent_id}\n"
+            f"SNAPPER_API_KEY={api_key}\n"
+        )
+        print(f"\n{BOLD}Config snippet:{RESET}")
+        print(f"  {snippet.replace(chr(10), chr(10) + '  ')}")
+    else:
+        installed, message, snippet = _install_config(agent_type, agent_id, api_key)
+        if installed:
+            print(f"  {GREEN}✓{RESET} {message}")
+        else:
+            print(f"  {YELLOW}○{RESET} {message}")
+            if snippet:
+                print(f"\n{BOLD}Manual config:{RESET}")
+                for line in snippet.split("\n"):
+                    print(f"  {line}")
+
+    # Done
+    label = AGENT_TYPES.get(agent_type, {}).get("label", agent_type)
+    print(f"""
+{GREEN}╔══════════════════════════════════════════════════════════════╗
+║  Setup Complete!                                             ║
+╚══════════════════════════════════════════════════════════════╝{RESET}
+
+Your {label} agent is now protected by Snapper!
+
+{BOLD}Agent ID:{RESET}  {agent_id}
+{BOLD}API Key:{RESET}   {api_key}
+
+{BOLD}Quick links:{RESET}
+  Dashboard:  {BLUE}{SNAPPER_URL}{RESET}
+  Rules:      {BLUE}{SNAPPER_URL}/rules{RESET}
+  Audit logs: {BLUE}{SNAPPER_URL}/audit{RESET}
+
+{BOLD}Next:{RESET}
+  1. Restart {label} to activate the hook
+  2. Run: python {sys.argv[0]} test
+""")
 
 
 def cmd_setup(args):
@@ -477,18 +706,43 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  snapper setup              Full setup (install + configure OpenClaw)
-  snapper setup --strict     Setup with strict security profile
-  snapper integrate          Just configure OpenClaw hooks
-  snapper status             Check status
-  snapper test               Test the integration
+  snapper init                     Auto-detect agent, register, install hooks
+  snapper init --agent cursor      Specify agent type explicitly
+  snapper init --profile strict    Use strict security profile
+  snapper setup                    Legacy: full setup for OpenClaw only
+  snapper integrate                Legacy: just configure OpenClaw hooks
+  snapper status                   Check status
+  snapper test                     Test the integration
         """,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # setup command
-    setup_parser = subparsers.add_parser("setup", help="Full setup")
+    # init command (recommended)
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Auto-detect agent, register, and install config (recommended)",
+    )
+    init_parser.add_argument(
+        "--agent", "-a",
+        choices=["openclaw", "claude-code", "cursor", "windsurf", "cline", "custom"],
+        default=None,
+        help="Agent type (auto-detected if not specified)",
+    )
+    init_parser.add_argument(
+        "--profile", "-p",
+        choices=["recommended", "strict", "permissive"],
+        default="recommended",
+        help="Security profile to apply",
+    )
+    init_parser.add_argument(
+        "--url",
+        default=None,
+        help="Override SNAPPER_URL",
+    )
+
+    # setup command (legacy)
+    setup_parser = subparsers.add_parser("setup", help="Legacy: full setup for OpenClaw")
     setup_parser.add_argument(
         "--profile", "-p",
         choices=["recommended", "strict", "permissive"],
@@ -496,8 +750,8 @@ Examples:
         help="Security profile to apply",
     )
 
-    # integrate command
-    integrate_parser = subparsers.add_parser("integrate", help="Integrate with OpenClaw")
+    # integrate command (legacy)
+    integrate_parser = subparsers.add_parser("integrate", help="Legacy: integrate with OpenClaw")
     integrate_parser.add_argument(
         "--profile", "-p",
         choices=["recommended", "strict", "permissive"],
@@ -513,7 +767,14 @@ Examples:
 
     args = parser.parse_args()
 
-    if args.command == "setup":
+    # Handle --url override
+    if hasattr(args, "url") and args.url:
+        global SNAPPER_URL
+        SNAPPER_URL = args.url
+
+    if args.command == "init":
+        cmd_init(args)
+    elif args.command == "setup":
         cmd_setup(args)
     elif args.command == "integrate":
         cmd_integrate(args)

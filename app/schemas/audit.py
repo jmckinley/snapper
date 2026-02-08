@@ -133,6 +133,24 @@ class AlertAcknowledge(BaseModel):
     notes: Optional[str] = Field(None, max_length=500)
 
 
+class HourlyBreakdown(BaseModel):
+    """Hourly count of allowed vs denied requests."""
+
+    hour: str
+    allowed: int
+    denied: int
+
+
+class AuditStatsResponse(BaseModel):
+    """Schema for audit stats (summary + hourly breakdown)."""
+
+    total_evaluations: int
+    allowed_count: int
+    denied_count: int
+    pending_count: int
+    hourly_breakdown: List[HourlyBreakdown]
+
+
 class ComplianceReportResponse(BaseModel):
     """Schema for compliance report."""
 

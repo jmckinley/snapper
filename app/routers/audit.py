@@ -28,7 +28,9 @@ from app.schemas.audit import (
     AuditLogFilterRequest,
     AuditLogListResponse,
     AuditLogResponse,
+    AuditStatsResponse,
     ComplianceReportResponse,
+    HourlyBreakdown,
     ViolationListResponse,
     ViolationResolve,
     ViolationResponse,
@@ -37,6 +39,83 @@ from app.schemas.audit import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/audit", dependencies=[Depends(default_rate_limit)])
+
+
+@router.get("/stats", response_model=AuditStatsResponse)
+async def get_audit_stats(
+    db: DbSessionDep,
+    hours: int = Query(24, ge=1, le=168),
+):
+    """Get aggregated audit stats for the dashboard.
+
+    Returns total evaluations, allowed/denied/pending counts,
+    and an hourly breakdown for chart rendering.
+    """
+    since = datetime.utcnow() - timedelta(hours=hours)
+
+    # Count evaluations by action type
+    count_stmt = (
+        select(AuditLog.action, func.count().label("cnt"))
+        .where(
+            AuditLog.created_at >= since,
+            AuditLog.action.in_([
+                AuditAction.REQUEST_ALLOWED,
+                AuditAction.REQUEST_DENIED,
+                AuditAction.REQUEST_PENDING_APPROVAL,
+            ]),
+        )
+        .group_by(AuditLog.action)
+    )
+    count_result = await db.execute(count_stmt)
+    counts = {row.action: row.cnt for row in count_result}
+
+    allowed_count = counts.get(AuditAction.REQUEST_ALLOWED, 0)
+    denied_count = counts.get(AuditAction.REQUEST_DENIED, 0)
+    pending_count = counts.get(AuditAction.REQUEST_PENDING_APPROVAL, 0)
+    total_evaluations = allowed_count + denied_count + pending_count
+
+    # Hourly breakdown using date_trunc
+    hourly_stmt = (
+        select(
+            func.date_trunc("hour", AuditLog.created_at).label("hour"),
+            AuditLog.action,
+            func.count().label("cnt"),
+        )
+        .where(
+            AuditLog.created_at >= since,
+            AuditLog.action.in_([
+                AuditAction.REQUEST_ALLOWED,
+                AuditAction.REQUEST_DENIED,
+            ]),
+        )
+        .group_by(func.date_trunc("hour", AuditLog.created_at), AuditLog.action)
+        .order_by(func.date_trunc("hour", AuditLog.created_at))
+    )
+    hourly_result = await db.execute(hourly_stmt)
+
+    # Build a map of hour -> {allowed, denied}
+    hourly_map: dict[str, dict[str, int]] = {}
+    for row in hourly_result:
+        hour_str = row.hour.strftime("%Y-%m-%dT%H:00")
+        if hour_str not in hourly_map:
+            hourly_map[hour_str] = {"allowed": 0, "denied": 0}
+        if row.action == AuditAction.REQUEST_ALLOWED:
+            hourly_map[hour_str]["allowed"] = row.cnt
+        elif row.action == AuditAction.REQUEST_DENIED:
+            hourly_map[hour_str]["denied"] = row.cnt
+
+    hourly_breakdown = [
+        HourlyBreakdown(hour=h, allowed=v["allowed"], denied=v["denied"])
+        for h, v in sorted(hourly_map.items())
+    ]
+
+    return AuditStatsResponse(
+        total_evaluations=total_evaluations,
+        allowed_count=allowed_count,
+        denied_count=denied_count,
+        pending_count=pending_count,
+        hourly_breakdown=hourly_breakdown,
+    )
 
 
 @router.get("/logs", response_model=AuditLogListResponse)
