@@ -22,11 +22,11 @@
                 </svg>
                 <span class="text-sm font-medium">Getting Started</span>
             </a>
-            <a href="#claude-code" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
+            <a href="#agent-setup" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
                 <svg class="h-8 w-8 text-primary-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
                 </svg>
-                <span class="text-sm font-medium">Claude Code Setup</span>
+                <span class="text-sm font-medium">Agent Setup</span>
             </a>
             <a href="#rules" class="flex flex-col items-center p-4 border rounded-lg hover:bg-gray-50">
                 <svg class="h-8 w-8 text-primary-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,79 +66,152 @@ cd /opt/snapper
         </div>
     </div>
 
-    <!-- Claude Code Setup -->
-    <div id="claude-code" class="bg-white shadow rounded-lg p-6">
-        <h2 class="text-lg font-medium text-gray-900 mb-4">Claude Code Integration</h2>
+    <!-- Agent Setup -->
+    <div id="agent-setup" class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Agent Setup</h2>
         <div class="space-y-6">
             <div>
-                <h3 class="text-sm font-medium text-gray-900 mb-2">Automatic Setup</h3>
-                <p class="text-sm text-gray-600 mb-3">Run this command to automatically install and configure Snapper for Claude Code:</p>
-                <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-setup.sh | bash</code></pre>
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Quick Setup (All Agents)</h3>
+                <p class="text-sm text-gray-600 mb-3">The fastest way to connect any supported agent. Auto-detects installed agents, registers, and writes hook config:</p>
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>python scripts/snapper-cli.py init</code></pre>
+                <p class="text-xs text-gray-500 mt-2">Options: <code>--agent cursor</code>, <code>--agent windsurf</code>, <code>--agent cline</code>, <code>--profile strict</code></p>
             </div>
 
             <div class="border-t pt-6">
-                <h3 class="text-sm font-medium text-gray-900 mb-2">Manual Setup</h3>
-                <p class="text-sm text-gray-600 mb-3">If you prefer manual installation:</p>
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Supported Agents</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="text-left py-2 font-medium text-gray-900">Agent</th>
+                                <th class="text-left py-2 font-medium text-gray-900">Hook Location</th>
+                                <th class="text-left py-2 font-medium text-gray-900">Block Signal</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-600">
+                            <tr class="border-b">
+                                <td class="py-2">OpenClaw</td>
+                                <td class="py-2">Plugin or <code>SHELL</code> wrapper</td>
+                                <td class="py-2">Exit code 1</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2">Claude Code</td>
+                                <td class="py-2"><code>~/.claude/settings.json</code></td>
+                                <td class="py-2">Exit code 1</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2">Cursor</td>
+                                <td class="py-2"><code>~/.cursor/hooks/hooks.json</code></td>
+                                <td class="py-2">Exit code 2</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2">Windsurf</td>
+                                <td class="py-2"><code>~/.codeium/windsurf/hooks/hooks.json</code></td>
+                                <td class="py-2">Exit code 2</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2">Cline</td>
+                                <td class="py-2"><code>~/.cline/hooks/pre_tool_use</code></td>
+                                <td class="py-2">JSON <code>{"cancel": true}</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Claude Code (Manual Setup)</h3>
                 <div class="space-y-4">
                     <div>
                         <p class="text-sm font-medium text-gray-700 mb-1">1. Install the hook script:</p>
                         <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>mkdir -p ~/.claude/hooks
-curl -fsSL https://raw.githubusercontent.com/jmckinley/snapper/main/scripts/claude-code-hook.sh \
-  -o ~/.claude/hooks/pre_tool_use.sh
+cp scripts/claude-code-hook.sh ~/.claude/hooks/pre_tool_use.sh
 chmod +x ~/.claude/hooks/pre_tool_use.sh</code></pre>
                     </div>
-
                     <div>
                         <p class="text-sm font-medium text-gray-700 mb-1">2. Add to <code class="bg-gray-100 px-1 rounded">~/.claude/settings.json</code>:</p>
                         <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>{
   "hooks": {
     "PreToolUse": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/pre_tool_use.sh"
-          }
-        ]
-      }
+      { "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }] }
     ]
   }
 }</code></pre>
                         <p class="text-xs text-gray-500 mt-1">Note: The key must be <code>PreToolUse</code> (PascalCase), not <code>preToolUse</code>.</p>
                     </div>
-
                     <div>
-                        <p class="text-sm font-medium text-gray-700 mb-1">3. Set environment variables (optional):</p>
+                        <p class="text-sm font-medium text-gray-700 mb-1">3. Set environment variables:</p>
                         <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>export SNAPPER_URL=http://localhost:8000
-export SNAPPER_AGENT_ID=claude-code-$(hostname)</code></pre>
-                    </div>
-
-                    <div>
-                        <p class="text-sm font-medium text-gray-700 mb-1">4. Restart Claude Code for hooks to take effect.</p>
+export SNAPPER_AGENT_ID=claude-code-$(hostname)
+export SNAPPER_API_KEY=snp_your_key_here</code></pre>
                     </div>
                 </div>
             </div>
 
             <div class="border-t pt-6">
-                <h3 class="text-sm font-medium text-gray-900 mb-2">Hook Configuration Options</h3>
-                <p class="text-sm text-gray-600 mb-3">You can customize which tools trigger the hook using the <code>matcher</code> field:</p>
-                <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }]
-      }
-    ]
-  }
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Cursor (Manual Setup)</h3>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">1. Install the hook and env file:</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>mkdir -p ~/.cursor/hooks
+cp scripts/cursor-hook.sh ~/.cursor/hooks/snapper_pre_tool_use.sh
+chmod +x ~/.cursor/hooks/snapper_pre_tool_use.sh
+cat > ~/.cursor/.env.snapper << 'EOF'
+SNAPPER_URL=http://localhost:8000
+SNAPPER_AGENT_ID=cursor-$(hostname)
+SNAPPER_API_KEY=snp_your_key_here
+EOF</code></pre>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">2. Create/merge <code class="bg-gray-100 px-1 rounded">~/.cursor/hooks/hooks.json</code>:</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>{ "preToolUse": [{ "command": "~/.cursor/hooks/snapper_pre_tool_use.sh" }] }</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Windsurf (Manual Setup)</h3>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">1. Install the hook and env file:</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>mkdir -p ~/.codeium/windsurf/hooks
+cp scripts/windsurf-hook.sh ~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh
+chmod +x ~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh
+cat > ~/.codeium/windsurf/.env.snapper << 'EOF'
+SNAPPER_URL=http://localhost:8000
+SNAPPER_AGENT_ID=windsurf-$(hostname)
+SNAPPER_API_KEY=snp_your_key_here
+EOF</code></pre>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">2. Create/merge <code class="bg-gray-100 px-1 rounded">~/.codeium/windsurf/hooks/hooks.json</code>:</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>{
+  "pre_run_command": [{ "command": "~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh" }],
+  "pre_write_code": [{ "command": "~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh" }],
+  "pre_mcp_tool_use": [{ "command": "~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh" }]
 }</code></pre>
-                <p class="text-xs text-gray-500 mt-2">Common matchers: <code>Bash</code>, <code>Read</code>, <code>Write</code>, <code>Edit</code>, <code>Glob</code>, <code>Grep</code>, <code>WebFetch</code>, <code>Task</code></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Cline (Manual Setup)</h3>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-1">1. Install the hook (no extension, auto-discovered):</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs"><code>mkdir -p ~/.cline/hooks
+cp scripts/cline-hook.sh ~/.cline/hooks/pre_tool_use
+chmod +x ~/.cline/hooks/pre_tool_use
+cat > ~/.cline/.env.snapper << 'EOF'
+SNAPPER_URL=http://localhost:8000
+SNAPPER_AGENT_ID=cline-$(hostname)
+SNAPPER_API_KEY=snp_your_key_here
+EOF</code></pre>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Cline auto-discovers executable scripts in the hooks directory. No JSON config needed.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -181,6 +254,14 @@ export SNAPPER_AGENT_ID=claude-code-$(hostname)</code></pre>
                             <tr class="border-b">
                                 <td class="py-2"><code>skill_denylist</code></td>
                                 <td class="py-2">Block specific MCP tools</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>pii_gate</code></td>
+                                <td class="py-2">Detect and protect personal data in browser/tool actions</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="py-2"><code>file_access</code></td>
+                                <td class="py-2">Control file system access patterns</td>
                             </tr>
                             <tr>
                                 <td class="py-2"><code>human_approval</code></td>
@@ -266,7 +347,7 @@ export SNAPPER_AGENT_ID=claude-code-$(hostname)</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                     </svg>
                 </summary>
-                <p class="text-sm text-gray-600 py-3">Yes! Each agent registers with a unique ID. You can create rules that apply to all agents, or target specific agents. Manage agents from the <a href="/agents" class="text-primary-600">Agents</a> page.</p>
+                <p class="text-sm text-gray-600 py-3">Yes! Snapper supports OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents. Each registers with a unique ID. You can create rules that apply to all agents, or target specific ones. Use <code>python scripts/snapper-cli.py init</code> to set up additional agents. Manage them from the <a href="/agents" class="text-primary-600">Agents</a> page.</p>
             </details>
 
             <details class="group">

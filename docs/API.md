@@ -267,11 +267,38 @@ The `token` is what agents use in place of raw PII. The raw value is encrypted a
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/v1/audit/stats` | Aggregated stats + hourly breakdown |
 | GET | `/api/v1/audit/logs` | List audit logs (paginated) |
+| GET | `/api/v1/audit/logs/stream` | Stream logs via SSE |
 | GET | `/api/v1/audit/violations` | List policy violations |
 | POST | `/api/v1/audit/violations/{id}/resolve` | Resolve violation |
 | GET | `/api/v1/audit/alerts` | List alerts |
 | POST | `/api/v1/audit/alerts/{id}/acknowledge` | Acknowledge alert |
+| GET | `/api/v1/audit/reports/compliance` | Generate compliance report |
+
+#### Audit Stats
+
+Get aggregated stats for the dashboard — total evaluations, allowed/denied/pending counts, and an hourly breakdown for chart rendering.
+
+```bash
+curl "http://localhost:8000/api/v1/audit/stats?hours=24"
+```
+
+Response:
+```json
+{
+  "total_evaluations": 142,
+  "allowed_count": 118,
+  "denied_count": 19,
+  "pending_count": 5,
+  "hourly_breakdown": [
+    {"hour": "2026-02-07T10:00", "allowed": 12, "denied": 3},
+    {"hour": "2026-02-07T11:00", "allowed": 8, "denied": 1}
+  ]
+}
+```
+
+Query params: `hours` (1-168, default 24)
 
 #### Query Audit Logs
 
@@ -387,6 +414,46 @@ The Telegram bot uses inline buttons with specific callback data formats:
 | `cancel_block:{chat_id}` | Cancel emergency block | Clears pending block |
 | `approve:{request_id}` | Approve pending request | Allows blocked action |
 | `deny:{request_id}` | Deny pending request | Rejects blocked action |
+
+### Setup
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/setup/status` | Check setup status |
+| GET | `/api/v1/setup/discover` | Auto-discover running agents |
+| POST | `/api/v1/setup/quick-register` | Quick-register an agent |
+| POST | `/api/v1/setup/install-config` | Auto-install hook configuration |
+| GET | `/api/v1/setup/profiles` | List security profiles |
+| GET | `/api/v1/setup/config/{agent_id}` | Get agent config snippet |
+| POST | `/api/v1/setup/complete` | Mark setup as complete |
+
+#### Quick Register
+
+Register an agent in one call. Supported `agent_type` values: `openclaw`, `claude-code`, `cursor`, `windsurf`, `cline`, `custom`.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/setup/quick-register \
+  -H "Content-Type: application/json" \
+  -d '{"agent_type": "cursor", "name": "My Cursor"}'
+```
+
+Response includes `agent_id` and `api_key` (starts with `snp_`).
+
+#### Install Config
+
+After registering, auto-install hook configuration into the agent's config directory:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/setup/install-config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_type": "cursor",
+    "agent_id": "cursor-myhostname",
+    "api_key": "snp_abc123..."
+  }'
+```
+
+This writes the env file, copies the hook script, and merges hook configuration. Returns the install result or a fallback config snippet if auto-install isn't possible.
 
 ## Rule Types
 

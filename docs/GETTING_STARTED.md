@@ -1,8 +1,8 @@
 # Getting Started with Snapper
 
-Snapper is a security rules manager for OpenClaw. It controls what your AI agent
+Snapper is a security rules manager for AI agents. It controls what your AI agent
 can do — allow, deny, or require approval for commands, file access, network calls,
-and PII handling.
+and PII handling. Supports OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents.
 
 ## What You Need
 
@@ -19,7 +19,7 @@ git --version                 # Must show 2.30+
 docker info --format '{{.ServerVersion}}'  # Must show 24.0+
 ```
 
-OpenClaw should be running in Docker on the same machine or network.
+At least one supported AI agent should be installed (OpenClaw, Claude Code, Cursor, Windsurf, or Cline).
 
 ## Install
 
@@ -97,22 +97,34 @@ your-server-ip:8443 {
 }
 ```
 
-## First Run — Setup Wizard
+## First Run
 
-On first visit, Snapper automatically redirects you to the **setup wizard**. It walks through four steps:
+### Option A: CLI (Recommended)
 
-1. **Register your OpenClaw agent** — Give it a name and agent ID (e.g., `openclaw-main`). You'll get an API key (`snp_xxx`).
+The fastest way to get started after containers are running:
+
+```bash
+python scripts/snapper-cli.py init
+```
+
+This auto-detects your installed agents, registers one, applies a security profile, and writes hook configuration — all in one step.
+
+### Option B: Setup Wizard
+
+On first visit to the dashboard, Snapper automatically redirects you to the **setup wizard**. It walks through five steps:
+
+1. **Select your agent type** — Choose from OpenClaw, Claude Code, Cursor, Windsurf, Cline, or Custom. You'll get an API key (`snp_xxx`).
 
 2. **Pick a security profile** — Choose one:
    - **Recommended** — Blocks dangerous commands, requires approval for sensitive ones, allows common safe commands
    - **Strict** — Deny by default, explicit allowlist only
    - **Permissive** — Learning mode, logs everything but blocks nothing (good for initial setup)
 
-3. **Set up Telegram notifications** (optional) — Enter your bot token and chat ID. Snapper will send you approval requests and blocked-command alerts on your phone.
+3. **Set up Telegram notifications** (optional) — Enter your bot token and chat ID.
 
-4. **Get your config snippet** — Copy the generated JSON and paste it into your OpenClaw config to connect the agent.
+4. **Get your config snippet** — For known agents (OpenClaw, Claude Code, Cursor, Windsurf, Cline), Snapper auto-installs hook config. For custom agents, copy the config snippet manually.
 
-After the wizard, your agent is protected and rules are applied.
+After setup, your agent is protected and rules are applied.
 
 ## Verify It Works
 
@@ -318,6 +330,7 @@ rm -rf /opt/snapper
 ## What's Next
 
 - [Telegram Setup](TELEGRAM_SETUP.md) — Approval notifications on your phone
-- [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) — Plugin vs shell hook details
-- [User Guide](USER_GUIDE.md) — Rules, PII vault, approval workflows
-- [API Reference](http://localhost:8000/api/docs) — Interactive REST API docs
+- [User Guide](USER_GUIDE.md) — Rules, PII vault, approval workflows, agent setup for all types
+- [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) — Plugin vs shell hook details (OpenClaw-specific)
+- [API Reference](API.md) — REST API documentation
+- [Interactive API Docs](http://localhost:8000/api/docs) — Swagger UI

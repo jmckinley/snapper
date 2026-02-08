@@ -2,6 +2,8 @@
 
 Snapper is a security firewall for AI agents. It sits between your AI agent and the actions it takes, enforcing rules you define — blocking dangerous commands, requiring approval for sensitive operations, and protecting your personal data.
 
+Snapper supports **OpenClaw**, **Claude Code**, **Cursor**, **Windsurf**, **Cline**, and custom agents.
+
 This guide walks through everything you need as a Snapper user, from first setup to advanced PII vault workflows.
 
 ---
@@ -9,15 +11,17 @@ This guide walks through everything you need as a Snapper user, from first setup
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Telegram Bot](#telegram-bot)
-3. [Rules](#rules)
-4. [Approval Workflow](#approval-workflow)
-5. [PII Vault](#pii-vault)
-6. [PII Protection Modes](#pii-protection-modes)
-7. [Emergency Controls](#emergency-controls)
-8. [Agent Setup](#agent-setup)
-9. [Dashboard](#dashboard)
-10. [Troubleshooting](#troubleshooting)
+2. [Quick Setup with `snapper init`](#quick-setup-with-snapper-init)
+3. [Telegram Bot](#telegram-bot)
+4. [Rules](#rules)
+5. [Approval Workflow](#approval-workflow)
+6. [PII Vault](#pii-vault)
+7. [PII Protection Modes](#pii-protection-modes)
+8. [Emergency Controls](#emergency-controls)
+9. [Agent Setup](#agent-setup)
+10. [Audit Dashboard](#audit-dashboard)
+11. [Dashboard](#dashboard)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -25,7 +29,7 @@ This guide walks through everything you need as a Snapper user, from first setup
 
 ### What Snapper Does
 
-When your AI agent (OpenClaw) tries to run a command or use a tool, Snapper intercepts the request and checks it against your rules:
+When your AI agent tries to run a command or use a tool, Snapper intercepts the request and checks it against your rules:
 
 ```
 AI Agent wants to run: rm -rf /important-data
@@ -44,11 +48,49 @@ AI Agent wants to run: rm -rf /important-data
 ### First Steps
 
 1. **Install Snapper** — See [Getting Started](GETTING_STARTED.md) for Docker setup
-2. **Set up Telegram** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for bot creation
-3. **Connect your agent** — See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md)
+2. **Connect your agent** — Run `python scripts/snapper-cli.py init` (auto-detects and configures your agent)
+3. **Set up Telegram** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for bot creation
 4. **Configure rules** — Use templates or create custom rules (this guide covers both)
 
 Once set up, Snapper runs silently in the background. You'll only hear from it when something needs your attention.
+
+---
+
+## Quick Setup with `snapper init`
+
+The fastest way to connect an agent is the `snapper init` CLI command:
+
+```bash
+python scripts/snapper-cli.py init
+```
+
+It will:
+1. Check that Snapper is running
+2. Auto-detect installed agents (OpenClaw, Claude Code, Cursor, Windsurf, Cline)
+3. Let you pick one (or auto-select if only one is found)
+4. Register the agent and apply a security profile
+5. Write hook configuration to the agent's config directory
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--agent <type>` | Skip auto-detect (`openclaw`, `claude-code`, `cursor`, `windsurf`, `cline`, `custom`) |
+| `--profile <name>` | Security profile (`recommended`, `strict`, `permissive`) |
+| `--url <url>` | Override Snapper URL (default: `http://localhost:8000`) |
+
+**Examples:**
+
+```bash
+# Auto-detect and configure
+python scripts/snapper-cli.py init
+
+# Explicitly configure Cursor
+python scripts/snapper-cli.py init --agent cursor
+
+# Use strict security profile
+python scripts/snapper-cli.py init --agent windsurf --profile strict
+```
 
 ---
 
@@ -427,6 +469,8 @@ Once blocked, all agent requests are denied until you unblock. A red alert appea
 
 ## Agent Setup
 
+The easiest way to set up any agent is `python scripts/snapper-cli.py init` (see above). Below are the manual setup details for each agent.
+
 ### OpenClaw (Recommended: Plugin)
 
 The `snapper-guard` plugin integrates directly with OpenClaw's tool pipeline:
@@ -438,7 +482,54 @@ The `snapper-guard` plugin integrates directly with OpenClaw's tool pipeline:
 
 See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) for full setup.
 
-### How the Hook Works
+### Claude Code
+
+Uses PreToolUse hooks in `~/.claude/settings.json`:
+
+1. Install hook: copy `scripts/claude-code-hook.sh` to `~/.claude/hooks/pre_tool_use.sh`
+2. Add to `~/.claude/settings.json`:
+   ```json
+   { "hooks": { "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }] }] } }
+   ```
+3. Set env: `export SNAPPER_URL=http://localhost:8000 SNAPPER_AGENT_ID=claude-code-$(hostname)`
+
+### Cursor
+
+Uses preToolUse hooks in `~/.cursor/hooks/hooks.json`:
+
+1. Install hook: copy `scripts/cursor-hook.sh` to `~/.cursor/hooks/snapper_pre_tool_use.sh`
+2. Create/merge `~/.cursor/hooks/hooks.json`:
+   ```json
+   { "preToolUse": [{ "command": "~/.cursor/hooks/snapper_pre_tool_use.sh" }] }
+   ```
+3. Set env in `~/.cursor/.env.snapper`: `SNAPPER_URL`, `SNAPPER_AGENT_ID`, `SNAPPER_API_KEY`
+
+Cursor uses exit code 2 (not 1) to block tool calls.
+
+### Windsurf
+
+Uses multiple hook types in `~/.codeium/windsurf/hooks/hooks.json`:
+
+1. Install hook: copy `scripts/windsurf-hook.sh` to `~/.codeium/windsurf/hooks/snapper_pre_tool_use.sh`
+2. Create/merge `~/.codeium/windsurf/hooks/hooks.json`:
+   ```json
+   { "pre_run_command": [{ "command": "..." }], "pre_write_code": [{ "command": "..." }], "pre_mcp_tool_use": [{ "command": "..." }] }
+   ```
+3. Set env in `~/.codeium/windsurf/.env.snapper`
+
+Windsurf uses exit code 2 to block and separate hooks for commands, file writes, and MCP tools.
+
+### Cline
+
+Uses auto-discovered executable scripts in `~/.cline/hooks/`:
+
+1. Install hook: copy `scripts/cline-hook.sh` to `~/.cline/hooks/pre_tool_use` (no extension)
+2. Make executable: `chmod +x ~/.cline/hooks/pre_tool_use`
+3. Set env in `~/.cline/.env.snapper`
+
+Cline always exits 0 and uses JSON stdout (`{"cancel": true}`) to signal blocks.
+
+### How Hooks Work
 
 ```
 Agent calls tool (e.g., "bash: rm -rf /tmp")
@@ -452,10 +543,25 @@ POST /api/v1/rules/evaluate
         |
         v
 Snapper evaluates rules, returns decision:
-  - "allow"            → hook exits 0, tool runs
-  - "deny"             → hook exits 1, tool blocked
+  - "allow"            → hook signals allow, tool runs
+  - "deny"             → hook signals block, tool stopped
   - "require_approval" → hook polls /approvals/status until you respond
 ```
+
+Each agent uses a slightly different block signal (exit code 1, exit code 2, or JSON output) — the hook scripts handle this automatically.
+
+---
+
+## Audit Dashboard
+
+The Audit page (`/audit`) provides observability into what your agents are doing:
+
+- **Summary stats** — Total evaluations, allowed %, blocked %, and pending approvals for the last 24 hours. Click any stat card to filter the log table.
+- **Activity timeline** — Hourly bar chart showing allowed (green) vs blocked (red) actions, giving you an at-a-glance view of agent activity patterns.
+- **Filterable log viewer** — Search by message text, filter by date range, agent, action type, or severity. Expandable rows show full JSON details.
+- **Pagination** — Navigate through large audit logs with previous/next controls.
+
+The stats are powered by `GET /api/v1/audit/stats?hours=24` which returns aggregated counts and an hourly breakdown.
 
 ---
 
@@ -466,8 +572,9 @@ The web dashboard at `https://your-snapper:8443` provides:
 - **Overview** — Agent status, recent activity, pending approvals
 - **Rules** — Create, edit, and manage security rules
 - **Agents** — Register agents, toggle enforcement mode, view trust scores
-- **Audit Log** — Full history of all evaluations, approvals, and violations
+- **Audit** — Activity stats, timeline chart, filterable log viewer with pagination
 - **Settings** — Configure alerts, integration settings, API keys
+- **Help** — In-app setup guide for all agent types, FAQ, troubleshooting
 
 ---
 

@@ -75,9 +75,10 @@ async def get_audit_stats(
     total_evaluations = allowed_count + denied_count + pending_count
 
     # Hourly breakdown using date_trunc
+    hour_col = func.date_trunc("hour", AuditLog.created_at).label("hour")
     hourly_stmt = (
         select(
-            func.date_trunc("hour", AuditLog.created_at).label("hour"),
+            hour_col,
             AuditLog.action,
             func.count().label("cnt"),
         )
@@ -88,8 +89,8 @@ async def get_audit_stats(
                 AuditAction.REQUEST_DENIED,
             ]),
         )
-        .group_by(func.date_trunc("hour", AuditLog.created_at), AuditLog.action)
-        .order_by(func.date_trunc("hour", AuditLog.created_at))
+        .group_by(hour_col, AuditLog.action)
+        .order_by(hour_col)
     )
     hourly_result = await db.execute(hourly_stmt)
 

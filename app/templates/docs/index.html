@@ -742,6 +742,36 @@ curl http://localhost:8000/api/v1/security/score/claude-code-macbook</code></pre
             <p class="text-sm text-gray-600 mb-6">Access audit logs, policy violations, security alerts, and compliance reports.</p>
 
             <div class="space-y-6">
+                <!-- Audit Stats -->
+                <details class="group border rounded-lg" open>
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/audit/stats</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get aggregated audit stats</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Returns total evaluations, allowed/denied/pending counts, and an hourly breakdown for the specified time window. Powers the Audit dashboard charts.</p>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example request:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl "http://localhost:8000/api/v1/audit/stats?hours=24"</code></pre>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-700 mb-1">Example response:</p>
+                            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>{
+  "total_evaluations": 142,
+  "allowed_count": 118,
+  "denied_count": 19,
+  "pending_count": 5,
+  "hourly_breakdown": [
+    {"hour": "2026-02-07T10:00", "allowed": 12, "denied": 3},
+    {"hour": "2026-02-07T11:00", "allowed": 8, "denied": 1}
+  ]
+}</code></pre>
+                        </div>
+                        <p class="text-gray-500">Query params: <code class="bg-gray-100 px-1 rounded">hours</code> (1-168, default 24)</p>
+                    </div>
+                </details>
+
                 <!-- Audit Logs -->
                 <details class="group border rounded-lg">
                     <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
@@ -940,14 +970,34 @@ curl -X POST "http://localhost:8000/api/v1/integrations/credential-protection/di
                     <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
                         <code class="text-sm font-medium text-gray-900">/api/v1/setup/quick-register</code>
-                        <span class="text-sm text-gray-500 ml-auto">Quick-register a discovered agent</span>
+                        <span class="text-sm text-gray-500 ml-auto">Quick-register an agent</span>
                     </summary>
                     <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">Supported <code class="bg-gray-100 px-1 rounded">agent_type</code> values: <code>openclaw</code>, <code>claude-code</code>, <code>cursor</code>, <code>windsurf</code>, <code>cline</code>, <code>custom</code></p>
                         <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/setup/quick-register \
   -H "Content-Type: application/json" \
   -d '{
-    "agent_type": "claude_code",
+    "agent_type": "cursor",
     "profile": "standard"
+  }'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Install Config -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/setup/install-config</code>
+                        <span class="text-sm text-gray-500 ml-auto">Auto-install hook configuration</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <p class="text-gray-600">After quick-register, call this to automatically write env files, copy hook scripts, and merge hook config into the agent's config directory.</p>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/setup/install-config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_type": "cursor",
+    "agent_id": "cursor-myhostname",
+    "api_key": "snp_abc123..."
   }'</code></pre>
                     </div>
                 </details>

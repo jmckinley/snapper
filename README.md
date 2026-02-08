@@ -6,7 +6,7 @@
 
 ## What is Snapper?
 
-Snapper sits between your AI agent (OpenClaw, running in Docker) and the actions it takes. It lets you:
+Snapper sits between your AI agent and the actions it takes. It lets you:
 
 - **Allow** specific commands, tools, or integrations
 - **Deny** dangerous operations (like `rm -rf /` or accessing `.env` files)
@@ -14,11 +14,22 @@ Snapper sits between your AI agent (OpenClaw, running in Docker) and the actions
 
 Think of it as a firewall for AI agents.
 
+### Supported Agents
+
+| Agent | Hook Mechanism | Auto-Install |
+|-------|---------------|--------------|
+| **OpenClaw** | snapper-guard plugin or shell hook | Yes |
+| **Claude Code** | PreToolUse hook (settings.json) | Yes |
+| **Cursor** | preToolUse hook (hooks.json) | Yes |
+| **Windsurf** | pre_run_command / pre_write_code hooks | Yes |
+| **Cline** | Auto-discovered script in hooks dir | Yes |
+| **Custom** | Manual config snippet | No |
+
 ## Prerequisites
 
 - **Docker 24.0+** with Compose v2 — check: `docker compose version`
 - **Git** — check: `git --version`
-- **OpenClaw running in Docker** on the same machine or network
+- At least one supported AI agent installed
 
 Snapper runs entirely in Docker. No bare-metal install.
 
@@ -37,6 +48,14 @@ cd snapper
 ```
 
 The setup script validates prerequisites, starts containers, runs migrations, and opens the dashboard in your browser. The setup wizard walks you through agent registration, security profile selection, and Telegram setup.
+
+**Quick setup with the CLI** (if Snapper is already running):
+
+```bash
+python scripts/snapper-cli.py init
+```
+
+The `init` command auto-detects installed agents (OpenClaw, Claude Code, Cursor, Windsurf, Cline), registers one, applies a security profile, and writes hook config — all in one step.
 
 For manual setup or production deployment, see [Getting Started](docs/GETTING_STARTED.md).
 
@@ -71,6 +90,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm app ale
 
 ## Agent Setup
 
+### Quickest: `snapper init` CLI
+
+```bash
+python scripts/snapper-cli.py init
+```
+
+Auto-detects your agent, registers it, applies a security profile, and writes hook config. Supports `--agent cursor`, `--agent windsurf`, `--agent cline`, etc. to skip detection.
+
 ### OpenClaw
 
 Two integration methods (can be used together):
@@ -97,14 +124,46 @@ Two integration methods (can be used together):
    ```
 3. Restart OpenClaw
 
-**Option B: Shell hook** — Intercepts shell commands via SHELL wrapper:
+**Option B: Shell hook** — Intercepts shell commands via SHELL wrapper. See the full [OpenClaw Integration Guide](docs/OPENCLAW_INTEGRATION.md).
 
-1. Register OpenClaw as an agent in Snapper
-2. Create the shell wrapper hook
-3. Configure OpenClaw's `SHELL` environment variable
-4. Restart OpenClaw
+### Claude Code
 
-See the full [OpenClaw Integration Guide](docs/OPENCLAW_INTEGRATION.md) for step-by-step instructions.
+Hook via `~/.claude/settings.json`:
+
+1. Register: `python scripts/snapper-cli.py init --agent claude-code`
+2. Or manually install `scripts/claude-code-hook.sh` to `~/.claude/hooks/pre_tool_use.sh`
+3. Add to `~/.claude/settings.json`:
+   ```json
+   {
+     "hooks": {
+       "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/pre_tool_use.sh" }] }]
+     }
+   }
+   ```
+
+### Cursor
+
+Hook via `~/.cursor/hooks/hooks.json`:
+
+1. Register: `python scripts/snapper-cli.py init --agent cursor`
+2. Or manually install `scripts/cursor-hook.sh` and add to `~/.cursor/hooks/hooks.json`:
+   ```json
+   { "preToolUse": [{ "command": "~/.cursor/hooks/snapper_pre_tool_use.sh" }] }
+   ```
+
+### Windsurf
+
+Hook via `~/.codeium/windsurf/hooks/hooks.json`:
+
+1. Register: `python scripts/snapper-cli.py init --agent windsurf`
+2. Or manually install `scripts/windsurf-hook.sh` and add hooks for `pre_run_command`, `pre_write_code`, and `pre_mcp_tool_use`
+
+### Cline
+
+Auto-discovered hook in `~/.cline/hooks/`:
+
+1. Register: `python scripts/snapper-cli.py init --agent cline`
+2. Or manually copy `scripts/cline-hook.sh` to `~/.cline/hooks/pre_tool_use` (no extension, must be executable)
 
 ## Features
 
@@ -325,9 +384,10 @@ Each agent has adaptive trust metrics:
 | **Agents** | Connect and manage AI assistants |
 | **Rules** | Create and manage security rules |
 | **Security** | Vulnerability tracking, threat feed |
-| **Audit** | Review all agent actions |
+| **Audit** | Activity stats, timeline chart, filterable log viewer |
 | **Integrations** | Configure Slack, GitHub, and more |
 | **Settings** | Configure alerts and notifications |
+| **Help** | In-app setup guide, FAQ, troubleshooting |
 
 ## API
 
@@ -341,6 +401,9 @@ POST   /api/v1/vault/entries      # Store PII in encrypted vault
 GET    /api/v1/vault/entries      # List vault entries (masked)
 GET    /api/v1/approvals/{id}/status  # Check approval status (polled by plugin)
 GET    /api/v1/audit/logs         # Get audit logs
+GET    /api/v1/audit/stats        # Aggregated stats + hourly breakdown
+POST   /api/v1/setup/quick-register   # Quick-register any supported agent
+POST   /api/v1/setup/install-config   # Auto-install hook config
 GET    /health                    # Health check
 GET    /health/ready              # Readiness check (DB + Redis)
 ```
@@ -396,7 +459,7 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
 ```
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │   AI Assistant   │────▶│  Hook / Plugin   │────▶│     Snapper      │
-│    (OpenClaw)    │     │                  │     │   Rule Engine    │
+│  (any supported) │     │                  │     │   Rule Engine    │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
                                                           │
                                   ┌───────────────────────┼───────────────┐
@@ -453,7 +516,7 @@ E2E tests cover:
 - Agent API key management (show, regenerate)
 - Agent status management (suspend, activate)
 - Rule creation and template application
-- OpenClaw setup wizard modal
+- Setup wizard with 6 agent type cards
 - Security and audit pages
 - Responsive design
 
@@ -461,9 +524,9 @@ E2E tests cover:
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 234 | API, rule engine, middleware, Telegram, PII vault/gate |
+| Unit tests | 288 | API, rule engine, middleware, Telegram, PII vault/gate |
 | Integration tests | 41 | Live app testing (skipped in CI) |
-| E2E tests | 65 | Browser-based UI testing (Playwright) |
+| E2E tests | 81 | Browser-based UI testing (Playwright) |
 
 ## Common Commands
 
