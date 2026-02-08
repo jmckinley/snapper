@@ -372,18 +372,29 @@ Each agent has adaptive trust metrics:
 
 ### Security Summary
 
+**Inbound protection** (threats targeting the agent):
+
 | Layer | Protection |
 |-------|------------|
-| **Version Control** | Block vulnerable agent versions |
-| **Environment** | Require sandboxed execution |
+| **Origin Validation** | Block unauthorized WebSocket connections (CVE-2026-25253) |
+| **Host Header Validation** | Prevent host injection and routing attacks |
+| **Version Enforcement** | Block vulnerable agent versions from connecting |
+| **Sandbox Enforcement** | Require containerized/VM execution, block bare metal |
+| **Skill Denylist** | Block 44+ malicious skills, 11 patterns, known bad publishers |
+| **Localhost Restriction** | Restrict agent access to local connections only |
+| **API Key Authentication** | Reject unauthenticated agent requests |
+| **Rate Limiting** | Prevent brute force, DoS, and token enumeration |
+
+**Outbound protection** (actions the agent takes):
+
+| Layer | Protection |
+|-------|------------|
 | **Commands** | Block RCE, reverse shells, destructive operations |
-| **Skills** | Block 44+ malicious skills, 11 patterns, known bad publishers |
-| **Files** | Protect credentials, require approval for sensitive files |
-| **Network** | Block exfiltration domains, backdoor ports, with IP whitelist |
-| **Rate Limiting** | Prevent abuse and brute force |
-| **Approval Workflow** | Human-in-the-loop for sensitive operations |
-| **PII Vault** | Fernet-encrypted storage with per-field approval for browser form fills |
 | **PII Detection** | 30+ regex patterns catch raw PII from any source (DLP) |
+| **PII Vault** | Fernet-encrypted storage with per-field approval for browser form fills |
+| **Files** | Protect credentials (.env, .pem, SSH keys), require approval for sensitive files |
+| **Network** | Block exfiltration domains, backdoor ports, with IP whitelist |
+| **Approval Workflow** | Human-in-the-loop for sensitive operations |
 | **Trust Scoring** | Adaptive trust based on agent behavior |
 | **Audit Trail** | Immutable logging of all security events |
 

@@ -5,6 +5,8 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 ## Table of Contents
 
 - [Design Principles](#design-principles)
+- [Inbound Protection](#inbound-protection)
+- [Outbound Protection](#outbound-protection)
 - [PII Vault Encryption](#pii-vault-encryption)
 - [PII Detection & Data Loss Prevention](#pii-detection--data-loss-prevention)
 - [Approval Workflow](#approval-workflow)
@@ -27,6 +29,112 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 4. **Least privilege** — Agents start untrusted and must earn elevated access.
 5. **Immutable audit** — All security-relevant events are logged to the database with server-generated timestamps.
 6. **Secrets never at rest in plaintext** — PII is Fernet-encrypted, API keys are hashed for comparison, resolved data has a 30-second TTL and is deleted after one retrieval.
+
+---
+
+## Inbound Protection
+
+Inbound protection prevents external threats from reaching or compromising the agent.
+
+### Origin Validation (CVE-2026-25253)
+
+Unauthorized WebSocket and HTTP origins are blocked at the middleware layer before reaching any application logic. The `Origin` header is validated against the `ALLOWED_ORIGINS` allowlist on every request. This prevents cross-origin WebSocket hijacking attacks where a malicious website sends commands to a locally-running agent.
+
+- **Enforcement:** Middleware (all requests) + `ORIGIN_VALIDATION` rule type
+- **Default:** Enabled (`VALIDATE_WEBSOCKET_ORIGIN=true`)
+- **Response:** 403 Forbidden with audit log entry
+
+### Host Header Validation
+
+The `Host` header is validated against the `ALLOWED_HOSTS` allowlist to prevent host header injection attacks that can bypass authentication or redirect requests to attacker-controlled servers.
+
+- **Enforcement:** Middleware (all requests)
+- **Response:** 403 Forbidden
+
+### Version Enforcement
+
+Agents must report their version when connecting. Snapper checks against minimum version requirements and a blocked versions list to prevent agents with known vulnerabilities from operating.
+
+- **Rule type:** `VERSION_ENFORCEMENT`
+- **Mechanism:** Compares reported `agent_version` against per-type minimum versions using Python's `packaging.version` library
+- **Conservative default:** Unknown versions are denied unless `allow_unknown_version=true`
+- **Use case:** Block agents affected by CVE-2026-25157 (command injection in OpenClaw < 2026.1.29)
+
+### Sandbox Enforcement
+
+Agents must run in an approved execution environment. Bare metal and unknown environments are denied by default.
+
+- **Rule type:** `SANDBOX_REQUIRED`
+- **Allowed environments:** `container`, `vm`, `sandbox`
+- **Denied environments:** `bare_metal`, `unknown`
+- **Use case:** Ensure agents can't directly access host filesystems or network interfaces
+
+### Malicious Skill Blocking
+
+When an agent requests to install or use a skill, Snapper checks it against multiple layers of threat intelligence:
+
+1. **Exact match** against 44+ known malicious skill IDs
+2. **Regex patterns** (11 patterns) catching typosquats and naming conventions
+3. **Publisher blocking** — all skills from known bad publishers (e.g., `hightower6eu` with 314+ malicious skills)
+4. **Database lookup** — automatically blocks skills flagged in the `MaliciousSkill` threat intelligence table
+
+- **Rule type:** `SKILL_DENYLIST`
+- **Campaign coverage:** ClawHavoc (341+ skills), typosquats, auto-updaters, crypto drainers
+- **Action:** DENY or REQUIRE_APPROVAL
+
+### Localhost Restriction
+
+Restricts which network locations can send requests to Snapper, ensuring only local agents can connect.
+
+- **Enforcement:** Middleware + `LOCALHOST_RESTRICTION` rule type
+- **Allowed IPs:** `127.0.0.1`, `::1`, `localhost` (configurable)
+- **Use case:** Prevent remote attackers from sending evaluate requests to a locally-running Snapper instance
+
+### API Key Authentication
+
+Each agent receives a unique API key (`snp_xxx`) on registration. When `REQUIRE_API_KEY=true`, requests without a valid key are denied before rule evaluation begins.
+
+- **Key format:** `snp_{base64url(32 bytes)}` — 47 characters
+- **Tracking:** `api_key_last_used` timestamp updated on each successful authentication
+- **Enforcement:** Controlled by `REQUIRE_API_KEY` setting
+
+### Rate Limiting & Brute Force
+
+Sliding window rate limiting on all endpoints prevents abuse, with adaptive scoring that throttles misbehaving agents down to 10% of their base rate. The vault has dedicated brute force protection (5 failed lookups = 15-minute lockout).
+
+See [Rate Limiting & Brute Force Protection](#rate-limiting--brute-force-protection) for full details.
+
+---
+
+## Outbound Protection
+
+Outbound protection controls what agents can do — blocking dangerous commands, preventing data exfiltration, and requiring human approval for sensitive actions.
+
+### Command Control
+
+Command allowlists and denylists use regex patterns to control which shell commands agents can execute. Deny rules short-circuit evaluation — a single deny match blocks the action regardless of allow rules.
+
+Blocked patterns include remote code execution (pipe to shell, base64 bypass, command substitution), reverse shells (netcat, bash TCP, Python/Perl/Ruby/PHP), destructive operations (rm -rf, dd, mkfs, fork bombs), and persistence/escalation (crontab injection, bashrc modification, SUID/SGID).
+
+### PII Detection & Data Loss Prevention
+
+Every tool call is scanned for 30+ PII patterns covering government IDs, financial data, contact info, addresses, API keys, and secrets across US/UK/Canada/Australia formats. Raw PII from any source — files, APIs, web scrapes — is intercepted before the agent can exfiltrate or misuse it.
+
+See [PII Detection & Data Loss Prevention](#pii-detection--data-loss-prevention) for full details.
+
+### Credential Protection
+
+File access rules block agents from reading sensitive files by default: `.env`, `.pem`, `.key`, `.p12`, `.ssh/*`, `.aws/credentials`, `credentials.json`, `secrets.yaml`, and more.
+
+### Network Egress Control
+
+Outbound network access is controlled by host/port allowlists and denylists. Known exfiltration domains (pastebin, transfer.sh, file.io) and backdoor ports (4444, 5555, 6666-6697) are blocked. IP whitelisting allows users to approve specific destinations after review.
+
+### Human-in-the-Loop Approval
+
+Sensitive operations can require human approval via Telegram before proceeding. The approval workflow has a 5-minute timeout, one-time retrieval of resolved data, and a complete audit trail.
+
+See [Approval Workflow](#approval-workflow) for full details.
 
 ---
 
