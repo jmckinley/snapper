@@ -631,41 +631,101 @@ def cmd_status(args):
         print(f"  {RED}Error checking status: {e}{RESET}")
 
 
+def _set_env_var(env_file: Path, key: str, value: str):
+    """Set a variable in .env file. Updates existing or appends new."""
+    content = env_file.read_text()
+    lines = content.splitlines()
+    found = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+            lines[i] = f"{key}={value}"
+            found = True
+            break
+    if not found:
+        lines.append(f"{key}={value}")
+    env_file.write_text("\n".join(lines) + "\n")
+
+
+def _detect_server_ip():
+    """Try to detect the server's public IP."""
+    import urllib.request
+    try:
+        req = urllib.request.Request("https://ifconfig.me", headers={"User-Agent": "curl/8.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.read().decode().strip()
+    except Exception:
+        pass
+    # Fallback: hostname -I
+    import subprocess as sp
+    try:
+        result = sp.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            return result.stdout.strip().split()[0]
+    except Exception:
+        pass
+    return None
+
+
+# Docs base URL for help links
+DOCS_URL = "https://github.com/jmckinley/snapper/blob/main/docs"
+
+
 def cmd_security_check(args):
     """Assess the security posture of the Snapper deployment."""
     print_banner()
-    print(f"{BOLD}Security Posture Assessment{RESET}\n")
+    fix_mode = getattr(args, "fix", False)
+
+    if fix_mode:
+        print(f"{BOLD}Security Posture Assessment + Auto-Fix{RESET}\n")
+    else:
+        print(f"{BOLD}Security Posture Assessment{RESET}\n")
 
     pass_count = 0
     warn_count = 0
     fail_count = 0
+    fixed_count = 0
+    needs_restart = False
 
     def sec_pass(msg):
         nonlocal pass_count
         print(f"  {GREEN}PASS{RESET}  {msg}")
         pass_count += 1
 
-    def sec_warn(msg, action=None):
+    def sec_warn(msg, action=None, help_url=None, severity=None):
         nonlocal warn_count
-        print(f"  {YELLOW}WARN{RESET}  {msg}")
+        sev = f" [{severity}]" if severity else ""
+        print(f"  {YELLOW}WARN{RESET}  {msg}{sev}")
         if action:
             print(f"         {action}")
+        if help_url:
+            print(f"         See: {BLUE}{help_url}{RESET}")
         warn_count += 1
 
-    def sec_fail(msg, fix=None):
+    def sec_fail(msg, fix=None, help_url=None, severity=None):
         nonlocal fail_count
-        print(f"  {RED}FAIL{RESET}  {msg}")
+        sev = f" [{severity}]" if severity else ""
+        print(f"  {RED}FAIL{RESET}  {msg}{sev}")
         if fix:
             print(f"         Fix: {fix}")
+        if help_url:
+            print(f"         See: {BLUE}{help_url}{RESET}")
         fail_count += 1
+
+    def sec_fixed(msg):
+        nonlocal fixed_count, needs_restart
+        print(f"  {GREEN}FIXED{RESET} {msg}")
+        fixed_count += 1
+        needs_restart = True
 
     # 1. Snapper running
     if check_snapper_running():
         sec_pass(f"Snapper is running at {SNAPPER_URL}")
     else:
         sec_fail(f"Snapper is not running at {SNAPPER_URL}",
-                 "Start with: docker compose up -d")
-        # Can't do API checks if not running
+                 fix="Start with: docker compose up -d",
+                 help_url=f"{DOCS_URL}/GETTING_STARTED.md",
+                 severity="mandatory")
         print(f"\n  {RED}Cannot continue checks without Snapper running.{RESET}")
         return
 
@@ -674,7 +734,9 @@ def cmd_security_check(args):
         sec_pass("SNAPPER_URL uses HTTPS")
     else:
         sec_warn("SNAPPER_URL uses HTTP — traffic is unencrypted",
-                 "Set SNAPPER_URL=https://... for production")
+                 action="Configure Caddy reverse proxy with TLS, then set SNAPPER_URL=https://...",
+                 help_url=f"{DOCS_URL}/SECURITY.md#reverse-proxy-caddy-required-for-production",
+                 severity="mandatory for production")
 
     # 3. Check health/ready for DB + Redis
     import urllib.request
@@ -689,7 +751,7 @@ def cmd_security_check(args):
     except Exception:
         sec_warn("Could not reach /health/ready endpoint")
 
-    # 4. Check Docker (are we in a container environment?)
+    # 4. Check Docker
     docker_check = shutil.which("docker")
     if docker_check:
         import subprocess as sp
@@ -699,12 +761,16 @@ def cmd_security_check(args):
             if result.returncode == 0 and "app" in result.stdout:
                 sec_pass("Running in Docker containers")
             else:
-                sec_warn("Docker detected but Snapper containers not found")
+                sec_warn("Docker detected but Snapper containers not found",
+                         help_url=f"{DOCS_URL}/SECURITY.md#docker-is-mandatory",
+                         severity="mandatory")
         except Exception:
             sec_warn("Could not verify Docker container status")
     else:
-        sec_warn("Docker not found on this host",
-                 "Snapper must run in Docker for security isolation")
+        sec_fail("Docker not found on this host",
+                 fix="Snapper must run in Docker — DB and Redis have no auth without it",
+                 help_url=f"{DOCS_URL}/SECURITY.md#docker-is-mandatory",
+                 severity="mandatory")
 
     # 5. Check .env file for security settings
     env_file = Path.cwd() / ".env"
@@ -722,21 +788,45 @@ def cmd_security_check(args):
 
         # SECRET_KEY
         sk = env_vars.get("SECRET_KEY", "")
-        if not sk:
-            sec_fail("SECRET_KEY is empty")
-        elif sk == "development-secret-key-change-in-production":
-            sec_fail("SECRET_KEY is the development default",
-                     "Generate with: openssl rand -hex 32")
+        if not sk or sk == "development-secret-key-change-in-production":
+            if fix_mode:
+                import subprocess as sp
+                try:
+                    result = sp.run(["openssl", "rand", "-hex", "32"],
+                                    capture_output=True, text=True, timeout=5)
+                    new_key = result.stdout.strip()
+                    if len(new_key) >= 32:
+                        _set_env_var(env_file, "SECRET_KEY", new_key)
+                        sec_fixed(f"SECRET_KEY generated ({len(new_key)} chars)")
+                        print(f"         {RED}WARNING: If vault entries exist, they will be unrecoverable!{RESET}")
+                    else:
+                        sec_fail("Could not generate SECRET_KEY")
+                except Exception:
+                    sec_fail("Could not generate SECRET_KEY (openssl not found)")
+            else:
+                sec_fail("SECRET_KEY is empty or default",
+                         fix="Run with --fix to auto-generate, or: openssl rand -hex 32",
+                         help_url=f"{DOCS_URL}/SECURITY.md#secret_key-is-immutable-after-vault-use",
+                         severity="mandatory")
         elif len(sk) < 32:
-            sec_fail(f"SECRET_KEY too short ({len(sk)} chars, need 32+)")
+            sec_fail(f"SECRET_KEY too short ({len(sk)} chars, need 32+)",
+                     help_url=f"{DOCS_URL}/SECURITY.md#secret_key-is-immutable-after-vault-use",
+                     severity="mandatory")
         else:
             sec_pass(f"SECRET_KEY is set ({len(sk)} chars)")
+
+        # --- Auto-fixable .env settings ---
 
         # LEARNING_MODE
         lm = env_vars.get("LEARNING_MODE", "true").lower()
         if lm == "true":
-            sec_warn("Learning mode is ON — violations logged but not blocked",
-                     "Set LEARNING_MODE=false when ready to enforce")
+            if fix_mode:
+                _set_env_var(env_file, "LEARNING_MODE", "false")
+                sec_fixed("LEARNING_MODE=false (rules now enforced)")
+            else:
+                sec_warn("Learning mode is ON — violations logged but not blocked",
+                         action="Run with --fix to set LEARNING_MODE=false",
+                         severity="recommended")
         else:
             sec_pass("Learning mode is OFF — rules are enforced")
 
@@ -745,24 +835,106 @@ def cmd_security_check(args):
         if dbd == "true":
             sec_pass("Deny-by-default is ON")
         else:
-            sec_warn("Deny-by-default is OFF — unknown requests are allowed",
-                     "Set DENY_BY_DEFAULT=true for production")
+            if fix_mode:
+                _set_env_var(env_file, "DENY_BY_DEFAULT", "true")
+                sec_fixed("DENY_BY_DEFAULT=true (unknown requests now denied)")
+            else:
+                sec_warn("Deny-by-default is OFF — unknown requests are allowed",
+                         action="Run with --fix to set DENY_BY_DEFAULT=true",
+                         severity="recommended")
 
         # REQUIRE_API_KEY
         rak = env_vars.get("REQUIRE_API_KEY", "false").lower()
         if rak == "true":
             sec_pass("API key authentication required")
         else:
-            sec_warn("API key authentication not required",
-                     "Set REQUIRE_API_KEY=true for production")
+            if fix_mode:
+                _set_env_var(env_file, "REQUIRE_API_KEY", "true")
+                sec_fixed("REQUIRE_API_KEY=true (agents must authenticate)")
+            else:
+                sec_warn("API key authentication not required",
+                         action="Run with --fix to set REQUIRE_API_KEY=true",
+                         severity="recommended")
 
         # REQUIRE_VAULT_AUTH
         rva = env_vars.get("REQUIRE_VAULT_AUTH", "false").lower()
         if rva == "true":
             sec_pass("Vault write authentication required")
         else:
-            sec_warn("Vault writes don't require authentication",
-                     "Set REQUIRE_VAULT_AUTH=true for production")
+            if fix_mode:
+                _set_env_var(env_file, "REQUIRE_VAULT_AUTH", "true")
+                sec_fixed("REQUIRE_VAULT_AUTH=true (vault writes require API key)")
+            else:
+                sec_warn("Vault writes don't require authentication",
+                         action="Run with --fix to set REQUIRE_VAULT_AUTH=true",
+                         severity="recommended")
+
+        # DEBUG
+        debug = env_vars.get("DEBUG", "false").lower()
+        if debug == "true":
+            if fix_mode:
+                _set_env_var(env_file, "DEBUG", "false")
+                sec_fixed("DEBUG=false")
+            else:
+                sec_fail("DEBUG mode is ON in production!",
+                         fix="Run with --fix to set DEBUG=false",
+                         severity="mandatory")
+        else:
+            sec_pass("DEBUG mode is OFF")
+
+        # ALLOWED_HOSTS
+        ah = env_vars.get("ALLOWED_HOSTS", "")
+        if ah and ah not in ("localhost", "localhost,127.0.0.1"):
+            sec_pass(f"ALLOWED_HOSTS configured ({ah})")
+        else:
+            if fix_mode:
+                ip = _detect_server_ip()
+                if ip:
+                    new_hosts = f"{ip},localhost,127.0.0.1,app"
+                    _set_env_var(env_file, "ALLOWED_HOSTS", new_hosts)
+                    sec_fixed(f"ALLOWED_HOSTS={new_hosts}")
+                else:
+                    sec_warn("ALLOWED_HOSTS needs your server IP (could not auto-detect)",
+                             action="Manually set: ALLOWED_HOSTS=<your-ip>,localhost,127.0.0.1,app",
+                             severity="mandatory for remote access")
+            else:
+                sec_warn("ALLOWED_HOSTS may need your server IP",
+                         action="Run with --fix to auto-detect, or set manually",
+                         help_url=f"{DOCS_URL}/SECURITY.md#request-security-middleware",
+                         severity="mandatory for remote access")
+
+        # ALLOWED_ORIGINS
+        ao = env_vars.get("ALLOWED_ORIGINS", "")
+        if ao and ao != "http://localhost:8000":
+            sec_pass(f"ALLOWED_ORIGINS configured")
+        else:
+            if fix_mode:
+                ip = _detect_server_ip()
+                if ip:
+                    # Try to detect the HTTPS port from SNAPPER_URL or default to 8443
+                    port = "8443"
+                    if SNAPPER_URL.startswith("https://"):
+                        try:
+                            from urllib.parse import urlparse
+                            parsed = urlparse(SNAPPER_URL)
+                            if parsed.port:
+                                port = str(parsed.port)
+                        except Exception:
+                            pass
+                    new_origins = f"https://{ip}:{port}"
+                    _set_env_var(env_file, "ALLOWED_ORIGINS", new_origins)
+                    sec_fixed(f"ALLOWED_ORIGINS={new_origins}")
+                else:
+                    sec_warn("ALLOWED_ORIGINS needs your server URL (could not auto-detect)",
+                             action="Manually set: ALLOWED_ORIGINS=https://<your-ip>:8443",
+                             severity="mandatory for remote access")
+            else:
+                sec_warn("ALLOWED_ORIGINS may need your server URL",
+                         action="Run with --fix to auto-detect, or set manually",
+                         help_url=f"{DOCS_URL}/SECURITY.md#request-security-middleware",
+                         severity="mandatory for remote access")
+
+        # --- Not auto-fixable ---
 
         # Telegram
         tg = env_vars.get("TELEGRAM_BOT_TOKEN", "")
@@ -770,29 +942,10 @@ def cmd_security_check(args):
             sec_pass("Telegram bot configured for approval alerts")
         else:
             sec_warn("Telegram not configured — no approval notifications",
-                     "Add TELEGRAM_BOT_TOKEN to .env")
+                     action="Create a bot via @BotFather, add TELEGRAM_BOT_TOKEN to .env",
+                     help_url=f"{DOCS_URL}/TELEGRAM_SETUP.md",
+                     severity="highly recommended")
 
-        # ALLOWED_HOSTS
-        ah = env_vars.get("ALLOWED_HOSTS", "")
-        if ah and ah not in ("localhost", "localhost,127.0.0.1"):
-            sec_pass(f"ALLOWED_HOSTS configured ({ah})")
-        else:
-            sec_warn("ALLOWED_HOSTS may need your server IP")
-
-        # ALLOWED_ORIGINS
-        ao = env_vars.get("ALLOWED_ORIGINS", "")
-        if ao and ao != "http://localhost:8000":
-            sec_pass(f"ALLOWED_ORIGINS configured")
-        else:
-            sec_warn("ALLOWED_ORIGINS may need your server URL")
-
-        # DEBUG
-        debug = env_vars.get("DEBUG", "false").lower()
-        if debug == "true":
-            sec_fail("DEBUG mode is ON in production!",
-                     "Set DEBUG=false")
-        else:
-            sec_pass("DEBUG mode is OFF")
     else:
         sec_warn(f"Could not find .env file to check settings")
 
@@ -809,7 +962,8 @@ def cmd_security_check(args):
                 sec_pass(f"{total} security rules configured")
             else:
                 sec_warn("No security rules configured",
-                         "Run: python scripts/snapper-cli.py init")
+                         action="Run: python scripts/snapper-cli.py init",
+                         severity="mandatory")
     except Exception:
         sec_warn("Could not check rules")
 
@@ -826,20 +980,31 @@ def cmd_security_check(args):
                 sec_pass(f"{total} agent(s) registered")
             else:
                 sec_warn("No agents registered",
-                         "Run: python scripts/snapper-cli.py init")
+                         action="Run: python scripts/snapper-cli.py init",
+                         severity="mandatory")
     except Exception:
         sec_warn("Could not check agents")
 
     # Summary
     print(f"\n  ─────────────────────────────────────")
-    print(f"  {GREEN}{pass_count} passed{RESET}  "
-          f"{YELLOW}{warn_count} warnings{RESET}  "
-          f"{RED}{fail_count} failed{RESET}")
+    parts = [f"{GREEN}{pass_count} passed{RESET}"]
+    if fixed_count > 0:
+        parts.append(f"{GREEN}{fixed_count} fixed{RESET}")
+    parts.append(f"{YELLOW}{warn_count} warnings{RESET}")
+    parts.append(f"{RED}{fail_count} failed{RESET}")
+    print(f"  {'  '.join(parts)}")
+
+    if needs_restart:
+        print(f"\n  {YELLOW}Restart containers to apply changes:{RESET}")
+        print(f"    docker compose up -d --force-recreate")
 
     if fail_count > 0:
         print(f"\n  {RED}Fix the failures above before exposing Snapper to the network.{RESET}")
     elif warn_count > 0:
-        print(f"\n  {YELLOW}Review warnings. See docs/SECURITY.md for details.{RESET}")
+        if not fix_mode:
+            print(f"\n  {YELLOW}Run with --fix to auto-fix settings:{RESET}")
+            print(f"    python scripts/snapper-cli.py security-check --fix")
+        print(f"\n  {YELLOW}See docs/SECURITY.md for manual fixes.{RESET}")
     else:
         print(f"\n  {GREEN}All security checks passed!{RESET}")
     print()
@@ -975,7 +1140,8 @@ Examples:
     )
 
     # security-check command
-    subparsers.add_parser("security-check", help="Assess security posture")
+    sec_check_parser = subparsers.add_parser("security-check", help="Assess security posture")
+    sec_check_parser.add_argument("--fix", action="store_true", help="Auto-fix settings that can be corrected automatically")
 
     # status command
     subparsers.add_parser("status", help="Check status")
