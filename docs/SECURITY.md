@@ -511,19 +511,19 @@ Internet
     │
     ▼
 ┌──────────┐
-│   UFW    │  Firewall: only 22 (SSH), 443, 8443 open
-│ Firewall │
+│   UFW    │  Firewall: only 22 (SSH) + HTTPS port open
+│ Firewall │  (+ port 80 for Let's Encrypt ACME if using --domain)
 └────┬─────┘
      │
      ▼
 ┌──────────┐
-│  Caddy   │  Reverse proxy: TLS termination, rate limiting
-│  :8443   │
+│  Caddy   │  --domain: Let's Encrypt on :443 (automatic cert)
+│          │  IP-only:  Self-signed cert on :8443
 └────┬─────┘
      │ http://127.0.0.1:8000
      ▼
 ┌──────────────────────────────────────────────┐
-│              Docker Network                   │
+│  Docker Network (restart: unless-stopped)     │
 │  ┌─────┐  ┌────────┐  ┌───────┐  ┌────────┐ │
 │  │ App │  │Postgres│  │ Redis │  │ Celery │ │
 │  │:8000│  │ :5432  │  │ :6379 │  │        │ │
@@ -534,9 +534,10 @@ Internet
 ### Key Properties
 
 - **App binds to 127.0.0.1:8000** — Not accessible from the internet directly
-- **Caddy handles TLS** — Self-signed certificates or Let's Encrypt
-- **UFW firewall** — Only necessary ports open (22, 443, 8443)
+- **Caddy handles TLS** — Automatic Let's Encrypt with `--domain`, or self-signed certificates for IP-only deployments
+- **UFW firewall** — Only necessary ports open (22 + HTTPS port; 80/443 for ACME)
 - **Docker network isolation** — PostgreSQL and Redis are only accessible from within the Docker network; no ports exposed to the host
+- **Restart policy** — All containers use `restart: unless-stopped` to survive VPS reboots
 - **No secrets in Docker images** — All secrets via `.env` file and environment variables
 
 ### Database Security
@@ -648,14 +649,18 @@ VALIDATE_WEBSOCKET_ORIGIN=true
 
 ### Security Checklist
 
+Run `python3 scripts/snapper-cli.py security-check` to audit automatically, or `security-check --fix` to auto-remediate .env settings.
+
 - [ ] `SECRET_KEY` is at least 32 characters and backed up securely
 - [ ] `LEARNING_MODE=false` and `DENY_BY_DEFAULT=true` for enforcement
 - [ ] `REQUIRE_API_KEY=true` so agents must authenticate
-- [ ] `ALLOWED_HOSTS` and `ALLOWED_ORIGINS` are set to your actual server
+- [ ] `REQUIRE_VAULT_AUTH=true` so vault writes require API key
+- [ ] `ALLOWED_HOSTS` and `ALLOWED_ORIGINS` are set to your actual server/domain
 - [ ] Telegram bot token and chat ID are configured for approval alerts
 - [ ] UFW firewall is enabled with only necessary ports open
-- [ ] Caddy is configured with TLS for HTTPS access
+- [ ] Caddy is configured with TLS (Let's Encrypt via `--domain`, or self-signed)
 - [ ] PostgreSQL and Redis are not exposed outside the Docker network
+- [ ] All containers have `restart: unless-stopped` (set automatically by compose)
 - [ ] PII gate rule is active with appropriate categories
 - [ ] Audit logs are being generated (check `/audit` dashboard)
 - [ ] Hook scripts use `https://` URLs (not `http://`)
@@ -689,7 +694,10 @@ If the app binds to all interfaces (`0.0.0.0`), attackers can bypass the reverse
 
 ### Reverse Proxy (Caddy) Required for Production
 
-Snapper must sit behind a TLS-terminating reverse proxy in production. The default is Caddy with self-signed certificates, but any reverse proxy with TLS works.
+Snapper must sit behind a TLS-terminating reverse proxy in production. `deploy.sh` configures Caddy automatically:
+
+- **With `--domain`:** Caddy obtains a free Let's Encrypt certificate automatically (recommended for production)
+- **Without `--domain`:** Caddy uses a self-signed certificate on port 8443 (suitable for internal/testing)
 
 Without a reverse proxy:
 - All traffic between agents and Snapper is unencrypted — tool commands, file paths, API keys, and approval decisions are visible to network observers

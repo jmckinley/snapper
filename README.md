@@ -67,24 +67,33 @@ For manual setup or production deployment, see [Getting Started](docs/GETTING_ST
 
 ### Production (Ubuntu VPS)
 
-One command on a fresh Ubuntu server with Docker installed:
+One command on a fresh Ubuntu server:
 
 ```bash
 git clone https://github.com/jmckinley/snapper.git /opt/snapper
 cd /opt/snapper
-./deploy.sh
+./deploy.sh                              # IP-based, self-signed TLS on :8443
+./deploy.sh --domain snapper.example.com # with automatic Let's Encrypt
 ```
 
 The script handles everything:
-- Generates a production `.env` with a random `SECRET_KEY`
-- Builds containers with gunicorn (4 workers)
+- Installs Docker, Caddy, and UFW if missing (Ubuntu/Debian)
+- Generates a production `.env` with hardened defaults (`REQUIRE_API_KEY=true`, `DENY_BY_DEFAULT=true`, `LEARNING_MODE=false`)
+- Builds containers with gunicorn (4 workers) and `restart: unless-stopped`
 - Runs database migrations
-- Configures Caddy reverse proxy with self-signed TLS
-- Opens the firewall port
+- Configures Caddy reverse proxy (Let's Encrypt with `--domain`, or self-signed for IP-only)
+- Opens firewall ports and runs a security posture assessment
 
-Result: Snapper at `https://your-server-ip:8443`
+| Flag | Description |
+|------|-------------|
+| `--domain DOMAIN` | Domain name — enables automatic Let's Encrypt TLS |
+| `--port PORT` | HTTPS port (default: 443 with domain, 8443 without) |
+| `--repo URL` | Git repo URL (for forks) |
+| `--yes` | Non-interactive mode (skip confirmation prompts) |
 
-**Prerequisites:** `git`, `docker` with compose plugin, `caddy`, `ufw` (all standard on Ubuntu 24.04).
+Result: Snapper at `https://your-domain/` or `https://your-ip:8443`
+
+**Post-deploy:** Run `python3 scripts/snapper-cli.py security-check` anytime to audit your security posture, or `security-check --fix` to auto-remediate.
 
 **To update a running deployment:**
 ```bash

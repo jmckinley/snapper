@@ -42,24 +42,49 @@ API Docs: http://localhost:8000/api/docs
 
 ### Production (Ubuntu VPS)
 
+Works on any Ubuntu/Debian VPS (Hostinger, Hetzner, DigitalOcean, AWS, etc.).
+
 #### Option 1: Automated (Recommended)
 
 ```bash
 git clone https://github.com/jmckinley/snapper.git /opt/snapper
 cd /opt/snapper
-./deploy.sh
+./deploy.sh                              # IP-based, self-signed TLS on :8443
+./deploy.sh --domain snapper.example.com # with automatic Let's Encrypt
 ```
 
+**Available flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--domain DOMAIN` | Domain name — enables automatic Let's Encrypt TLS |
+| `--port PORT` | HTTPS port (default: 443 with domain, 8443 without) |
+| `--repo URL` | Git repo URL (for forks) |
+| `--host IP` | Override auto-detected server IP |
+| `--yes` | Non-interactive mode (skip all confirmation prompts) |
+
 The script handles:
-- Generating secure `SECRET_KEY`
-- Building production containers (Gunicorn, 4 workers)
-- Running database migrations
-- Configuring Caddy reverse proxy with TLS
-- Opening firewall ports
+- **Prerequisite installation** — Installs Docker, Caddy, and UFW if missing (offers to install, or auto-installs with `--yes`)
+- **Secure `.env` generation** — Random `SECRET_KEY`, production-hardened defaults
+- **Container build** — Gunicorn with 4 workers, `restart: unless-stopped` for reboot survival
+- **Database migrations** — Runs `alembic upgrade head` automatically
+- **TLS configuration** — Let's Encrypt (with `--domain`) or self-signed certificate (IP-only)
+- **Firewall** — Opens necessary ports in UFW (plus ports 80/443 for Let's Encrypt ACME)
+- **Security assessment** — Runs a 15-point security posture check at the end
 
-Result: Snapper at `https://your-server-ip:8443`
+**Production defaults** (set automatically in `.env`):
 
-If Docker, Caddy, or basic tools are missing, `deploy.sh` will detect them and offer to install from official repositories (Ubuntu/Debian only). You don't need to install these manually first.
+| Setting | Value | Why |
+|---------|-------|-----|
+| `LEARNING_MODE` | `false` | Rules are enforced, not just logged |
+| `DENY_BY_DEFAULT` | `true` | Unknown requests are blocked |
+| `REQUIRE_API_KEY` | `true` | Agents must authenticate with `snp_` keys |
+| `REQUIRE_VAULT_AUTH` | `true` | Vault writes require API key |
+| `DEBUG` | `false` | No debug output in production |
+
+Result: Snapper at `https://your-domain/` or `https://your-ip:8443`
+
+**Post-deploy:** Run `python3 scripts/snapper-cli.py security-check` anytime, or `security-check --fix` to auto-remediate .env settings.
 
 #### Option 2: Manual
 
@@ -70,13 +95,15 @@ cd /opt/snapper
 cp .env.example .env
 ```
 
-2. **Edit `.env`:**
+2. **Edit `.env` for production:**
 ```bash
-# Generate a secure secret key
 SECRET_KEY=$(openssl rand -hex 32)
-
-# Set your server's IP/hostname
-ALLOWED_HOSTS=localhost,127.0.0.1,your-server-ip
+LEARNING_MODE=false
+DENY_BY_DEFAULT=true
+REQUIRE_API_KEY=true
+REQUIRE_VAULT_AUTH=true
+DEBUG=false
+ALLOWED_HOSTS=localhost,127.0.0.1,your-server-ip,app
 ALLOWED_ORIGINS=https://your-server-ip:8443
 ```
 
@@ -90,11 +117,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app alembic upgrade head
 ```
 
-5. **Configure Caddy (optional but recommended):**
+5. **Configure Caddy:**
 ```bash
-# /etc/caddy/Caddyfile
-your-server-ip:8443 {
-    tls internal
+# /etc/caddy/Caddyfile — Option A: domain with Let's Encrypt
+snapper.example.com {
+    reverse_proxy localhost:8000
+}
+
+# /etc/caddy/Caddyfile — Option B: IP with self-signed cert
+:8443 {
+    tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
     reverse_proxy localhost:8000
 }
 ```
@@ -171,13 +203,14 @@ Open http://localhost:8000 and check the Rules page to see your active rules.
 
 ### Security Settings
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LEARNING_MODE` | `true` | Log violations but don't block |
-| `DENY_BY_DEFAULT` | `false` | Deny unknown requests (when learning mode off) |
-| `REQUIRE_API_KEY` | `false` | Require API key for agent requests |
-| `ALLOWED_HOSTS` | `localhost,127.0.0.1,app` | Accepted Host headers |
-| `ALLOWED_ORIGINS` | `http://localhost:8000` | CORS/WebSocket origins |
+| Variable | Dev Default | Prod Default | Description |
+|----------|-------------|--------------|-------------|
+| `LEARNING_MODE` | `true` | `false` | Log violations but don't block |
+| `DENY_BY_DEFAULT` | `false` | `true` | Deny unknown requests (when learning mode off) |
+| `REQUIRE_API_KEY` | `false` | `true` | Require API key for agent requests |
+| `REQUIRE_VAULT_AUTH` | `false` | `true` | Require API key for vault writes |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1,app` | `<ip>,localhost,127.0.0.1,app` | Accepted Host headers |
+| `ALLOWED_ORIGINS` | `http://localhost:8000` | `https://<ip>:8443` | CORS/WebSocket origins |
 
 ### Telegram Integration
 
@@ -192,6 +225,8 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
 
 ## Container Architecture
 
+All containers run with `restart: unless-stopped` — they survive VPS reboots automatically.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     Docker Network                       │
@@ -203,10 +238,9 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
                       │
                       ▼
               ┌──────────────┐
-              │    Caddy     │
-              │  (Reverse    │
+              │    Caddy     │    --domain: Let's Encrypt on :443
+              │  (Reverse    │    IP-only:  Self-signed on :8443
               │   Proxy)     │
-              │   :8443      │
               └──────────────┘
 ```
 
