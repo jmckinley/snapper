@@ -147,7 +147,6 @@ def register_agent(agent_id: str, name: str = None):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Origin": "http://localhost:8000",
         },
     )
 
@@ -169,7 +168,6 @@ def get_existing_agent(external_id: str):
 
     req = urllib.request.Request(
         f"{SNAPPER_URL}/api/v1/agents?external_id={external_id}",
-        headers={"Origin": "http://localhost:8000"},
     )
 
     try:
@@ -215,7 +213,6 @@ def apply_security_profile(agent_id: str, profile: str = "recommended"):
             data=payload,
             headers={
                 "Content-Type": "application/json",
-                "Origin": "http://localhost:8000",
             },
         )
 
@@ -242,7 +239,6 @@ def activate_agent(agent_uuid: str):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Origin": "http://localhost:8000",
         },
         method="PUT",
     )
@@ -330,7 +326,6 @@ def _quick_register(agent_type, profile, name=None):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Origin": SNAPPER_URL,
         },
     )
 
@@ -364,7 +359,6 @@ def _install_config(agent_type, agent_id, api_key):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Origin": SNAPPER_URL,
         },
     )
 
@@ -616,7 +610,6 @@ def cmd_status(args):
     try:
         req = urllib.request.Request(
             f"{SNAPPER_URL}/api/v1/agents?external_id={agent_id}",
-            headers={"Origin": "http://localhost:8000"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
@@ -953,7 +946,6 @@ def cmd_security_check(args):
     try:
         req = urllib.request.Request(
             f"{SNAPPER_URL}/api/v1/rules?page_size=1",
-            headers={"Origin": SNAPPER_URL},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
@@ -971,7 +963,6 @@ def cmd_security_check(args):
     try:
         req = urllib.request.Request(
             f"{SNAPPER_URL}/api/v1/agents?page_size=1",
-            headers={"Origin": SNAPPER_URL},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
@@ -1038,7 +1029,6 @@ def cmd_test(args):
             data=payload,
             headers={
                 "Content-Type": "application/json",
-                "Origin": "http://localhost:8000",
             },
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -1065,7 +1055,6 @@ def cmd_test(args):
             data=payload,
             headers={
                 "Content-Type": "application/json",
-                "Origin": "http://localhost:8000",
             },
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
