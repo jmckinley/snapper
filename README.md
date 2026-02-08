@@ -219,9 +219,13 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 
 See [Telegram Setup Guide](docs/TELEGRAM_SETUP.md) for configuration.
 
-### PII Vault
+### PII Vault & Data Loss Prevention
 
-Store sensitive data (credit cards, addresses, etc.) encrypted in Snapper's vault. Agents reference data via tokens like `{{SNAPPER_VAULT:a7f3b2c1}}` instead of raw values. When the agent submits a form with vault tokens, Snapper detects the PII, requires approval (or auto-resolves in auto mode), and replaces tokens with real values at the last moment.
+Snapper includes a built-in PII detection and encryption system that works two ways:
+
+**1. Vault storage** — Store sensitive data (credit cards, addresses, API keys) encrypted in Snapper's vault. Agents reference data via tokens like `{{SNAPPER_VAULT:a7f3b2c1}}` instead of raw values. When the agent uses a vault token, Snapper requires approval before decrypting.
+
+**2. Raw PII interception** — Even if an agent obtains PII from another source (reads a file, scrapes a website, receives it from an API), Snapper's PII gate scans every tool call for 30+ patterns including credit card numbers, SSNs, emails, phone numbers, addresses, and API keys across US/UK/Canada/Australia formats. Detected PII is blocked and an alert is sent before the data can be exfiltrated or misused.
 
 | Mode | Behavior |
 |------|----------|
@@ -229,6 +233,8 @@ Store sensitive data (credit cards, addresses, etc.) encrypted in Snapper's vaul
 | **Auto** | Vault tokens auto-resolve without approval (raw PII still blocked) |
 
 Toggle via Telegram: `/pii protected` or `/pii auto`
+
+See the [Security Guide](docs/SECURITY.md) for full details on encryption, key management, and all security mechanisms.
 
 ### Additional Endpoints
 
@@ -370,7 +376,8 @@ Each agent has adaptive trust metrics:
 | **Network** | Block exfiltration domains, backdoor ports, with IP whitelist |
 | **Rate Limiting** | Prevent abuse and brute force |
 | **Approval Workflow** | Human-in-the-loop for sensitive operations |
-| **PII Vault** | Encrypted storage with per-field approval for browser form fills |
+| **PII Vault** | Fernet-encrypted storage with per-field approval for browser form fills |
+| **PII Detection** | 30+ regex patterns catch raw PII from any source (DLP) |
 | **Trust Scoring** | Adaptive trust based on agent behavior |
 | **Audit Trail** | Immutable logging of all security events |
 
