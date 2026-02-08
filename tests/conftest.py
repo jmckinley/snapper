@@ -38,6 +38,8 @@ os.environ["VALIDATE_WEBSOCKET_ORIGIN"] = "false"
 os.environ["REQUIRE_LOCALHOST_ONLY"] = "false"
 os.environ["ALLOWED_ORIGINS"] = "http://testserver"
 os.environ["ALLOWED_HOSTS"] = "testserver,localhost"
+os.environ["REQUIRE_API_KEY"] = "false"
+os.environ["REQUIRE_VAULT_AUTH"] = "false"
 
 from app.config import get_settings
 
