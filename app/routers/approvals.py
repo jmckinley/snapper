@@ -210,11 +210,13 @@ async def check_approval_status(
             # Resolve tokens now
             try:
                 from app.database import async_session_factory
-                from app.services.pii_vault import resolve_tokens
+                from app.services.pii_vault import resolve_tokens, resolve_placeholders
 
                 destination_domain = None
+                placeholder_matches = {}
                 if approval.pii_context:
                     destination_domain = approval.pii_context.get("destination_domain")
+                    placeholder_matches = approval.pii_context.get("placeholder_matches", {})
 
                 async with async_session_factory() as db:
                     resolved_data = await resolve_tokens(
@@ -223,6 +225,20 @@ async def check_approval_status(
                         destination_domain=destination_domain,
                         requester_chat_id=approval.owner_chat_id,
                     )
+
+                    # Also resolve placeholder-mapped entries (re-key by placeholder value)
+                    if placeholder_matches:
+                        placeholder_resolved = await resolve_placeholders(
+                            db=db,
+                            placeholder_map=placeholder_matches,
+                            destination_domain=destination_domain,
+                            requester_chat_id=approval.owner_chat_id,
+                        )
+                        if placeholder_resolved:
+                            if resolved_data is None:
+                                resolved_data = {}
+                            resolved_data.update(placeholder_resolved)
+
                     await db.commit()
 
                 if resolved_data:

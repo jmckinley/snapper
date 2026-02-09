@@ -1337,13 +1337,20 @@ async def evaluate_request(
                 # Check if PII was detected (from PII gate evaluator)
                 pii_context = context.metadata.get("pii_detected")
                 vault_tokens = pii_context.get("vault_tokens", []) if pii_context else []
+                placeholder_matches = pii_context.get("placeholder_matches", {}) if pii_context else {}
+
+                # Include placeholder-mapped tokens in vault_tokens for resolution
+                all_vault_tokens = list(vault_tokens)
+                for token in placeholder_matches.values():
+                    if token not in all_vault_tokens:
+                        all_vault_tokens.append(token)
 
                 # Look up vault token owner for ownership enforcement
                 vault_owner_chat_id = None
-                if vault_tokens:
+                if all_vault_tokens:
                     try:
                         from app.services.pii_vault import get_entry_by_token
-                        first_entry = await get_entry_by_token(db, vault_tokens[0])
+                        first_entry = await get_entry_by_token(db, all_vault_tokens[0])
                         if first_entry:
                             vault_owner_chat_id = first_entry.owner_chat_id
                     except Exception as e:
@@ -1360,7 +1367,7 @@ async def evaluate_request(
                     file_path=request.file_path,
                     tool_name=request.tool_name,
                     pii_context=pii_context,
-                    vault_tokens=vault_tokens if vault_tokens else None,
+                    vault_tokens=all_vault_tokens if all_vault_tokens else None,
                     owner_chat_id=vault_owner_chat_id,
                 )
 
@@ -1409,35 +1416,57 @@ async def evaluate_request(
         response.approval_request_id = approval_request_id
         response.approval_timeout_seconds = 300  # 5 minutes
 
-    # Inline token resolution for auto mode (allow + pii_detected with vault tokens)
+    # Inline token resolution for auto mode (allow + pii_detected with vault tokens or placeholders)
     if result.decision.value == "allow":
         pii_detected = context.metadata.get("pii_detected")
-        if pii_detected and pii_detected.get("vault_tokens"):
+        if pii_detected and (pii_detected.get("vault_tokens") or pii_detected.get("placeholder_matches")):
             try:
-                from app.services.pii_vault import resolve_tokens, get_entry_by_token
+                from app.services.pii_vault import resolve_tokens, resolve_placeholders, get_entry_by_token
 
-                vault_tokens = pii_detected["vault_tokens"]
+                vault_tokens = pii_detected.get("vault_tokens", [])
+                placeholder_matches = pii_detected.get("placeholder_matches", {})
                 destination_domain = pii_detected.get("destination_domain")
 
                 # Look up owner for ownership enforcement
                 auto_owner_chat_id = None
                 try:
-                    first_entry = await get_entry_by_token(db, vault_tokens[0])
-                    if first_entry:
-                        auto_owner_chat_id = first_entry.owner_chat_id
+                    if vault_tokens:
+                        first_entry = await get_entry_by_token(db, vault_tokens[0])
+                        if first_entry:
+                            auto_owner_chat_id = first_entry.owner_chat_id
+                    elif placeholder_matches:
+                        first_token = next(iter(placeholder_matches.values()))
+                        first_entry = await get_entry_by_token(db, first_token)
+                        if first_entry:
+                            auto_owner_chat_id = first_entry.owner_chat_id
                 except Exception:
                     pass
 
-                resolved = await resolve_tokens(
-                    db=db,
-                    tokens=vault_tokens,
-                    destination_domain=destination_domain,
-                    requester_chat_id=auto_owner_chat_id,
-                )
+                resolved = {}
+
+                # Resolve vault tokens
+                if vault_tokens:
+                    token_resolved = await resolve_tokens(
+                        db=db,
+                        tokens=vault_tokens,
+                        destination_domain=destination_domain,
+                        requester_chat_id=auto_owner_chat_id,
+                    )
+                    resolved.update(token_resolved)
+
+                # Resolve placeholders
+                if placeholder_matches:
+                    placeholder_resolved = await resolve_placeholders(
+                        db=db,
+                        placeholder_map=placeholder_matches,
+                        destination_domain=destination_domain,
+                        requester_chat_id=auto_owner_chat_id,
+                    )
+                    resolved.update(placeholder_resolved)
 
                 if resolved:
                     response.resolved_data = resolved
-                    logger.info(f"Auto-resolved {len(resolved)} vault tokens for agent {agent.name}")
+                    logger.info(f"Auto-resolved {len(resolved)} vault entries for agent {agent.name}")
             except Exception as e:
                 logger.error(f"Failed to resolve vault tokens: {e}")
 

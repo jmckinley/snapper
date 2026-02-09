@@ -96,6 +96,13 @@ class PIIVaultEntry(Base):
         comment="Vault reference token: {{SNAPPER_VAULT:<hex>}}",
     )
 
+    # Placeholder value (safe dummy value agents can use instead of vault token)
+    placeholder_value: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Safe dummy value agents use instead of vault token (e.g., Stripe test card 4242424242424242)",
+    )
+
     # Encrypted value (Fernet AES)
     encrypted_value: Mapped[bytes] = mapped_column(
         LargeBinary,
@@ -170,6 +177,7 @@ class PIIVaultEntry(Base):
     __table_args__ = (
         Index("ix_vault_owner_category", "owner_chat_id", "category"),
         Index("ix_vault_active", "is_deleted", "owner_chat_id"),
+        Index("ix_vault_placeholder", "placeholder_value", "is_deleted", "owner_chat_id"),
     )
 
     def __repr__(self) -> str:

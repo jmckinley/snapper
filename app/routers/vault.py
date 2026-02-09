@@ -85,6 +85,11 @@ class VaultEntryCreate(BaseModel):
     agent_id: Optional[str] = Field(None, description="Restrict to specific agent (UUID or null)")
     allowed_domains: Optional[List[str]] = Field(None, description="Domain whitelist patterns")
     max_uses: Optional[int] = Field(None, ge=1, description="Max number of uses")
+    placeholder_value: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Safe dummy value agents can use instead of vault token (e.g., Stripe test card 4242424242424242)",
+    )
 
 
 class VaultEntryResponse(BaseModel):
@@ -95,6 +100,7 @@ class VaultEntryResponse(BaseModel):
     category: str
     token: str
     masked_value: str
+    placeholder_value: Optional[str] = None
     allowed_domains: List[str]
     max_uses: Optional[int]
     use_count: int
@@ -136,6 +142,7 @@ async def create_vault_entry(
         agent_id=request.agent_id,
         allowed_domains=request.allowed_domains,
         max_uses=request.max_uses,
+        placeholder_value=request.placeholder_value,
     )
 
     # Audit log
@@ -160,6 +167,7 @@ async def create_vault_entry(
         category=entry.category.value if hasattr(entry.category, "value") else entry.category,
         token=entry.token,
         masked_value=entry.masked_value,
+        placeholder_value=entry.placeholder_value,
         allowed_domains=entry.allowed_domains or [],
         max_uses=entry.max_uses,
         use_count=entry.use_count,
@@ -188,6 +196,7 @@ async def list_vault_entries(
             category=e.category.value if hasattr(e.category, "value") else e.category,
             token=e.token,
             masked_value=e.masked_value,
+            placeholder_value=e.placeholder_value,
             allowed_domains=e.allowed_domains or [],
             max_uses=e.max_uses,
             use_count=e.use_count,

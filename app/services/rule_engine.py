@@ -870,6 +870,38 @@ class RuleEngine:
             if scan_patterns:
                 raw_pii_findings = detect_pii(scan_text, scan_patterns)
 
+        # Check raw PII findings against placeholder values in vault
+        placeholder_matches = {}  # detected_value -> vault_token
+        non_placeholder_pii = list(raw_pii_findings)  # Default: all raw PII is non-placeholder
+        if raw_pii_findings:
+            try:
+                from app.services.pii_vault import get_entries_by_placeholder
+
+                # Determine owner_chat_id from agent
+                owner_chat_id = None
+                try:
+                    stmt = select(Agent).where(Agent.id == context.agent_id)
+                    result = await self.db.execute(stmt)
+                    agent_obj = result.scalar_one_or_none()
+                    if agent_obj:
+                        owner_chat_id = getattr(agent_obj, "owner_chat_id", None)
+                except Exception:
+                    pass
+
+                non_placeholder_pii = []
+                for finding in raw_pii_findings:
+                    entries = await get_entries_by_placeholder(
+                        self.db, finding["match"], owner_chat_id
+                    )
+                    if entries:
+                        # Matched a placeholder — map detected value to vault token
+                        placeholder_matches[finding["match"]] = entries[0].token
+                    else:
+                        non_placeholder_pii.append(finding)
+            except Exception as e:
+                logger.debug(f"Placeholder lookup failed (non-critical): {e}")
+                non_placeholder_pii = list(raw_pii_findings)
+
         # Nothing found
         if not vault_tokens and not raw_pii_findings:
             return False, rule.action
@@ -888,6 +920,7 @@ class RuleEngine:
                 }
                 for f in raw_pii_findings
             ],
+            "placeholder_matches": placeholder_matches,
             "destination_url": destination_url,
             "destination_domain": destination_domain,
             "tool_name": context.metadata.get("tool_name"),
@@ -896,12 +929,12 @@ class RuleEngine:
         }
         context.metadata["pii_detected"] = pii_detected
 
-        # If raw PII found and require_vault_for_approval, deny outright
-        if raw_pii_findings and require_vault_for_approval:
+        # If raw PII found (that ISN'T a placeholder) and require_vault_for_approval, deny outright
+        if non_placeholder_pii and require_vault_for_approval:
             return True, RuleAction.DENY
 
         # Auto mode: allow but with pii_detected metadata for inline resolution
-        if pii_mode == "auto" and vault_tokens and not raw_pii_findings:
+        if pii_mode == "auto" and (vault_tokens or placeholder_matches) and not non_placeholder_pii:
             return True, RuleAction.ALLOW
 
         # Otherwise, require approval

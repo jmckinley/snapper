@@ -232,6 +232,7 @@ async def create_entry(
     allowed_domains: Optional[list] = None,
     max_uses: Optional[int] = None,
     expires_at: Optional[datetime] = None,
+    placeholder_value: Optional[str] = None,
 ) -> PIIVaultEntry:
     """Create a new encrypted vault entry and return it with its token."""
     token = generate_token()
@@ -251,6 +252,7 @@ async def create_entry(
         allowed_domains=allowed_domains or [],
         max_uses=max_uses,
         expires_at=expires_at,
+        placeholder_value=placeholder_value,
     )
 
     db.add(entry)
@@ -285,6 +287,66 @@ async def get_entry_by_token(
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def get_entries_by_placeholder(
+    db: AsyncSession,
+    placeholder_value: str,
+    owner_chat_id: Optional[str] = None,
+) -> list[PIIVaultEntry]:
+    """Look up vault entries by their placeholder value.
+
+    Returns entries whose placeholder_value matches the detected PII value,
+    optionally scoped by owner.
+    """
+    stmt = select(PIIVaultEntry).where(
+        PIIVaultEntry.placeholder_value == placeholder_value,
+        PIIVaultEntry.is_deleted == False,
+    )
+    if owner_chat_id:
+        stmt = stmt.where(PIIVaultEntry.owner_chat_id == str(owner_chat_id))
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def resolve_placeholders(
+    db: AsyncSession,
+    placeholder_map: dict[str, str],
+    destination_domain: Optional[str] = None,
+    requester_chat_id: Optional[str] = None,
+    redis=None,
+) -> dict[str, dict]:
+    """
+    Resolve placeholder values to their decrypted vault values.
+
+    Args:
+        placeholder_map: dict mapping placeholder_value -> vault_token
+        destination_domain: domain for whitelist checking
+        requester_chat_id: owner chat ID for ownership enforcement
+        redis: redis client for brute-force protection
+
+    Returns a dict mapping placeholder_value -> {value, category, label, masked_value}
+    """
+    if not placeholder_map:
+        return {}
+
+    # Use resolve_tokens for the actual tokens, then re-key by placeholder
+    tokens = list(placeholder_map.values())
+    resolved_by_token = await resolve_tokens(
+        db=db,
+        tokens=tokens,
+        destination_domain=destination_domain,
+        requester_chat_id=requester_chat_id,
+        redis=redis,
+    )
+
+    resolved = {}
+    for placeholder, token in placeholder_map.items():
+        if token in resolved_by_token:
+            resolved[placeholder] = resolved_by_token[token]
+
+    return resolved
 
 
 async def delete_entry(

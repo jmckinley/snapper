@@ -301,6 +301,84 @@ async def telegram_webhook(request: Request):
                     )
                 return {"ok": True, "action": "vault_delall", "count": deleted_count}
 
+            elif action == "vph_auto":
+                # Set auto-suggested placeholder on vault entry
+                from app.services import pii_vault as vault_service
+                from app.models.pii_vault import PIIVaultEntry
+                from sqlalchemy import select as sa_select, cast, String as SAString
+
+                entry_id_short = data
+                async with async_session_factory() as db:
+                    stmt = sa_select(PIIVaultEntry).where(
+                        cast(PIIVaultEntry.id, SAString).like(f"{entry_id_short}%"),
+                        PIIVaultEntry.is_deleted == False,
+                    ).limit(1)
+                    result = await db.execute(stmt)
+                    entry = result.scalar_one_or_none()
+
+                    if entry:
+                        suggestions = {
+                            "credit_card": "4242424242424242",
+                            "email": "user@example.com",
+                            "phone": "555-555-0100",
+                            "ssn": "000-00-0000",
+                        }
+                        cat = entry.category.value if hasattr(entry.category, "value") else entry.category
+                        placeholder = suggestions.get(cat, "test-placeholder")
+                        entry.placeholder_value = placeholder
+                        await db.commit()
+
+                        await _answer_callback(callback_id=callback_id, text=f"Placeholder set: {placeholder}")
+                        if cb_chat_id and cb_message_id:
+                            await _edit_message(
+                                chat_id=cb_chat_id,
+                                message_id=cb_message_id,
+                                text=(
+                                    f"🔐 *Vault entry updated!*\n\n"
+                                    f"*Label:* {entry.label}\n"
+                                    f"*Token:* `{entry.token}`\n"
+                                    f"*Placeholder:* `{placeholder}`\n\n"
+                                    "Agents can now use this placeholder value. "
+                                    "Snapper will detect it and map it to the real value."
+                                ),
+                            )
+                    else:
+                        await _answer_callback(callback_id=callback_id, text="Entry not found")
+
+                return {"ok": True, "action": "vph_auto"}
+
+            elif action == "vph_custom":
+                # Prompt user for custom placeholder value
+                from app.redis_client import redis_client
+
+                await redis_client.set(
+                    f"vault_placeholder_pending:{user.get('id', cb_chat_id)}",
+                    data,  # entry_id_short
+                    expire=300,
+                )
+                await _answer_callback(callback_id=callback_id, text="Enter placeholder value")
+                if cb_chat_id:
+                    await _send_message(
+                        chat_id=cb_chat_id,
+                        text=(
+                            "Enter a *placeholder value* for this vault entry.\n\n"
+                            "This is a safe dummy value the agent can use (e.g., `4242424242424242` for a test card).\n\n"
+                            "_Type /cancel to skip._"
+                        ),
+                    )
+                return {"ok": True, "action": "vph_custom"}
+
+            elif action == "vph_skip":
+                # Skip placeholder setup
+                await _answer_callback(callback_id=callback_id, text="Skipped")
+                if cb_chat_id and cb_message_id:
+                    await _edit_message(
+                        chat_id=cb_chat_id,
+                        message_id=cb_message_id,
+                        text=cb_message.get("text", "") + "\n\n_No placeholder set._",
+                    )
+                return {"ok": True, "action": "vph_skip"}
+
     # Handle messages
     message = data.get("message", {})
     text = message.get("text", "")
@@ -311,6 +389,14 @@ async def telegram_webhook(request: Request):
         user = message.get("from", {})
         user_chat_id = str(user.get("id", chat_id))
         from app.redis_client import redis_client as _redis
+
+        # Check for pending custom placeholder input first
+        placeholder_entry_id = await _redis.get(f"vault_placeholder_pending:{user_chat_id}")
+        if placeholder_entry_id:
+            await _redis.delete(f"vault_placeholder_pending:{user_chat_id}")
+            await _handle_custom_placeholder(chat_id, text.strip(), placeholder_entry_id)
+            return {"ok": True}
+
         pending_json = await _redis.get(f"vault_pending:{user_chat_id}")
         if pending_json:
             await _handle_vault_value_reply(chat_id, text, message, user_chat_id, pending_json)
@@ -1347,6 +1433,9 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
 
     category = PIICategory(pending["category"])
 
+    # Check if a placeholder was provided in a previous step
+    placeholder_value = pending.get("placeholder_value")
+
     async with async_session_factory() as db:
         entry = await vault_service.create_entry(
             db=db,
@@ -1355,6 +1444,7 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
             label=pending["label"],
             category=category,
             raw_value=raw_value,
+            placeholder_value=placeholder_value,
         )
 
         audit_log = AuditLog(
@@ -1365,6 +1455,7 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
                 "entry_id": str(entry.id),
                 "category": pending["category"],
                 "owner_chat_id": pending["owner_chat_id"],
+                "has_placeholder": placeholder_value is not None,
             },
         )
         db.add(audit_log)
@@ -1372,16 +1463,97 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
 
     await redis_client.delete(f"vault_pending:{user_chat_id}")
 
+    # Auto-suggest placeholder based on category
+    placeholder_suggestions = {
+        "credit_card": "4242424242424242",
+        "email": "user@example.com",
+        "phone": "555-555-0100",
+        "ssn": "000-00-0000",
+    }
+    suggested = placeholder_suggestions.get(pending["category"])
+
+    placeholder_msg = ""
+    if entry.placeholder_value:
+        placeholder_msg = f"*Placeholder:* `{entry.placeholder_value}`\n"
+
+    entry_id_short = str(entry.id)[:12]
+
+    # Build inline keyboard for placeholder setup
+    buttons = []
+    if not placeholder_value and suggested:
+        buttons.append([
+            {"text": f"Use {suggested}", "callback_data": f"vph_auto:{entry_id_short}"},
+            {"text": "Custom...", "callback_data": f"vph_custom:{entry_id_short}"},
+            {"text": "Skip", "callback_data": f"vph_skip:{entry_id_short}"},
+        ])
+    elif not placeholder_value:
+        buttons.append([
+            {"text": "Set placeholder", "callback_data": f"vph_custom:{entry_id_short}"},
+            {"text": "Skip", "callback_data": f"vph_skip:{entry_id_short}"},
+        ])
+
+    reply_markup = {"inline_keyboard": buttons} if buttons else None
+
+    text = (
+        f"🔐 *Vault entry created!*\n\n"
+        f"*Label:* {entry.label}\n"
+        f"*Category:* `{pending['category']}`\n"
+        f"*Masked:* `{entry.masked_value}`\n"
+        f"*Token:* `{entry.token}`\n"
+        f"{placeholder_msg}\n"
+        "Give this token to your AI agent instead of the real value.\n"
+        "Snapper will intercept and require approval before it's submitted."
+    )
+
+    if buttons:
+        text += (
+            "\n\n💡 *Optional:* Set a placeholder value (e.g., Stripe test card) "
+            "that agents can use instead of the vault token."
+        )
+
+    await _send_message_with_keyboard(
+        chat_id=chat_id,
+        text=text,
+        reply_markup=reply_markup,
+    )
+
+
+async def _handle_custom_placeholder(chat_id: int, placeholder_text: str, entry_id_short: str):
+    """Handle user's reply with a custom placeholder value for a vault entry."""
+    from app.models.pii_vault import PIIVaultEntry
+    from sqlalchemy import select as sa_select, cast, String as SAString
+
+    if placeholder_text == "/cancel":
+        await _send_message(chat_id=chat_id, text="Placeholder setup skipped.")
+        return
+
+    if len(placeholder_text) > 255:
+        await _send_message(chat_id=chat_id, text="Placeholder value too long (max 255 chars). Skipped.")
+        return
+
+    async with async_session_factory() as db:
+        stmt = sa_select(PIIVaultEntry).where(
+            cast(PIIVaultEntry.id, SAString).like(f"{entry_id_short}%"),
+            PIIVaultEntry.is_deleted == False,
+        ).limit(1)
+        result = await db.execute(stmt)
+        entry = result.scalar_one_or_none()
+
+        if not entry:
+            await _send_message(chat_id=chat_id, text="Vault entry not found. Placeholder not set.")
+            return
+
+        entry.placeholder_value = placeholder_text
+        await db.commit()
+
     await _send_message(
         chat_id=chat_id,
         text=(
-            f"🔐 *Vault entry created!*\n\n"
-            f"*Label:* {entry.label}\n"
-            f"*Category:* `{pending['category']}`\n"
-            f"*Masked:* `{entry.masked_value}`\n"
-            f"*Token:* `{entry.token}`\n\n"
-            "Give this token to your AI agent instead of the real value.\n"
-            "Snapper will intercept and require approval before it's submitted."
+            f"🔐 *Placeholder set!*\n\n"
+            f"*Entry:* {entry.label}\n"
+            f"*Placeholder:* `{placeholder_text}`\n\n"
+            "Agents can now use this placeholder value. "
+            "Snapper will detect it and map it to the real encrypted value."
         ),
     )
 
@@ -1518,6 +1690,8 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                     lines.append(f"  `{cat}`: *{e.label}*")
                     lines.append(f"    `{e.token}`")
                     lines.append(f"    Masked: `{e.masked_value}`")
+                    if e.placeholder_value:
+                        lines.append(f"    Placeholder: `{e.placeholder_value}`")
                     if e.allowed_domains:
                         lines.append(f"    Domains: {', '.join(e.allowed_domains)}")
                     if e.use_count > 0:
