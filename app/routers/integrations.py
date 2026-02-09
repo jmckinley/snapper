@@ -1,6 +1,7 @@
 """API routes for managing integration templates."""
 
 import logging
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from app.data.integration_templates import (
     get_template,
 )
 from app.database import get_db
+from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 from app.models.rules import Rule, RuleType, RuleAction
 
 logger = logging.getLogger(__name__)
@@ -73,7 +75,7 @@ async def list_integrations(
     Shows which integrations are enabled (have rules created).
     """
     # Get all rules to check which integrations are enabled
-    query = select(Rule).where(Rule.is_active == True)
+    query = select(Rule).where(Rule.is_active == True, Rule.is_deleted == False)
     if agent_id:
         query = query.where(Rule.agent_id == agent_id)
 
@@ -121,6 +123,23 @@ async def list_integrations(
     return categories
 
 
+@router.get("/categories/summary")
+async def get_categories_summary():
+    """Get a summary of integration categories."""
+    summary = []
+    for category_id, category_info in INTEGRATION_CATEGORIES.items():
+        count = sum(
+            1 for t in INTEGRATION_TEMPLATES.values()
+            if t.get("category") == category_id
+        )
+        summary.append({
+            "id": category_id,
+            **category_info,
+            "integration_count": count,
+        })
+    return summary
+
+
 @router.get("/{integration_id}")
 async def get_integration(
     integration_id: str,
@@ -138,6 +157,7 @@ async def get_integration(
     # Check if enabled
     query = select(Rule).where(
         Rule.is_active == True,
+        Rule.is_deleted == False,
         Rule.name.like(f"{template['name']} -%"),
     )
     if agent_id:
@@ -175,6 +195,9 @@ async def get_integration(
                 "name": rule.name,
                 "rule_type": rule.rule_type.value if hasattr(rule.rule_type, 'value') else rule.rule_type,
                 "action": rule.action.value if hasattr(rule.action, 'value') else rule.action,
+                "description": rule.description or "",
+                "priority": rule.priority,
+                "parameters": rule.parameters or {},
             }
             for rule in existing_rules
         ],
@@ -246,6 +269,8 @@ async def enable_integration(
             parameters=rule_def.get("parameters", {}),
             agent_id=request.agent_id,
             is_active=True,
+            source="integration",
+            source_reference=integration_id,
         )
         db.add(rule)
         rules_created += 1
@@ -267,9 +292,9 @@ async def disable_integration(
     db: AsyncSession = Depends(get_db),
     agent_id: Optional[UUID] = None,
 ):
-    """Disable an integration by removing its rules.
+    """Disable an integration by soft-deleting its rules.
 
-    Deletes all rules that were created for this integration.
+    Deactivates all rules that were created for this integration.
     """
     template = get_template(integration_id)
     if not template:
@@ -278,8 +303,9 @@ async def disable_integration(
             detail=f"Integration '{integration_id}' not found",
         )
 
-    # Find existing rules for this integration
+    # Find existing active rules for this integration
     query = select(Rule).where(
+        Rule.is_deleted == False,
         Rule.name.like(f"{template['name']} -%"),
     )
     if agent_id:
@@ -296,35 +322,45 @@ async def disable_integration(
             detail=f"Integration '{integration_id}' is not enabled",
         )
 
-    # Delete the rules
+    # Soft-delete the rules
     rules_deleted = 0
+    now = datetime.utcnow()
     for rule in existing_rules:
-        await db.delete(rule)
+        rule.is_active = False
+        rule.is_deleted = True
+        rule.deleted_at = now
         rules_deleted += 1
+
+    # Add audit log entry
+    audit_entry = AuditLog(
+        action=AuditAction.RULE_DEACTIVATED,
+        severity=AuditSeverity.INFO,
+        agent_id=agent_id,
+        message=f"Disabled integration '{integration_id}' ({template['name']}), soft-deleted {rules_deleted} rules",
+        details={
+            "integration_id": integration_id,
+            "integration_name": template["name"],
+            "rules_deleted": rules_deleted,
+            "rule_ids": [str(rule.id) for rule in existing_rules],
+        },
+    )
+    db.add(audit_entry)
 
     await db.commit()
 
-    logger.info(f"Disabled integration '{integration_id}', removed {rules_deleted} rules")
+    # Invalidate Redis cache for affected rules
+    try:
+        from app.redis_client import redis_client
+        from app.services.rule_engine import RuleEngine
+        engine = RuleEngine(db, redis_client)
+        await engine.invalidate_cache(agent_id)
+    except Exception as e:
+        logger.warning(f"Failed to invalidate rule cache after disabling integration: {e}")
+
+    logger.info(f"Disabled integration '{integration_id}', soft-deleted {rules_deleted} rules")
 
     return DisableIntegrationResponse(
         integration_id=integration_id,
         rules_deleted=rules_deleted,
         message=f"Successfully disabled {template['name']}, removed {rules_deleted} rules",
     )
-
-
-@router.get("/categories/summary")
-async def get_categories_summary():
-    """Get a summary of integration categories."""
-    summary = []
-    for category_id, category_info in INTEGRATION_CATEGORIES.items():
-        count = sum(
-            1 for t in INTEGRATION_TEMPLATES.values()
-            if t.get("category") == category_id
-        )
-        summary.append({
-            "id": category_id,
-            **category_info,
-            "integration_count": count,
-        })
-    return summary

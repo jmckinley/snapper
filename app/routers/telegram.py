@@ -134,6 +134,16 @@ async def telegram_webhook(request: Request):
                     approved_by=username,
                 )
 
+                if not result.get("success"):
+                    await _answer_callback(callback_id=callback_id, text="Request expired or not found")
+                    if cb_chat_id and cb_message_id:
+                        await _edit_message(
+                            chat_id=cb_chat_id,
+                            message_id=cb_message_id,
+                            text=f"Request `{data}` has expired or was not found.",
+                        )
+                    return {"ok": False, "error": "expired_or_not_found", "request_id": data}
+
                 await _answer_callback(callback_id=callback_id, text=f"Request {action}d by @{username}")
 
                 if cb_chat_id and cb_message_id:
@@ -318,9 +328,13 @@ async def telegram_webhook(request: Request):
                 "/help - Show all commands\n"
                 "/status - Check Snapper connection\n"
                 "/rules - View active security rules\n"
+                "/test - Test rule enforcement\n"
+                "/pending - List pending approvals\n"
                 "/vault - Manage encrypted PII storage\n"
                 "/pii - PII protection mode\n"
-                "/block - Emergency block all actions\n\n"
+                "/purge - Purge PII from agent data\n"
+                "/block - Emergency block all actions\n"
+                "/unblock - Resume normal operation\n\n"
                 f"Your Chat ID: `{chat_id}`\n"
                 "_Add this to your Snapper settings._"
             ),
@@ -358,9 +372,39 @@ async def telegram_webhook(request: Request):
             ),
         )
     elif text.startswith("/status"):
+        # Actually check PostgreSQL and Redis connectivity
+        from sqlalchemy import text as sa_text
+        from app.redis_client import redis_client as _status_redis
+
+        pg_ok = False
+        redis_ok = False
+
+        try:
+            async with async_session_factory() as db:
+                await db.execute(sa_text("SELECT 1"))
+            pg_ok = True
+        except Exception as e:
+            logger.warning(f"PostgreSQL health check failed: {e}")
+
+        try:
+            redis_ok = await _status_redis.check_health()
+        except Exception as e:
+            logger.warning(f"Redis health check failed: {e}")
+
+        pg_status = "connected" if pg_ok else "UNREACHABLE"
+        redis_status = "connected" if redis_ok else "UNREACHABLE"
+        pg_emoji = "✅" if pg_ok else "❌"
+        redis_emoji = "✅" if redis_ok else "❌"
+        overall_emoji = "✅" if (pg_ok and redis_ok) else "⚠️"
+
         await _send_message(
             chat_id=chat_id,
-            text="✅ *Snapper is connected and running!*\n\nI'll notify you when actions need approval.",
+            text=(
+                f"{overall_emoji} *Snapper Status*\n\n"
+                f"{pg_emoji} PostgreSQL: {pg_status}\n"
+                f"{redis_emoji} Redis: {redis_status}\n\n"
+                "I'll notify you when actions need approval."
+            ),
         )
     elif text.startswith("/pending"):
         # Fetch pending approvals from Redis
@@ -405,11 +449,17 @@ async def telegram_webhook(request: Request):
                 action=action,
                 approved_by=message.get("from", {}).get("username", "Unknown"),
             )
-            emoji = "✅" if action == "approve" else "❌"
-            await _send_message(
-                chat_id=chat_id,
-                text=f"{emoji} Request `{request_id}` has been *{action}d*.",
-            )
+            if result.get("success"):
+                emoji = "✅" if action == "approve" else "❌"
+                await _send_message(
+                    chat_id=chat_id,
+                    text=f"{emoji} Request `{request_id}` has been *{action}d*.",
+                )
+            else:
+                await _send_message(
+                    chat_id=chat_id,
+                    text=f"Request `{request_id}` has expired or was not found.",
+                )
     elif text.startswith("/rules"):
         await _handle_rules_command(chat_id, text)
     elif text.startswith("/block"):
@@ -429,7 +479,10 @@ async def telegram_webhook(request: Request):
 
 
 async def _process_approval(request_id: str, action: str, approved_by: str) -> dict:
-    """Process an approval or denial request."""
+    """Process an approval or denial request.
+
+    Returns dict with 'success' key indicating whether the update succeeded.
+    """
     logger.info(f"Processing {action} for request {request_id} by {approved_by}")
 
     # Update the approval status in Redis
@@ -445,7 +498,8 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
     )
 
     if not success:
-        logger.warning(f"Could not update approval {request_id} - may be expired")
+        logger.warning(f"Could not update approval {request_id} - may be expired or not found")
+        return {"status": "failed", "success": False, "action": action, "request_id": request_id}
 
     # Log the approval action
     async with async_session_factory() as db:
@@ -464,7 +518,7 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
         db.add(audit_log)
         await db.commit()
 
-    return {"status": "processed", "action": action, "request_id": request_id}
+    return {"status": "processed", "success": True, "action": action, "request_id": request_id}
 
 
 def _escape_markdown(text: str) -> str:
@@ -761,11 +815,21 @@ async def _send_message_with_keyboard(chat_id: int, text: str, reply_markup: Opt
 
 async def _handle_rules_command(chat_id: int, text: str):
     """Handle /rules command - list active security rules."""
+    from sqlalchemy import func as sa_func
+
     # Get test agent for this chat
     agent_id = await _get_or_create_test_agent(chat_id)
 
     async with async_session_factory() as db:
-        # Get rules for this agent (and global rules)
+        # First get the total count (without limit)
+        count_stmt = select(sa_func.count()).select_from(Rule).where(
+            Rule.is_deleted == False,
+            Rule.is_active == True,
+            (Rule.agent_id == agent_id) | (Rule.agent_id == None),
+        )
+        total_count = (await db.execute(count_stmt)).scalar() or 0
+
+        # Get rules for display (limited to 15)
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.is_active == True,
@@ -773,7 +837,7 @@ async def _handle_rules_command(chat_id: int, text: str):
         ).order_by(Rule.priority.desc()).limit(15)
 
         result = await db.execute(stmt)
-        rules = result.scalars().all()
+        rules = list(result.scalars().all())
 
     if not rules:
         await _send_message(
@@ -789,7 +853,10 @@ async def _handle_rules_command(chat_id: int, text: str):
         lines.append(f"{emoji} {scope} *{rule.name}*")
         lines.append(f"   _{rule.rule_type.value}_ | Priority: {rule.priority}")
 
-    lines.append(f"\n_Total: {len(rules)} rule(s)_")
+    if total_count > len(rules):
+        lines.append(f"\n_Showing {len(rules)} of {total_count} rule(s)_")
+    else:
+        lines.append(f"\n_Total: {total_count} rule(s)_")
     lines.append("_View full details in Snapper dashboard_")
 
     await _send_message(chat_id=chat_id, text="\n".join(lines))
@@ -823,15 +890,13 @@ async def _handle_block_command(chat_id: int, message: dict):
 async def _handle_unblock_command(chat_id: int, message: dict):
     """Handle /unblock command - resume normal operation."""
     username = message.get("from", {}).get("username", "Unknown")
-    agent_id = await _get_or_create_test_agent(chat_id)
 
     async with async_session_factory() as db:
-        # Find and deactivate emergency block rules
+        # Find and deactivate ALL emergency block rules (global and agent-scoped)
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.is_active == True,
             Rule.name == "🚨 EMERGENCY BLOCK ALL",
-            (Rule.agent_id == agent_id) | (Rule.agent_id == None),
         )
         result = await db.execute(stmt)
         emergency_rules = result.scalars().all()
@@ -843,77 +908,108 @@ async def _handle_unblock_command(chat_id: int, message: dict):
             )
             return
 
+        deactivated_count = 0
         for rule in emergency_rules:
             rule.is_active = False
+            deactivated_count += 1
 
         # Log the action
         audit_log = AuditLog(
             action=AuditAction.RULE_UPDATED,
             severity=AuditSeverity.WARNING,
-            agent_id=agent_id,
-            message=f"Emergency block deactivated via Telegram by {username}",
+            agent_id=None,
+            message=f"Emergency block deactivated via Telegram by {username} ({deactivated_count} rules)",
             old_value={"is_active": True},
-            new_value={"is_active": False, "deactivated_by": username},
+            new_value={"is_active": False, "deactivated_by": username, "rules_deactivated": deactivated_count},
         )
         db.add(audit_log)
         await db.commit()
 
     await _send_message(
         chat_id=chat_id,
-        text=f"✅ *Emergency block deactivated* by @{username}\n\nNormal operation resumed. Rules are now evaluated normally.",
+        text=f"✅ *Emergency block deactivated* by @{username}\n\n{deactivated_count} block rule(s) disabled. Normal operation resumed.",
     )
 
 
 async def _activate_emergency_block(chat_id: int, username: str) -> dict:
-    """Activate emergency block by creating a high-priority deny-all rule."""
+    """Activate emergency block by creating high-priority deny-all rules for ALL request types.
+
+    Creates global rules (agent_id=None) so they block ALL agents, not just the test agent.
+    Creates multiple rule types to cover commands, skills, file access, and network egress.
+    """
     _pending_emergency_blocks.pop(chat_id, None)
-    agent_id = await _get_or_create_test_agent(chat_id)
+
+    # Define all rule types to block
+    block_rules = [
+        {
+            "rule_type": RuleType.COMMAND_DENYLIST,
+            "parameters": {"patterns": [".*"]},
+        },
+        {
+            "rule_type": RuleType.SKILL_DENYLIST,
+            "parameters": {"skills": [".*"], "blocked_patterns": [".*"]},
+        },
+        {
+            "rule_type": RuleType.FILE_ACCESS,
+            "parameters": {"denied_paths": [".*"]},
+        },
+        {
+            "rule_type": RuleType.NETWORK_EGRESS,
+            "parameters": {"denied_hosts": [".*"]},
+        },
+    ]
+
+    rule_ids = []
 
     async with async_session_factory() as db:
-        # Check if emergency block already exists
+        # Check if emergency block rules already exist (global)
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.name == "🚨 EMERGENCY BLOCK ALL",
-            Rule.agent_id == agent_id,
+            Rule.agent_id == None,
         )
         result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
+        existing_rules = list(result.scalars().all())
 
-        if existing:
-            existing.is_active = True
-            rule_id = existing.id
+        if existing_rules:
+            # Reactivate all existing emergency block rules
+            for rule in existing_rules:
+                rule.is_active = True
+                rule_ids.append(rule.id)
         else:
-            # Create new emergency block rule
-            rule = Rule(
-                id=uuid4(),
-                name="🚨 EMERGENCY BLOCK ALL",
-                description=f"Emergency block activated via Telegram by {username}",
-                rule_type=RuleType.COMMAND_DENYLIST,
-                action=RuleAction.DENY,
-                priority=10000,  # Highest priority
-                parameters={"patterns": [".*"]},  # Match everything
-                agent_id=agent_id,
-                is_active=True,
-            )
-            db.add(rule)
-            rule_id = rule.id
+            # Create new emergency block rules for each type
+            for block_def in block_rules:
+                rule = Rule(
+                    id=uuid4(),
+                    name="🚨 EMERGENCY BLOCK ALL",
+                    description=f"Emergency block activated via Telegram by {username}",
+                    rule_type=block_def["rule_type"],
+                    action=RuleAction.DENY,
+                    priority=10000,  # Highest priority
+                    parameters=block_def["parameters"],
+                    agent_id=None,  # Global - applies to ALL agents
+                    is_active=True,
+                )
+                db.add(rule)
+                rule_ids.append(rule.id)
 
         # Log the action
         audit_log = AuditLog(
             action=AuditAction.RULE_CREATED,
             severity=AuditSeverity.CRITICAL,
-            agent_id=agent_id,
+            agent_id=None,
             message=f"Emergency block activated via Telegram by {username}",
             new_value={
-                "rule_id": str(rule_id),
+                "rule_ids": [str(rid) for rid in rule_ids],
                 "activated_by": username,
                 "source": "telegram",
+                "scope": "global",
             },
         )
         db.add(audit_log)
         await db.commit()
 
-    return {"rule_id": str(rule_id), "status": "activated"}
+    return {"rule_id": str(rule_ids[0]) if rule_ids else "unknown", "status": "activated"}
 
 
 async def _create_allow_rule_from_context(context_json: str, username: str) -> dict:
@@ -1308,13 +1404,13 @@ async def _handle_pii_command(chat_id: int, text: str, message: dict):
     subcommand = parts[1].strip().lower() if len(parts) > 1 else ""
 
     async with async_session_factory() as db:
-        # Find the PII gate rule
+        # Find the PII gate rule (use .first() in case multiple exist)
         stmt = select(Rule).where(
             Rule.rule_type == RuleType.PII_GATE,
             Rule.is_active == True,
-        )
+        ).limit(1)
         result = await db.execute(stmt)
-        pii_rule = result.scalar_one_or_none()
+        pii_rule = result.scalars().first()
 
         if not pii_rule:
             await _send_message(
@@ -1893,11 +1989,9 @@ async def _handle_purge_command(chat_id: int, text: str, message: dict):
             text=(
                 f"⚠️ *PII PURGE - {agent.name}*\n\n"
                 f"Agent ID: `{agent_id_str[:8]}...`\n\n"
-                "This will permanently delete:\n"
-                "• Conversation history with PII\n"
-                "• Memory files (SOUL.md, MEMORY.md)\n"
-                "• Cached session data\n"
-                "• Audit logs containing PII patterns\n\n"
+                "This will:\n"
+                "• Redact PII patterns from audit log messages and details\n"
+                "• Clear Redis cache keys for the agent\n\n"
                 "⚠️ *This action is IRREVERSIBLE.*\n\n"
                 "Are you sure?"
             ),
@@ -1961,10 +2055,22 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
                 audit_logs = result.scalars().all()
 
                 for log in audit_logs:
+                    redacted_any = False
                     if log.message:
                         log.message, count = redact_pii(log.message, PII_PATTERNS_FULL)
                         if count > 0:
-                            total_redacted += 1
+                            redacted_any = True
+                    # Also redact JSONB fields
+                    for field_name in ("details", "old_value", "new_value"):
+                        field_val = getattr(log, field_name, None)
+                        if field_val and isinstance(field_val, dict):
+                            serialized = json.dumps(field_val)
+                            redacted_str, count = redact_pii(serialized, PII_PATTERNS_FULL)
+                            if count > 0:
+                                setattr(log, field_name, json.loads(redacted_str))
+                                redacted_any = True
+                    if redacted_any:
+                        total_redacted += 1
 
                 # Clear Redis cache
                 patterns = [
@@ -2029,10 +2135,22 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
 
         redacted_count = 0
         for log in audit_logs:
+            redacted_any = False
             if log.message:
                 log.message, count = redact_pii(log.message, PII_PATTERNS_FULL)
                 if count > 0:
-                    redacted_count += 1
+                    redacted_any = True
+            # Also redact JSONB fields
+            for field_name in ("details", "old_value", "new_value"):
+                field_val = getattr(log, field_name, None)
+                if field_val and isinstance(field_val, dict):
+                    serialized = json.dumps(field_val)
+                    redacted_str, count = redact_pii(serialized, PII_PATTERNS_FULL)
+                    if count > 0:
+                        setattr(log, field_name, json.loads(redacted_str))
+                        redacted_any = True
+            if redacted_any:
+                redacted_count += 1
 
         # Log the purge action
         purge_log = AuditLog(

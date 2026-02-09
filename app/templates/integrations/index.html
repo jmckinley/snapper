@@ -70,7 +70,7 @@
             const response = await fetch('/api/v1/integrations');
             integrationData = await response.json();
             renderIntegrations(integrationData);
-            updateStats();
+            await updateStats();
         } catch (error) {
             console.error('Failed to load integrations:', error);
             document.getElementById('integrations-container').innerHTML = `
@@ -151,6 +151,7 @@
                             <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                                 <div class="flex items-center space-x-4">
                                     <span class="text-sm font-medium text-gray-700">Security Rules</span>
+                                    <span class="text-xs text-gray-500">Tool pattern (reference only):</span>
                                     <code class="text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-600">${integration.mcp_matcher}</code>
                                 </div>
                                 <div id="actions-${integration.id}" class="flex items-center space-x-2">
@@ -480,6 +481,9 @@
         const rulesToEnable = details?.selectable_rules ? Array.from(selectedRules) : null;
 
         try {
+            // Note: agent_id is intentionally omitted to create global rules
+            // that apply to all agents. To create agent-specific rules, pass
+            // agent_id in the request body.
             const response = await fetch(`/api/v1/integrations/${integrationId}/enable`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -507,9 +511,11 @@
     }
 
     async function disableIntegration(integrationId) {
-        if (!confirm('Disable this integration and remove all its rules?')) return;
+        if (!confirm('Disable this integration and deactivate all its rules?')) return;
 
         try {
+            // Note: agent_id is intentionally omitted — disables global rules.
+            // To disable agent-specific rules, pass agent_id as a query parameter.
             const response = await fetch(`/api/v1/integrations/${integrationId}/disable`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -535,27 +541,45 @@
         }
     }
 
-    function updateStats() {
+    async function updateStats() {
         let totalIntegrations = 0;
         let enabledIntegrations = 0;
-        let totalRules = 0;
+        let integrationRules = 0;
 
         integrationData.forEach(category => {
             category.integrations.forEach(integration => {
                 totalIntegrations++;
                 if (integration.enabled) {
                     enabledIntegrations++;
-                    totalRules += integration.rule_count;
+                    integrationRules += integration.rule_count;
                 }
             });
         });
 
         document.getElementById('stat-available').textContent = totalIntegrations;
         document.getElementById('stat-enabled').textContent = enabledIntegrations;
-        document.getElementById('stat-rules').textContent = totalRules;
         document.getElementById('stat-categories').textContent = integrationData.length;
         document.getElementById('enabled-count').textContent = `${enabledIntegrations} integrations active`;
-        document.getElementById('rules-count').textContent = `${totalRules} rules active`;
+
+        // Fetch total system rules count for accurate display
+        let totalSystemRules = integrationRules;
+        try {
+            const rulesResponse = await fetch('/api/v1/rules?is_active=true');
+            if (rulesResponse.ok) {
+                const rulesData = await rulesResponse.json();
+                totalSystemRules = Array.isArray(rulesData) ? rulesData.length : integrationRules;
+            }
+        } catch (e) {
+            // Fall back to integration rule count if rules API is unavailable
+            console.warn('Could not fetch total system rules:', e);
+        }
+
+        const rulesStatEl = document.getElementById('stat-rules');
+        rulesStatEl.textContent = integrationRules;
+        rulesStatEl.title = `${integrationRules} integration rules (${totalSystemRules} total system rules)`;
+
+        const rulesCountEl = document.getElementById('rules-count');
+        rulesCountEl.textContent = `${integrationRules} integration rules (${totalSystemRules} total)`;
     }
 
     function showToast(message, type = 'info') {

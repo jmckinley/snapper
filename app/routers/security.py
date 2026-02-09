@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.models.rules import Rule, RuleAction, RuleType
 from app.models.security_issues import (
     IssueSeverity,
     IssueStatus,
@@ -18,6 +19,7 @@ from app.models.security_issues import (
     SecurityIssue,
     SecurityRecommendation,
 )
+from app.models.audit_logs import AuditAction, AuditLog, PolicyViolation
 from app.schemas.security import (
     ApplyRecommendationRequest,
     ApplyRecommendationResponse,
@@ -322,8 +324,66 @@ async def apply_recommendation(
         )
 
     # Create rules from recommendation
-    # This is simplified - real implementation would create actual rules
     created_rules = []
+    rec_rules = recommendation.recommended_rules or {}
+
+    # If recommended_rules contains structured rule configs, create them
+    rules_list = rec_rules.get("rules", [])
+    if not rules_list and rec_rules:
+        # Treat the entire dict as a single rule config if it has rule_type
+        if "rule_type" in rec_rules:
+            rules_list = [rec_rules]
+
+    if rules_list:
+        # Create rules from structured config
+        for rule_config in rules_list:
+            rule_type_str = rule_config.get("rule_type")
+            try:
+                rule_type = RuleType(rule_type_str) if rule_type_str else None
+            except ValueError:
+                rule_type = None
+
+            if rule_type:
+                rule = Rule(
+                    id=uuid4(),
+                    name=rule_config.get("name", f"From recommendation: {recommendation.title}"),
+                    description=rule_config.get("description", recommendation.description),
+                    agent_id=recommendation.agent_id,
+                    rule_type=rule_type,
+                    action=RuleAction(rule_config.get("action", "deny")),
+                    priority=rule_config.get("priority", 100),
+                    parameters=rule_config.get("parameters", {}),
+                    is_active=True,
+                    source="recommendation",
+                    source_reference=str(recommendation.id),
+                    tags=rule_config.get("tags", ["security", "recommendation"]),
+                )
+                # Apply any parameter overrides from the request
+                if request.parameter_overrides:
+                    rule.parameters.update(request.parameter_overrides)
+                db.add(rule)
+                created_rules.append(rule.id)
+    else:
+        # No structured rule config -- create a reasonable default rule
+        # based on the recommendation's category/title
+        rule_type = _infer_rule_type_from_recommendation(recommendation)
+        if rule_type:
+            rule = Rule(
+                id=uuid4(),
+                name=f"From recommendation: {recommendation.title}",
+                description=recommendation.description,
+                agent_id=recommendation.agent_id,
+                rule_type=rule_type,
+                action=RuleAction.DENY,
+                priority=100,
+                parameters=request.parameter_overrides or {},
+                is_active=True,
+                source="recommendation",
+                source_reference=str(recommendation.id),
+                tags=["security", "recommendation"],
+            )
+            db.add(rule)
+            created_rules.append(rule.id)
 
     recommendation.is_applied = True
     recommendation.applied_at = datetime.utcnow()
@@ -360,6 +420,61 @@ async def dismiss_recommendation(
     await db.commit()
 
     return {"status": "dismissed", "reason": request.reason}
+
+
+def _infer_rule_type_from_recommendation(
+    recommendation: SecurityRecommendation,
+) -> Optional[RuleType]:
+    """Infer an appropriate rule type from recommendation title/category."""
+    title_lower = recommendation.title.lower()
+    desc_lower = recommendation.description.lower()
+    combined = f"{title_lower} {desc_lower}"
+
+    mapping = [
+        ("origin", RuleType.ORIGIN_VALIDATION),
+        ("websocket", RuleType.ORIGIN_VALIDATION),
+        ("skill", RuleType.SKILL_DENYLIST),
+        ("clawhub", RuleType.SKILL_DENYLIST),
+        ("credential", RuleType.CREDENTIAL_PROTECTION),
+        ("secret", RuleType.CREDENTIAL_PROTECTION),
+        ("rate limit", RuleType.RATE_LIMIT),
+        ("localhost", RuleType.LOCALHOST_RESTRICTION),
+        ("command", RuleType.COMMAND_DENYLIST),
+        ("file", RuleType.FILE_ACCESS),
+        ("network", RuleType.NETWORK_EGRESS),
+        ("egress", RuleType.NETWORK_EGRESS),
+        ("version", RuleType.VERSION_ENFORCEMENT),
+        ("sandbox", RuleType.SANDBOX_REQUIRED),
+        ("pii", RuleType.PII_GATE),
+    ]
+
+    for keyword, rule_type in mapping:
+        if keyword in combined:
+            return rule_type
+
+    return None
+
+
+@router.post("/vulnerabilities/{issue_id}/mitigate")
+async def mitigate_vulnerability(
+    issue_id: UUID,
+    db: DbSessionDep,
+):
+    """Mark a vulnerability as mitigated."""
+    stmt = select(SecurityIssue).where(SecurityIssue.id == issue_id)
+    issue = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not issue:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Vulnerability {issue_id} not found",
+        )
+
+    issue.status = IssueStatus.MITIGATED
+    issue.mitigated_at = datetime.utcnow()
+    await db.commit()
+
+    return {"status": "mitigated", "id": str(issue_id)}
 
 
 @router.get("/score/{agent_id}", response_model=SecurityScoreResponse)
@@ -455,10 +570,33 @@ async def get_threat_feed(
     critical_count = sum(1 for e in entries if e.severity == IssueSeverity.CRITICAL)
     high_count = sum(1 for e in entries if e.severity == IssueSeverity.HIGH)
 
+    # Determine last_updated from actual record timestamps
+    last_updated = None
+
+    # Check most recent SecurityIssue updated_at
+    issue_ts_stmt = select(SecurityIssue.updated_at).order_by(
+        SecurityIssue.updated_at.desc()
+    ).limit(1)
+    issue_ts = (await db.execute(issue_ts_stmt)).scalar_one_or_none()
+
+    # Check most recent MaliciousSkill last_seen_at
+    skill_ts_stmt = select(MaliciousSkill.last_seen_at).order_by(
+        MaliciousSkill.last_seen_at.desc()
+    ).limit(1)
+    skill_ts = (await db.execute(skill_ts_stmt)).scalar_one_or_none()
+
+    # Use the most recent timestamp from either table
+    candidates = [ts for ts in [issue_ts, skill_ts] if ts is not None]
+    if candidates:
+        last_updated = max(candidates)
+    else:
+        # No records at all -- fall back to current time
+        last_updated = datetime.utcnow()
+
     return ThreatFeedResponse(
         entries=entries[:limit],
         total=len(entries),
-        last_updated=datetime.utcnow(),
+        last_updated=last_updated,
         critical_count=critical_count,
         high_count=high_count,
     )
@@ -516,19 +654,39 @@ async def get_weekly_digest(
         for t in threats
     ]
 
+    # Count total violations in the last 7 days
+    violations_stmt = select(func.count()).select_from(PolicyViolation).where(
+        PolicyViolation.created_at >= week_ago
+    )
+    total_violations = (await db.execute(violations_stmt)).scalar() or 0
+
+    # Count blocked attacks (REQUEST_DENIED audit logs) in the last 7 days
+    blocked_stmt = select(func.count()).select_from(AuditLog).where(
+        AuditLog.action == AuditAction.REQUEST_DENIED,
+        AuditLog.created_at >= week_ago,
+    )
+    blocked_attacks = (await db.execute(blocked_stmt)).scalar() or 0
+
+    # Count applied recommendations in the last 7 days
+    applied_recs_stmt = select(func.count()).select_from(SecurityRecommendation).where(
+        SecurityRecommendation.is_applied == True,
+        SecurityRecommendation.applied_at >= week_ago,
+    )
+    applied_recommendations = (await db.execute(applied_recs_stmt)).scalar() or 0
+
     return WeeklyDigestResponse(
         period_start=week_ago,
         period_end=now,
         generated_at=now,
         new_cves=new_cves,
         new_malicious_skills=new_skills,
-        total_violations=0,  # Would query audit logs
-        blocked_attacks=0,  # Would query audit logs
+        total_violations=total_violations,
+        blocked_attacks=blocked_attacks,
         top_threats=top_threats,
         score_improvements=[],
         score_regressions=[],
         new_recommendations=len(pending_recs),
-        applied_recommendations=0,
+        applied_recommendations=applied_recommendations,
         pending_recommendations=[
             RecommendationResponse.model_validate(r) for r in pending_recs
         ],

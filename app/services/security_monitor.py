@@ -186,8 +186,16 @@ class SecurityMonitor:
         result = await self.db.execute(stmt)
         active_issues = list(result.scalars().all())
 
+        # Check if there are any SecurityIssue records at all
+        total_stmt = select(func.count(SecurityIssue.id))
+        total_result = await self.db.execute(total_stmt)
+        total_issues = total_result.scalar() or 0
+
+        if not active_issues and total_issues == 0:
+            return 0  # No CVE data means unknown, not perfect
+
         if not active_issues:
-            return max_score  # No active issues = full score
+            return max_score  # All issues resolved/mitigated = full score
 
         # Check how many have mitigation rules
         mitigated = sum(1 for issue in active_issues if issue.mitigation_rules)
@@ -254,12 +262,27 @@ class SecurityMonitor:
             return 0
 
         # Check for comprehensive protection
-        patterns_covered = set()
-        for rule in cred_rules:
-            patterns_covered.update(rule.parameters.get("protected_patterns", []))
+        # Rule patterns are regex (e.g., r"\.env$", r"\.pem$") while essential
+        # patterns are plain strings. We check if each essential pattern appears
+        # as a substring within any rule pattern (after stripping regex anchors
+        # and escapes).
+        import re
 
-        essential_patterns = {".env", ".pem", ".key", "credentials"}
-        coverage = len(patterns_covered & essential_patterns) / len(essential_patterns)
+        rule_patterns = []
+        for rule in cred_rules:
+            rule_patterns.extend(rule.parameters.get("protected_patterns", []))
+
+        essential_patterns = [".env", ".pem", ".key", "credentials"]
+        matched = 0
+        for essential in essential_patterns:
+            for rule_pattern in rule_patterns:
+                # Strip common regex anchors and escapes for comparison
+                normalized = re.sub(r"[\\\^\$]", "", rule_pattern)
+                if essential.lstrip(".") in normalized:
+                    matched += 1
+                    break
+
+        coverage = matched / len(essential_patterns) if essential_patterns else 0
 
         return int(coverage * max_score)
 

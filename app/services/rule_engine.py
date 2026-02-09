@@ -3,6 +3,7 @@
 @description Core rule engine for security policy evaluation.
 """
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -126,6 +127,13 @@ class RuleEngine:
         result = EvaluationResult(decision=EvaluationDecision.DENY)
 
         try:
+            # Check for one-time approval from "Allow Once" Telegram button
+            if context.command:
+                once_result = await self._check_once_allow(context)
+                if once_result:
+                    result = once_result
+                    return result
+
             # Load rules for this agent
             rules = await self._load_rules(context.agent_id)
 
@@ -252,6 +260,56 @@ class RuleEngine:
         """No-op: Rule caching is disabled for security."""
         # Caching disabled - rules are always loaded fresh from database
         pass
+
+    async def _check_once_allow(self, context: EvaluationContext) -> Optional[EvaluationResult]:
+        """
+        Check if a one-time approval exists for this command (from Telegram Allow Once).
+
+        The Telegram once: callback stores keys as:
+            once_allow:{agent_id}:{sha256(command)[:16]}
+        where agent_id can be the agent UUID, name, or external_id.
+
+        Returns an ALLOW EvaluationResult if found, None otherwise.
+        """
+        if not context.command:
+            return None
+
+        cmd_hash = hashlib.sha256(context.command.encode()).hexdigest()[:16]
+
+        # Look up the agent to get name and external_id for key matching
+        agent_identifiers = [str(context.agent_id)]
+        try:
+            stmt = select(Agent).where(Agent.id == context.agent_id)
+            result = await self.db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent:
+                if agent.name:
+                    agent_identifiers.append(agent.name)
+                if agent.external_id:
+                    agent_identifiers.append(agent.external_id)
+        except Exception:
+            pass
+
+        # Check all possible key formats
+        for identifier in agent_identifiers:
+            approval_key = f"once_allow:{identifier}:{cmd_hash}"
+            try:
+                value = await self.redis.get(approval_key)
+                if value:
+                    # Found a one-time approval - consume it
+                    await self.redis.delete(approval_key)
+                    logger.info(
+                        f"One-time approval consumed for agent={identifier}, "
+                        f"command={context.command[:50]}"
+                    )
+                    return EvaluationResult(
+                        decision=EvaluationDecision.ALLOW,
+                        reason="One-time approval granted via Telegram",
+                    )
+            except Exception as e:
+                logger.warning(f"Error checking once_allow key {approval_key}: {e}")
+
+        return None
 
     # --- Rule Type Evaluators ---
 

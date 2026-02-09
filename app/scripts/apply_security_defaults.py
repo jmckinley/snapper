@@ -476,6 +476,7 @@ async def create_security_issues(session: AsyncSession) -> int:
             references=issue_data.get("references", []),
             status=IssueStatus.ACTIVE,
             auto_generate_rules=True,
+            source="seed",
         )
         session.add(issue)
         created += 1

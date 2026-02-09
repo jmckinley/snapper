@@ -163,6 +163,44 @@
             } else {
                 gradeEl.className = 'ml-4 px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800';
             }
+
+            // Render score breakdown (S12)
+            const breakdownEl = document.getElementById('score-breakdown');
+            if (data.breakdown && Object.keys(data.breakdown).length > 0) {
+                const maxScores = {
+                    rule_coverage: 25,
+                    cve_mitigation: 20,
+                    skill_protection: 20,
+                    credential_protection: 15,
+                    rate_limiting: 10,
+                    audit_compliance: 10,
+                };
+                const labels = {
+                    rule_coverage: 'Rule Coverage',
+                    cve_mitigation: 'CVE Mitigation',
+                    skill_protection: 'Skill Protection',
+                    credential_protection: 'Credential Protection',
+                    rate_limiting: 'Rate Limiting',
+                    audit_compliance: 'Audit Compliance',
+                };
+                let html = '<div class="space-y-2" style="min-width: 280px;">';
+                for (const [factor, score] of Object.entries(data.breakdown)) {
+                    const max = maxScores[factor] || 25;
+                    const pct = Math.round((score / max) * 100);
+                    const color = pct >= 70 ? 'bg-green-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+                    const label = labels[factor] || factor.replace(/_/g, ' ');
+                    html += `
+                        <div class="flex items-center text-xs">
+                            <span class="w-32 text-gray-600 truncate" title="${label}">${label}</span>
+                            <div class="flex-1 mx-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div class="${color} h-2 rounded-full" style="width: ${pct}%"></div>
+                            </div>
+                            <span class="w-10 text-right text-gray-700">${score}/${max}</span>
+                        </div>`;
+                }
+                html += '</div>';
+                breakdownEl.innerHTML = html;
+            }
         } catch (error) {
             console.error('Failed to load security score:', error);
         }
@@ -321,6 +359,64 @@
             case 'mitigated': return 'bg-yellow-100 text-yellow-800';
             case 'resolved': return 'bg-green-100 text-green-800';
             default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    async function mitigateVuln(id) {
+        try {
+            const response = await fetch(`/api/v1/security/vulnerabilities/${id}/mitigate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            if (response.ok) {
+                // Find and update the button that triggered this
+                const buttons = document.querySelectorAll(`button[onclick="mitigateVuln('${id}')"]`);
+                buttons.forEach(btn => {
+                    btn.outerHTML = '<span class="text-green-600">Mitigated</span>';
+                });
+                loadSecurityScore();
+            } else {
+                const err = await response.json();
+                alert('Failed to mitigate: ' + (err.detail || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to mitigate vulnerability:', error);
+        }
+    }
+
+    async function viewSkillDetails(id) {
+        try {
+            const response = await fetch('/api/v1/security/clawhub/skills');
+            const data = await response.json();
+
+            const skill = data.items.find(s => s.id === id);
+            if (!skill) {
+                alert('Skill details not found.');
+                return;
+            }
+
+            // Build detail text
+            let details = `Skill: ${skill.skill_name}\n`;
+            details += `ID: ${skill.skill_id}\n`;
+            details += `Threat Type: ${skill.threat_type}\n`;
+            details += `Severity: ${skill.severity}\n`;
+            details += `Confidence: ${skill.confidence}\n`;
+            details += `Blocked: ${skill.is_blocked ? 'Yes' : 'No'}\n`;
+            details += `Verified: ${skill.is_verified ? 'Yes' : 'No'}\n`;
+            if (skill.author) details += `Author: ${skill.author}\n`;
+            if (skill.repository_url) details += `Repository: ${skill.repository_url}\n`;
+            if (skill.analysis_notes) details += `\nAnalysis:\n${skill.analysis_notes}\n`;
+            if (skill.indicators && Object.keys(skill.indicators).length > 0) {
+                details += `\nIndicators:\n${JSON.stringify(skill.indicators, null, 2)}\n`;
+            }
+            details += `\nFirst Seen: ${new Date(skill.first_seen_at).toLocaleString()}`;
+            details += `\nLast Seen: ${new Date(skill.last_seen_at).toLocaleString()}`;
+
+            alert(details);
+        } catch (error) {
+            console.error('Failed to load skill details:', error);
         }
     }
 
