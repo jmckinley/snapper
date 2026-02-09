@@ -11,67 +11,189 @@
 {% endblock %}
 
 {% block content %}
-<div class="bg-white shadow rounded-lg p-8 prose prose-gray max-w-none">
-    <p class="text-sm text-gray-500 mb-6">Effective Date: February 7, 2026</p>
+<div class="bg-white shadow rounded-lg p-8 max-w-none">
+    <p class="text-sm text-gray-500 mb-8">Effective Date: February 7, 2026</p>
 
+    <!-- 1. Acceptance -->
     <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">1. Acceptance of Terms</h2>
-    <p class="text-gray-700 mb-4">By using Snapper ("the Software"), you agree to these Terms of Service. If you do not agree, do not use the Software.</p>
+    <p class="text-gray-700 mb-3">By accessing, downloading, installing, or using Snapper ("the Software"), you acknowledge that you have read, understood, and agree to be bound by these Terms of Service ("Terms"). If you do not agree to all of these Terms, you must immediately cease all use of the Software and delete all copies in your possession.</p>
+    <p class="text-gray-700 mb-4">These Terms constitute a legally binding agreement between you ("User," "you," or "your") and the authors and contributors of Snapper ("we," "us," or "our").</p>
 
+    <!-- 2. Description -->
     <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">2. Description of Service</h2>
-    <p class="text-gray-700 mb-4">Snapper is an Agent Application Firewall (AAF) that inspects and enforces security policy on AI agent traffic. It provides rule-based control, PII protection, approval workflows, and audit logging for AI agents including OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents.</p>
+    <p class="text-gray-700 mb-3">Snapper is an Agent Application Firewall (AAF) that inspects and enforces security policy on AI agent traffic. It provides rule-based control, PII protection, approval workflows, and audit logging for AI agents including OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents.</p>
+    <p class="text-gray-700 mb-4 font-semibold">Snapper is a security tool, not a security guarantee. The Software is designed to reduce risk, not eliminate it. You acknowledge that AI agent security is an evolving field and that no tool can provide absolute protection against all threats.</p>
 
+    <!-- 3. License -->
     <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">3. License</h2>
-    <p class="text-gray-700 mb-4">Snapper is open-source software licensed under the <a href="https://opensource.org/licenses/MIT" class="text-primary-600 hover:text-primary-800 underline">MIT License</a>.</p>
+    <p class="text-gray-700 mb-4">Snapper is open-source software licensed under the <a href="https://opensource.org/licenses/MIT" class="text-primary-600 hover:text-primary-800 underline">MIT License</a>. The MIT License governs your right to use, copy, modify, and distribute the Software. These Terms govern additional conditions of use.</p>
 
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">4. Use at Your Own Risk</h2>
-    <p class="text-gray-700 mb-2">The Software is provided "as is" without warranty of any kind. You are solely responsible for:</p>
+    <!-- 4. Assumption of Risk -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">4. Assumption of Risk</h2>
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+        <p class="text-red-800 font-bold text-sm uppercase">You expressly acknowledge and agree that use of the Software is at your sole risk.</p>
+    </div>
+    <p class="text-gray-700 mb-2">By using Snapper, you assume full responsibility for:</p>
     <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
-        <li>Configuring security rules appropriate for your environment</li>
-        <li>Protecting your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> and API keys</li>
-        <li>Securing your deployment (firewall, TLS, access controls)</li>
-        <li>Backing up your data and encryption keys</li>
-        <li>Evaluating whether the Software meets your security requirements</li>
+        <li>Selecting, configuring, testing, and maintaining security rules appropriate for your environment</li>
+        <li>Protecting your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code>, API keys, database credentials, and all other secrets</li>
+        <li>Securing your deployment infrastructure (firewall, TLS, network access controls, operating system hardening)</li>
+        <li>Backing up your data, encryption keys, and database contents regularly</li>
+        <li>Evaluating whether the Software meets your security, compliance, and regulatory requirements</li>
+        <li>Monitoring the Software's operation and responding to security events</li>
+        <li>Keeping the Software and all dependencies up to date with security patches</li>
+        <li>Testing the Software thoroughly in a non-production environment before deploying to production</li>
+        <li>Understanding the security implications of every rule, configuration, and integration you enable</li>
+        <li>Any and all consequences arising from AI agent actions, whether or not those actions were evaluated by Snapper</li>
     </ul>
 
+    <!-- 5. No Guarantee of Security -->
     <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">5. No Guarantee of Security</h2>
-    <p class="text-gray-700 mb-2">While Snapper is designed to enhance AI agent security, no software can guarantee complete protection. Snapper:</p>
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+        <p class="text-red-800 font-bold text-sm uppercase">The Software does not and cannot guarantee security of any kind.</p>
+    </div>
+    <p class="text-gray-700 mb-2">While Snapper is designed to enhance AI agent security, you expressly acknowledge and agree that:</p>
     <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
-        <li>Does not replace proper network security, access controls, or monitoring</li>
-        <li>May not detect all malicious actions or PII patterns</li>
-        <li>Depends on correct configuration to be effective</li>
-        <li>Should be used as one layer in a defense-in-depth strategy</li>
+        <li>Snapper does not replace proper network security, access controls, intrusion detection, or security monitoring</li>
+        <li>Snapper may fail to detect, block, or flag malicious, unauthorized, or unintended agent actions</li>
+        <li>Snapper may fail to detect all PII, sensitive data, or confidential information in agent traffic</li>
+        <li>Snapper depends entirely on correct configuration to be effective; misconfiguration may result in no protection or a false sense of security</li>
+        <li>Snapper should be used as <strong>one layer</strong> in a defense-in-depth security strategy, never as the sole security measure</li>
+        <li>New attack vectors, AI agent behaviors, or software vulnerabilities may emerge that Snapper does not address</li>
+        <li>Rule evaluation, approval workflows, and blocking mechanisms may fail due to software bugs, infrastructure failures, race conditions, network issues, or other technical problems</li>
+        <li>The absence of a blocked action in Snapper's logs does not mean the action was safe, authorized, or desirable</li>
+        <li>Snapper's hook scripts depend on the correct functioning of third-party agent frameworks, and changes to those frameworks may break Snapper's protections without warning</li>
     </ul>
 
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Data Handling</h2>
-    <p class="text-gray-700 mb-2">Snapper processes and stores:</p>
+    <!-- 6. Disclaimer of Warranties -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Disclaimer of Warranties</h2>
+    <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-4">
+        <p class="text-gray-800 font-bold text-sm uppercase">The Software is provided "as is" and "as available" without warranty of any kind, express or implied, including but not limited to the implied warranties of merchantability, fitness for a particular purpose, non-infringement, accuracy, completeness, reliability, security, or availability.</p>
+    </div>
+    <p class="text-gray-700 mb-2">We do not warrant that:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>The Software will meet your requirements or expectations</li>
+        <li>The Software will operate uninterrupted, error-free, or securely</li>
+        <li>Any defects or vulnerabilities will be corrected</li>
+        <li>The Software is free of viruses, malware, or other harmful components</li>
+        <li>The results obtained from use of the Software will be accurate, complete, or reliable</li>
+        <li>The encryption, hashing, or other security mechanisms in the Software are free from vulnerabilities</li>
+    </ul>
+
+    <!-- 7. Data Handling -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">7. Data Handling and Privacy</h2>
+    <p class="text-gray-700 mb-2">Snapper processes and stores the following data locally in your infrastructure:</p>
     <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
         <li><strong>Audit logs</strong> of agent actions (commands, file access, network requests)</li>
         <li><strong>PII vault entries</strong> encrypted with Fernet (AES-128-CBC) derived from your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code></li>
         <li><strong>Agent metadata</strong> including API keys (stored as SHA-256 hashes)</li>
         <li><strong>Approval workflow state</strong> in Redis (with configurable TTL)</li>
     </ul>
-    <p class="text-gray-700 mb-4">All data is stored locally in your PostgreSQL and Redis instances. Snapper does not transmit data to external servers unless you configure external alerting (Telegram, Slack, email, webhooks).</p>
+    <p class="text-gray-700 mb-3">All data is stored in your own PostgreSQL and Redis instances. Snapper does not transmit data to external servers operated by us. However, if you configure external alerting (Telegram, Slack, email, webhooks, PagerDuty), data may be transmitted to those third-party services.</p>
+    <p class="text-gray-700 mb-3 font-semibold">You are solely responsible for ensuring your use of Snapper complies with all applicable data protection laws and regulations, including but not limited to GDPR, CCPA, HIPAA, and any other relevant privacy legislation.</p>
+    <p class="text-gray-700 mb-4">We are not responsible for data breaches, data loss, or unauthorized access to data stored by Snapper, regardless of cause.</p>
 
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">7. PII Vault</h2>
-    <p class="text-gray-700 mb-4">The PII vault encrypts sensitive data using a key derived from your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> via HKDF. <strong>Changing or losing your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> after storing vault entries will make them permanently unrecoverable.</strong> You are responsible for securely backing up your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code>.</p>
-
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">8. Third-Party Integrations</h2>
-    <p class="text-gray-700 mb-4">Snapper integrates with third-party services (Telegram, Slack, PagerDuty, GitHub, NVD) when configured by you. These integrations are subject to the respective third-party terms of service. Snapper is not responsible for third-party service availability or data handling.</p>
-
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Limitation of Liability</h2>
-    <p class="text-gray-700 mb-2">To the maximum extent permitted by law, the authors and contributors of Snapper shall not be liable for any direct, indirect, incidental, special, consequential, or exemplary damages arising from the use or inability to use the Software, including but not limited to:</p>
+    <!-- 8. PII Vault -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">8. PII Vault and Encryption</h2>
+    <p class="text-gray-700 mb-3">The PII vault encrypts sensitive data using a key derived from your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> via HKDF.</p>
+    <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-4">
+        <p class="text-yellow-800 font-bold text-sm">CRITICAL WARNING: Changing, losing, or compromising your SECRET_KEY after storing vault entries will make all encrypted vault data permanently and irreversibly unrecoverable. No recovery mechanism exists.</p>
+    </div>
+    <p class="text-gray-700 mb-2">You are solely responsible for:</p>
     <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
-        <li>Data loss or corruption</li>
-        <li>Security breaches</li>
-        <li>Unauthorized access to systems</li>
-        <li>Loss of business or revenue</li>
-        <li>Damages from AI agent actions that bypass security rules</li>
+        <li>Securely generating, storing, and backing up your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code></li>
+        <li>Protecting your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> from unauthorized access</li>
+        <li>Understanding that the encryption strength depends on the secrecy and strength of your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code></li>
+        <li>Evaluating whether the encryption mechanisms meet your compliance and security requirements</li>
+    </ul>
+    <p class="text-gray-700 mb-4">We make no representations about the strength, adequacy, or suitability of the encryption algorithms used. Cryptographic standards evolve, and what is considered secure today may not be secure in the future.</p>
+
+    <!-- 9. Third-Party -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Third-Party Integrations and Dependencies</h2>
+    <p class="text-gray-700 mb-2">Snapper integrates with third-party services and depends on third-party software. You acknowledge that:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Third-party integrations (Telegram, Slack, PagerDuty, GitHub, NVD) are subject to their respective terms of service and privacy policies</li>
+        <li>We are not responsible for the availability, reliability, accuracy, or security of any third-party service</li>
+        <li>Third-party services may change their APIs, terms, or behavior at any time, which may break Snapper's integrations</li>
+        <li>Snapper depends on third-party software libraries, and vulnerabilities in those dependencies may affect the security of the Software</li>
+        <li>Agent hook scripts depend on the specific behavior of third-party AI agents (Cursor, Windsurf, Cline, Claude Code, OpenClaw), which may change without notice</li>
     </ul>
 
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Modifications</h2>
-    <p class="text-gray-700 mb-4">These terms may be updated from time to time. Continued use of the Software after changes constitutes acceptance of the modified terms. Check this document for the latest version.</p>
+    <!-- 10. Limitation of Liability -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Limitation of Liability</h2>
+    <div class="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-4">
+        <p class="text-gray-800 font-bold text-sm uppercase">To the maximum extent permitted by applicable law, in no event shall the authors, contributors, maintainers, or copyright holders of Snapper be liable for any direct, indirect, incidental, special, consequential, punitive, or exemplary damages whatsoever, including but not limited to:</p>
+    </div>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Loss, theft, or corruption of data (including encrypted vault data)</li>
+        <li>Security breaches, data breaches, or unauthorized access to systems or data</li>
+        <li>Unauthorized, unintended, or malicious actions performed by AI agents</li>
+        <li>AI agent actions that bypass, circumvent, or are not evaluated by Snapper's security rules</li>
+        <li>Loss of business, revenue, profits, goodwill, or anticipated savings</li>
+        <li>Business interruption or system downtime</li>
+        <li>Cost of procurement of substitute goods or services</li>
+        <li>Regulatory fines, penalties, or legal liability arising from data protection violations</li>
+        <li>Damage to reputation arising from security incidents</li>
+        <li>Any damages arising from the use or inability to use the Software</li>
+        <li>Any damages arising from unauthorized access to or alteration of your data or transmissions</li>
+    </ul>
+    <p class="text-gray-700 mb-3 font-semibold">This limitation applies whether the damages arise from use or misuse of the Software, from inability to use the Software, or from the interruption, suspension, or termination of the Software, whether the authors were advised of the possibility of such damages, and regardless of the theory of liability (contract, tort, strict liability, or otherwise).</p>
+    <p class="text-gray-700 mb-4 font-semibold">In jurisdictions that do not allow the exclusion or limitation of incidental or consequential damages, our liability shall be limited to the maximum extent permitted by law.</p>
 
-    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">11. Contact</h2>
+    <!-- 11. Indemnification -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">11. Indemnification</h2>
+    <p class="text-gray-700 mb-2">You agree to indemnify, defend, and hold harmless the authors, contributors, maintainers, and copyright holders of Snapper from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees and court costs) arising out of or relating to:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Your use or misuse of the Software</li>
+        <li>Your violation of these Terms</li>
+        <li>Your violation of any applicable law, regulation, or third-party right</li>
+        <li>Any security incident, data breach, or unauthorized access arising from your deployment of the Software</li>
+        <li>Any claim by a third party related to actions performed by AI agents under your control, whether or not those actions were evaluated by Snapper</li>
+        <li>Your failure to properly configure, maintain, or secure the Software</li>
+        <li>Any data processed, stored, or transmitted through the Software</li>
+    </ul>
+
+    <!-- 12. No Professional Advice -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">12. No Professional Advice</h2>
+    <p class="text-gray-700 mb-4">The Software does not constitute professional security, legal, compliance, or technical advice. You should consult qualified professionals regarding your specific security, compliance, and regulatory requirements. The presence of security features in the Software does not imply that those features are sufficient for your use case or that your use of the Software satisfies any legal or regulatory obligation.</p>
+
+    <!-- 13. Compliance -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">13. Compliance and Regulatory</h2>
+    <p class="text-gray-700 mb-4">You are solely responsible for determining whether your use of the Software complies with all applicable laws, regulations, and industry standards. Snapper is not certified, audited, or approved by any regulatory body. The Software is not designed or intended to meet the requirements of any specific compliance framework (including but not limited to SOC 2, ISO 27001, PCI DSS, HIPAA, FedRAMP, or GDPR) unless explicitly stated in writing.</p>
+
+    <!-- 14. Availability -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">14. Availability and Support</h2>
+    <p class="text-gray-700 mb-2">The Software is provided without any guarantee of availability, uptime, support, maintenance, or updates. We are under no obligation to:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Provide technical support or assistance</li>
+        <li>Fix bugs, vulnerabilities, or defects</li>
+        <li>Release updates, patches, or new versions</li>
+        <li>Maintain backward compatibility</li>
+        <li>Respond to issues, feature requests, or security reports within any timeframe</li>
+    </ul>
+
+    <!-- 15. Governing Law -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">15. Governing Law and Dispute Resolution</h2>
+    <p class="text-gray-700 mb-4">These Terms shall be governed by and construed in accordance with the laws of the State of Texas, United States, without regard to its conflict of law provisions. Any dispute arising out of or relating to these Terms or the Software shall be resolved exclusively in the state or federal courts located in Dallas County, Texas, and you consent to the personal jurisdiction of such courts.</p>
+
+    <!-- 16. Severability -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">16. Severability</h2>
+    <p class="text-gray-700 mb-4">If any provision of these Terms is held to be invalid, illegal, or unenforceable by a court of competent jurisdiction, such provision shall be modified to the minimum extent necessary to make it valid and enforceable, or if modification is not possible, shall be severed from these Terms. The invalidity of any provision shall not affect the validity or enforceability of the remaining provisions, which shall continue in full force and effect.</p>
+
+    <!-- 17. Entire Agreement -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">17. Entire Agreement</h2>
+    <p class="text-gray-700 mb-4">These Terms, together with the MIT License, constitute the entire agreement between you and us regarding the Software and supersede all prior or contemporaneous agreements, representations, warranties, and understandings, whether written, oral, or implied.</p>
+
+    <!-- 18. Waiver -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">18. Waiver</h2>
+    <p class="text-gray-700 mb-4">The failure of the authors to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver of any provision of these Terms will be effective only if in writing and signed by the authors.</p>
+
+    <!-- 19. Modifications -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">19. Modifications</h2>
+    <p class="text-gray-700 mb-4">We reserve the right to modify these Terms at any time without prior notice. Changes are effective immediately upon being posted in the repository. Your continued use of the Software after any modification constitutes your acceptance of the modified Terms. It is your responsibility to review these Terms periodically for changes.</p>
+
+    <!-- 20. Contact -->
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">20. Contact</h2>
     <p class="text-gray-700 mb-4">For questions about these terms, open an issue at <a href="https://github.com/jmckinley/snapper/issues" class="text-primary-600 hover:text-primary-800 underline">github.com/jmckinley/snapper/issues</a>.</p>
 </div>
 {% endblock %}
