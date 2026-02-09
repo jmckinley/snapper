@@ -111,7 +111,6 @@ output_decision() {
 # --- Call Snapper evaluate endpoint ---
 RESPONSE=$(curl -skf -X POST "$SNAPPER_URL/api/v1/rules/evaluate" \
     -H "Content-Type: application/json" \
-    -H "Origin: $SNAPPER_URL" \
     ${SNAPPER_API_KEY:+-H "X-API-Key: $SNAPPER_API_KEY"} \
     -d "$PAYLOAD" 2>/dev/null)
 
@@ -182,7 +181,6 @@ case "$DECISION" in
             fi
 
             STATUS_RESPONSE=$(curl -skf "$SNAPPER_URL/api/v1/approvals/$APPROVAL_ID/status" \
-                -H "Origin: $SNAPPER_URL" \
                 ${SNAPPER_API_KEY:+-H "X-API-Key: $SNAPPER_API_KEY"} 2>/dev/null)
 
             if [ $? -ne 0 ]; then
