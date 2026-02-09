@@ -851,7 +851,8 @@ async def _handle_rules_command(chat_id: int, text: str):
         emoji = "🔴" if rule.action == RuleAction.DENY else "🟢" if rule.action == RuleAction.ALLOW else "🟡"
         scope = "🌍" if rule.agent_id is None else "👤"
         lines.append(f"{emoji} {scope} *{rule.name}*")
-        lines.append(f"   _{rule.rule_type.value}_ | Priority: {rule.priority}")
+        rt = rule.rule_type.value if hasattr(rule.rule_type, 'value') else rule.rule_type
+        lines.append(f"   _{rt}_ | Priority: {rule.priority}")
 
     if total_count > len(rules):
         lines.append(f"\n_Showing {len(rules)} of {total_count} rule(s)_")

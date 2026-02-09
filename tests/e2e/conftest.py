@@ -72,6 +72,14 @@ def settings_page(page: Page, base_url: str) -> Page:
     return page
 
 
+@pytest.fixture
+def integrations_page(page: Page, base_url: str) -> Page:
+    """Navigate to integrations page and wait for it to load."""
+    page.goto(f"{base_url}/integrations")
+    page.wait_for_selector("text=Integrations", timeout=10000)
+    return page
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Capture screenshot on test failure for easier debugging."""

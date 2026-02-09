@@ -273,3 +273,77 @@ async def telegram_context(redis: RedisClient, sample_agent: Agent):
     context_key = hashlib.sha256(json.dumps(context_data).encode()).hexdigest()[:12]
     await redis.set(f"tg_ctx:{context_key}", json.dumps(context_data), expire=3600)
     return context_key, context_data
+
+
+@pytest_asyncio.fixture
+async def sample_security_issue(db_session: AsyncSession):
+    """Create a sample SecurityIssue for testing."""
+    from app.models.security_issues import SecurityIssue, IssueSeverity, IssueStatus
+
+    issue = SecurityIssue(
+        id=uuid4(),
+        cve_id="CVE-2026-TEST-001",
+        title="Test CVE: Critical Vulnerability",
+        description="A test vulnerability for unit testing.",
+        severity=IssueSeverity.CRITICAL,
+        cvss_score=9.0,
+        status=IssueStatus.ACTIVE,
+        source="test",
+    )
+    db_session.add(issue)
+    await db_session.commit()
+    await db_session.refresh(issue)
+    return issue
+
+
+@pytest_asyncio.fixture
+async def sample_malicious_skill(db_session: AsyncSession):
+    """Create a sample MaliciousSkill for testing."""
+    from app.models.security_issues import MaliciousSkill, IssueSeverity
+
+    skill = MaliciousSkill(
+        id=uuid4(),
+        skill_id="test-malicious",
+        skill_name="Test Malicious",
+        threat_type="typosquatting",
+        severity=IssueSeverity.CRITICAL,
+        is_blocked=True,
+        is_verified=True,
+        source="test",
+        confidence="confirmed",
+    )
+    db_session.add(skill)
+    await db_session.commit()
+    await db_session.refresh(skill)
+    return skill
+
+
+@pytest_asyncio.fixture
+async def sample_recommendation(db_session: AsyncSession):
+    """Create a sample SecurityRecommendation for testing."""
+    from app.models.security_issues import SecurityRecommendation, IssueSeverity
+
+    rec = SecurityRecommendation(
+        id=uuid4(),
+        title="Test Credential Protection",
+        description="Add credential protection rules",
+        rationale="Improve score",
+        severity=IssueSeverity.HIGH,
+        impact_score=25,
+        recommended_rules={
+            "rules": [
+                {
+                    "rule_type": "credential_protection",
+                    "action": "deny",
+                    "name": "Test Rule",
+                    "parameters": {"protected_patterns": [".env"]},
+                }
+            ]
+        },
+        is_applied=False,
+        is_dismissed=False,
+    )
+    db_session.add(rec)
+    await db_session.commit()
+    await db_session.refresh(rec)
+    return rec

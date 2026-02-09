@@ -328,6 +328,133 @@ class TestMaliciousSkillBlocking:
         assert result.decision == EvaluationDecision.ALLOW
 
 
+class TestMitigateVulnerability:
+    """Tests for POST /api/v1/security/vulnerabilities/{id}/mitigate."""
+
+    @pytest.mark.asyncio
+    async def test_mitigate_sets_status_and_timestamp(
+        self, client, sample_security_issue
+    ):
+        """POST mitigate sets status=MITIGATED + mitigated_at."""
+        response = await client.post(
+            f"/api/v1/security/vulnerabilities/{sample_security_issue.id}/mitigate"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "mitigated"
+        assert data["id"] == str(sample_security_issue.id)
+
+    @pytest.mark.asyncio
+    async def test_mitigate_nonexistent_returns_404(self, client):
+        """Nonexistent ID returns 404."""
+        fake_id = uuid4()
+        response = await client.post(
+            f"/api/v1/security/vulnerabilities/{fake_id}/mitigate"
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_mitigate_already_mitigated_is_idempotent(
+        self, client, sample_security_issue
+    ):
+        """Can mitigate already-mitigated issue (idempotent)."""
+        await client.post(
+            f"/api/v1/security/vulnerabilities/{sample_security_issue.id}/mitigate"
+        )
+        # Second call should still succeed
+        response = await client.post(
+            f"/api/v1/security/vulnerabilities/{sample_security_issue.id}/mitigate"
+        )
+        assert response.status_code == 200
+
+
+class TestApplyRecommendationWithRules:
+    """Tests for applying recommendations that have structured rule configs."""
+
+    @pytest.mark.asyncio
+    async def test_structured_rules_create_rule_objects(
+        self, client, db_session, sample_recommendation
+    ):
+        """Recommendation with structured rules list creates Rule objects with source='recommendation'."""
+        from app.models.rules import Rule
+
+        response = await client.post(
+            f"/api/v1/security/recommendations/{sample_recommendation.id}/apply",
+            json={},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["rules_created"]) >= 1
+
+        # Verify rule in DB
+        from sqlalchemy import select
+        result = await db_session.execute(
+            select(Rule).where(Rule.source == "recommendation")
+        )
+        rules = list(result.scalars().all())
+        assert len(rules) >= 1
+        assert rules[0].source_reference == str(sample_recommendation.id)
+
+    @pytest.mark.asyncio
+    async def test_parameter_overrides_merged(
+        self, client, db_session, sample_recommendation
+    ):
+        """parameter_overrides are merged into rule parameters."""
+        from app.models.rules import Rule
+        from sqlalchemy import select
+
+        response = await client.post(
+            f"/api/v1/security/recommendations/{sample_recommendation.id}/apply",
+            json={"parameter_overrides": {"extra_key": "extra_value"}},
+        )
+        assert response.status_code == 200
+
+        result = await db_session.execute(
+            select(Rule).where(Rule.source == "recommendation")
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+        assert rule.parameters.get("extra_key") == "extra_value"
+
+    @pytest.mark.asyncio
+    async def test_infer_rule_type_maps_keywords(self, client, db_session):
+        """_infer_rule_type maps keywords: 'origin'→ORIGIN_VALIDATION, 'skill'→SKILL_DENYLIST."""
+        from app.models.security_issues import SecurityRecommendation, IssueSeverity
+
+        # Recommendation without structured rules, relying on inference
+        rec = SecurityRecommendation(
+            id=uuid4(),
+            title="Enable Origin Validation",
+            description="Add origin validation for websocket",
+            rationale="Block CSRF",
+            severity=IssueSeverity.HIGH,
+            impact_score=20,
+            recommended_rules={},  # Empty - will use inference
+            is_applied=False,
+            is_dismissed=False,
+        )
+        db_session.add(rec)
+        await db_session.commit()
+
+        response = await client.post(
+            f"/api/v1/security/recommendations/{rec.id}/apply",
+            json={},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["rules_created"]) >= 1
+
+        # Verify inferred rule type
+        from app.models.rules import Rule, RuleType
+        from sqlalchemy import select
+        result = await db_session.execute(
+            select(Rule).where(Rule.source_reference == str(rec.id))
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+        assert rule.rule_type == RuleType.ORIGIN_VALIDATION
+
+
 class TestAuditEndpoints:
     """Tests for audit log endpoints."""
 

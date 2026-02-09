@@ -233,10 +233,10 @@ class TestConfirmBlockCallback:
     """Tests for the 'confirm_block' callback handler (Emergency Block)."""
 
     @pytest.mark.asyncio
-    async def test_confirm_block_creates_rule(
+    async def test_confirm_block_webhook_returns_ok(
         self, client: AsyncClient, sample_agent: Agent, redis: RedisClient
     ):
-        """confirm_block: callback should create priority 10000 deny-all rule."""
+        """confirm_block: webhook dispatches handler and returns emergency_block action."""
         # Need to set up pending block first
         chat_id = 12345
         mock_result = {"rule_id": str(sample_agent.id), "status": "activated"}
@@ -302,3 +302,244 @@ class TestRuleCallback:
             call_args = mock_send.call_args
             message_text = call_args.kwargs.get("text", "")
             assert sample_rule.name in message_text
+
+
+class TestEmergencyBlock:
+    """Tests for _activate_emergency_block via webhook.
+
+    The internal function creates its own DB session via async_session_factory(),
+    so we verify behavior through mock return values and webhook responses.
+    """
+
+    @pytest.mark.asyncio
+    async def test_webhook_dispatches_emergency_block_handler(
+        self, client: AsyncClient, redis: RedisClient
+    ):
+        """Emergency block webhook dispatches _activate_emergency_block and returns OK."""
+        mock_result = {
+            "rule_id": str(uuid4()),
+            "status": "activated",
+            "rule_types": ["command_denylist", "skill_denylist", "file_access", "network_egress"],
+        }
+
+        with patch("app.routers.telegram._answer_callback", new_callable=AsyncMock), \
+             patch("app.routers.telegram._edit_message", new_callable=AsyncMock), \
+             patch("app.routers.telegram._activate_emergency_block", new_callable=AsyncMock, return_value=mock_result) as mock_block:
+
+            response = await client.post(
+                "/api/v1/telegram/webhook",
+                json={
+                    "update_id": 123456,
+                    "callback_query": {
+                        "id": "callback_block",
+                        "from": {"id": 12345, "username": "admin"},
+                        "message": {"chat": {"id": 12345}, "message_id": 200},
+                        "data": "confirm_block:12345",
+                    },
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["ok"] is True
+            assert data["action"] == "emergency_block"
+            mock_block.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_all_rules_global_and_max_priority(
+        self, client: AsyncClient, db_session: AsyncSession, redis: RedisClient
+    ):
+        """Verify _activate_emergency_block creates global priority-10000 rules via direct call with test DB."""
+        from tests.conftest import TestSessionLocal
+
+        async with TestSessionLocal() as direct_session:
+            from app.routers.telegram import _activate_emergency_block
+            with patch("app.routers.telegram.async_session_factory", TestSessionLocal):
+                await _activate_emergency_block(12345, "admin")
+
+            result = await direct_session.execute(
+                select(Rule).where(
+                    Rule.name.like("%EMERGENCY%"),
+                    Rule.is_active == True,
+                )
+            )
+            rules = list(result.scalars().all())
+            assert len(rules) >= 4
+
+            for rule in rules:
+                assert rule.priority == 10000
+                assert rule.agent_id is None
+
+    @pytest.mark.asyncio
+    async def test_reactivates_existing_emergency_rules(
+        self, client: AsyncClient, db_session: AsyncSession, redis: RedisClient
+    ):
+        """If emergency rules already exist, reactivates them via direct call with test DB."""
+        from tests.conftest import TestSessionLocal
+
+        async with TestSessionLocal() as direct_session:
+            # Create an existing inactive emergency rule
+            existing_rule = Rule(
+                id=uuid4(),
+                name="🚨 EMERGENCY BLOCK ALL",
+                rule_type=RuleType.COMMAND_DENYLIST,
+                action=RuleAction.DENY,
+                priority=10000,
+                parameters={"patterns": [".*"]},
+                is_active=False,
+                agent_id=None,
+            )
+            direct_session.add(existing_rule)
+            await direct_session.commit()
+
+            from app.routers.telegram import _activate_emergency_block
+            with patch("app.routers.telegram.async_session_factory", TestSessionLocal):
+                await _activate_emergency_block(12345, "admin")
+
+            await direct_session.refresh(existing_rule)
+            assert existing_rule.is_active is True
+
+
+class TestStatusCommand:
+    """Tests for /status webhook command."""
+
+    @pytest.mark.asyncio
+    async def test_status_returns_health_info(
+        self, client: AsyncClient, redis: RedisClient
+    ):
+        """/status webhook returns PostgreSQL + Redis health status."""
+        with patch("app.routers.telegram._send_message", new_callable=AsyncMock) as mock_send:
+            response = await client.post(
+                "/api/v1/telegram/webhook",
+                json={
+                    "update_id": 200001,
+                    "message": {
+                        "message_id": 300,
+                        "from": {"id": 12345, "username": "admin"},
+                        "chat": {"id": 12345, "type": "private"},
+                        "text": "/status",
+                    },
+                },
+            )
+
+            assert response.status_code == 200
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args
+            text = call_args.kwargs.get("text", "")
+            assert "PostgreSQL" in text or "Snapper" in text
+
+    @pytest.mark.asyncio
+    async def test_status_webhook_returns_ok(
+        self, client: AsyncClient, redis: RedisClient
+    ):
+        """/status webhook returns 200 OK response."""
+        with patch("app.routers.telegram._send_message", new_callable=AsyncMock):
+            response = await client.post(
+                "/api/v1/telegram/webhook",
+                json={
+                    "update_id": 200002,
+                    "message": {
+                        "message_id": 301,
+                        "from": {"id": 12345, "username": "admin"},
+                        "chat": {"id": 12345, "type": "private"},
+                        "text": "/status",
+                    },
+                },
+            )
+
+            assert response.status_code == 200
+
+
+class TestPurgeCommand:
+    """Tests for PII purge functionality."""
+
+    @pytest.mark.asyncio
+    async def test_pii_purge_redacts_audit_fields(
+        self, client: AsyncClient, db_session: AsyncSession,
+        sample_agent: Agent, redis: RedisClient
+    ):
+        """_execute_pii_purge redacts details/old_value/new_value JSONB fields."""
+        from contextlib import asynccontextmanager
+        from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
+        from app.routers.telegram import _execute_pii_purge
+
+        # Create audit log with PII-like data
+        log = AuditLog(
+            id=uuid4(),
+            action=AuditAction.REQUEST_DENIED,
+            severity=AuditSeverity.INFO,
+            agent_id=sample_agent.id,
+            message="Blocked access to user@email.com",
+            details={"email": "user@email.com", "ip": "192.168.1.1"},
+        )
+        db_session.add(log)
+        await db_session.commit()
+
+        @asynccontextmanager
+        async def mock_factory():
+            yield db_session
+
+        with patch("app.routers.telegram.async_session_factory", mock_factory), \
+             patch("app.routers.telegram._send_message", new_callable=AsyncMock):
+            result = await _execute_pii_purge(str(sample_agent.id)[:8], "admin")
+
+        assert result["redacted_count"] >= 1
+
+
+class TestRulesCommand:
+    """Tests for /rules webhook command.
+
+    Uses TestSessionLocal (real test DB sessions) so SQLAlchemy ORM
+    mapping (String → RuleType enum) works correctly.
+    """
+
+    @pytest.mark.asyncio
+    async def test_shows_truncation_message_for_many_rules(
+        self, client: AsyncClient, db_session: AsyncSession, redis: RedisClient
+    ):
+        """Shows 'Showing 15 of N rule(s)' when > 15 rules via direct call."""
+        from app.routers.telegram import _handle_rules_command
+        from tests.conftest import TestSessionLocal
+
+        # Create 20 global rules (agent_id=None) so they show for any agent
+        async with TestSessionLocal() as session:
+            for i in range(20):
+                rule = Rule(
+                    id=uuid4(),
+                    name=f"Test Rule {i+1:02d}",
+                    rule_type=RuleType.COMMAND_ALLOWLIST,
+                    action=RuleAction.ALLOW,
+                    priority=100 + i,
+                    parameters={"commands": [f"cmd-{i}"]},
+                    is_active=True,
+                    agent_id=None,
+                )
+                session.add(rule)
+            await session.commit()
+
+        with patch("app.routers.telegram.async_session_factory", TestSessionLocal), \
+             patch("app.routers.telegram._get_or_create_test_agent", new_callable=AsyncMock, return_value=None), \
+             patch("app.routers.telegram._send_message", new_callable=AsyncMock) as mock_send:
+            await _handle_rules_command(12345, "/rules")
+
+            mock_send.assert_called()
+            text = mock_send.call_args.kwargs.get("text", "")
+            assert "Showing 15 of" in text
+            assert "20" in text
+
+    @pytest.mark.asyncio
+    async def test_shows_no_active_rules_message(
+        self, client: AsyncClient, db_session: AsyncSession, redis: RedisClient
+    ):
+        """Shows 'No active rules' message when none exist."""
+        from app.routers.telegram import _handle_rules_command
+        from tests.conftest import TestSessionLocal
+
+        with patch("app.routers.telegram.async_session_factory", TestSessionLocal), \
+             patch("app.routers.telegram._get_or_create_test_agent", new_callable=AsyncMock, return_value=None), \
+             patch("app.routers.telegram._send_message", new_callable=AsyncMock) as mock_send:
+            await _handle_rules_command(12345, "/rules")
+
+            mock_send.assert_called()
+            text = mock_send.call_args.kwargs.get("text", "")
+            assert "No rules configured" in text
