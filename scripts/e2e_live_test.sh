@@ -39,6 +39,7 @@ TOTAL=0
 CREATED_RULES=()
 CREATED_VAULT_IDS=()
 AGENT_UUID=""
+AGENT_API_KEY=""
 BASELINE_AUDIT_COUNT=0
 
 # ============================================================
@@ -159,8 +160,13 @@ delete_rule() {
 # Evaluate a request against the rule engine
 evaluate() {
     local json="$1"
+    local api_key_args=()
+    if [[ -n "$AGENT_API_KEY" ]]; then
+        api_key_args=(-H "X-API-Key: ${AGENT_API_KEY}")
+    fi
     curl -sf -X POST "${API}/rules/evaluate" \
         "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${api_key_args[@]+"${api_key_args[@]}"}" \
         -H "Content-Type: application/json" \
         -d "$json" 2>/dev/null
 }
@@ -293,11 +299,17 @@ if [[ -z "$AGENT_RESP" ]] || echo "$AGENT_RESP" | jq -e '.detail' >/dev/null 2>&
 fi
 
 AGENT_UUID=$(echo "$AGENT_RESP" | jq -r '.id // empty')
+AGENT_API_KEY=$(echo "$AGENT_RESP" | jq -r '.api_key // empty')
 if [[ -z "$AGENT_UUID" ]]; then
     err "Could not create or find test agent"
     exit 1
 fi
 log "Test agent UUID: $AGENT_UUID"
+if [[ -n "$AGENT_API_KEY" ]]; then
+    log "Agent API key captured (${AGENT_API_KEY:0:8}...)"
+else
+    warn "No API key in agent response — evaluate calls may fail if REQUIRE_API_KEY=true"
+fi
 
 # Activate the agent (new agents start as 'pending')
 AGENT_STATUS_NOW=$(echo "$AGENT_RESP" | jq -r '.status // empty')
@@ -559,8 +571,8 @@ DECISION=$(echo "$RESULT" | jq -r '.decision')
 assert_eq "$DECISION" "require_approval" "1.13 human_in_loop requires approval for 'deploy production'"
 delete_rule "$RULE_ID"
 
-# --- 1.14 localhost_restriction (allow 127.0.0.1) ---
-log "1.14 localhost_restriction (allow localhost)"
+# --- 1.14 localhost_restriction (deny when ip unknown) ---
+log "1.14 localhost_restriction (deny when ip_address not in context)"
 RULE_ID=$(create_rule '{
     "name":"e2e-localhost",
     "rule_type":"localhost_restriction",
@@ -569,10 +581,11 @@ RULE_ID=$(create_rule '{
     "priority":100,
     "is_active":true
 }')
-# The evaluate endpoint is called from localhost, so context.ip_address should be 127.0.0.1
+# Note: The evaluate API doesn't populate context.ip_address, so the
+# localhost_restriction evaluator returns deny (no IP = deny). This tests
+# the fail-safe behavior. Full localhost testing requires a real hook call.
 RESULT=$(evaluate "{\"agent_id\":\"${AGENT_EID}\",\"request_type\":\"command\",\"command\":\"echo hello\"}")
-DECISION=$(echo "$RESULT" | jq -r '.decision')
-assert_eq "$DECISION" "allow" "1.14 localhost_restriction allows 127.0.0.1"
+assert_deny "$RESULT" "1.14 localhost_restriction denies when ip_address unknown"
 delete_rule "$RULE_ID"
 
 # --- 1.15 file_access (denied path) ---
@@ -943,7 +956,8 @@ delete_rule "$RULE_ID"
 # 4.5 Delete vault entry
 log "4.5 Delete vault entry"
 if [[ -n "$VAULT_ID" ]]; then
-    DEL_RESP=$(api_curl -X DELETE "${API}/vault/entries/${VAULT_ID}?owner_chat_id=${VAULT_OWNER}")
+    DEL_RESP=$(api_curl -X DELETE "${API}/vault/entries/${VAULT_ID}?owner_chat_id=${VAULT_OWNER}" \
+        -H "X-Internal-Source: telegram")
     DEL_STATUS=$(echo "$DEL_RESP" | jq -r '.status // empty')
     assert_eq "$DEL_STATUS" "deleted" "4.5 Vault entry deleted"
     # Remove from cleanup
@@ -980,19 +994,23 @@ for i in 0 1 2 3; do
         \"rule_type\":\"${BLOCK_TYPES[$i]}\",
         \"action\":\"deny\",
         \"parameters\":${BLOCK_PARAMS[$i]},
-        \"priority\":10000,
+        \"priority\":1000,
         \"is_active\":true
     }")
     BLOCK_RULE_IDS+=("$BID")
 done
-# Verify at least 1 block rule was created
+# Verify block rules were actually created (non-empty IDs)
+VALID_BLOCK_COUNT=0
+for bid in "${BLOCK_RULE_IDS[@]}"; do
+    [[ -n "$bid" ]] && VALID_BLOCK_COUNT=$((VALID_BLOCK_COUNT + 1))
+done
 TOTAL=$((TOTAL + 1))
-if [[ ${#BLOCK_RULE_IDS[@]} -ge 4 ]]; then
+if [[ "$VALID_BLOCK_COUNT" -ge 4 ]]; then
     PASS=$((PASS + 1))
-    echo -e "  ${GREEN}PASS${NC} 5.1 Emergency block rules created (${#BLOCK_RULE_IDS[@]} rules)"
+    echo -e "  ${GREEN}PASS${NC} 5.1 Emergency block rules created ($VALID_BLOCK_COUNT rules)"
 else
     FAIL=$((FAIL + 1))
-    echo -e "  ${RED}FAIL${NC} 5.1 Only ${#BLOCK_RULE_IDS[@]} block rules created (expected 4)"
+    echo -e "  ${RED}FAIL${NC} 5.1 Only $VALID_BLOCK_COUNT block rules created (expected 4)"
 fi
 
 # 5.2 Verify block — any command should be denied
