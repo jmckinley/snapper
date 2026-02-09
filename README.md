@@ -614,11 +614,22 @@ For production, prefix with `-f docker-compose.yml -f docker-compose.prod.yml`.
 
 **Agent not connecting** — Verify the agent is registered, check `SNAPPER_URL`, and ensure the agent ID matches.
 
+## Security
+
+> **Snapper is a security tool provided as-is under the MIT License.** It is designed to reduce risk, not eliminate it. Snapper does not guarantee complete protection against all threats. Users are responsible for their own security posture, configuration, and risk assessment. See [TERMS.md](TERMS.md) for full details.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Do not open a public issue for security vulnerabilities.
+
 ## License
 
-MIT License — see LICENSE file for details.
+MIT License — see [LICENSE](LICENSE) for details. Additional terms in [TERMS.md](TERMS.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions require DCO sign-off.
 
 ## Support
 
 - **Issues**: https://github.com/jmckinley/snapper/issues
 - **Discussions**: https://github.com/jmckinley/snapper/discussions
+- **Security**: security@greatfallsventures.com

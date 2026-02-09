@@ -1,0 +1,75 @@
+Snapper - Agent Application Firewall
+Copyright (c) 2026 John McKinley
+
+This product is licensed under the MIT License. See LICENSE for the full text.
+Additional terms of use are in TERMS.md.
+
+This product includes the following third-party open source software:
+
+FastAPI - MIT License
+  Copyright (c) 2018 Sebastian Ramirez
+  https://github.com/tiangolo/fastapi
+
+Starlette - BSD 3-Clause License
+  Copyright (c) 2018 Encode
+  https://github.com/encode/starlette
+
+SQLAlchemy - MIT License
+  Copyright (c) 2005-2024 Michael Bayer and contributors
+  https://github.com/sqlalchemy/sqlalchemy
+
+Alembic - MIT License
+  Copyright (c) 2009-2024 Michael Bayer
+  https://github.com/sqlalchemy/alembic
+
+asyncpg - Apache License 2.0
+  Copyright (c) 2016-2024 the asyncpg authors
+  https://github.com/MagicStack/asyncpg
+
+Pydantic - MIT License
+  Copyright (c) 2017-2024 Samuel Colvin and contributors
+  https://github.com/pydantic/pydantic
+
+Redis (redis-py) - MIT License
+  Copyright (c) 2012 Andy McCurdy
+  https://github.com/redis/redis-py
+
+Celery - BSD 3-Clause License
+  Copyright (c) 2015-2024 Ask Solem and contributors
+  https://github.com/celery/celery
+
+Jinja2 - BSD 3-Clause License
+  Copyright (c) 2007 Pallets
+  https://github.com/pallets/jinja
+
+httpx - BSD 3-Clause License
+  Copyright (c) 2019 Encode
+  https://github.com/encode/httpx
+
+cryptography - Apache License 2.0 / BSD 3-Clause License
+  Copyright (c) Individual contributors
+  https://github.com/pyca/cryptography
+
+Uvicorn - BSD 3-Clause License
+  Copyright (c) 2017 Encode
+  https://github.com/encode/uvicorn
+
+Gunicorn - MIT License
+  Copyright (c) 2009-2024 Benoit Chesneau and contributors
+  https://github.com/benoitc/gunicorn
+
+python-jose - MIT License
+  Copyright (c) 2015 Michael Davis
+  https://github.com/mpdavis/python-jose
+
+passlib - BSD License
+  Copyright (c) Assurance Technologies
+  https://github.com/glic3rern/passlib
+
+structlog - Apache License 2.0 / MIT License
+  Copyright (c) 2013 Hynek Schlawack
+  https://github.com/hynek/structlog
+
+Playwright - Apache License 2.0
+  Copyright (c) Microsoft Corporation
+  https://github.com/microsoft/playwright-python
