@@ -2,15 +2,12 @@
 # Snapper PreToolUse Hook for Claude Code
 # Checks with Snapper before allowing any tool execution.
 #
-# NOTE: The canonical version lives at plugins/claude-code/snapper_hook.sh.
-#       This file is kept for backward compatibility.
-#
 # Installation:
 #   Quick: bash scripts/claude-code-setup.sh
 #   Manual:
 #     1. Copy to ~/.claude/hooks/pre_tool_use.sh
 #     2. chmod +x ~/.claude/hooks/pre_tool_use.sh
-#     3. Add to ~/.claude/settings.json (see plugins/claude-code/README.md)
+#     3. Add to ~/.claude/settings.json (see README.md)
 #
 # Exit codes (Claude Code convention):
 #   0 = allow (tool proceeds)
