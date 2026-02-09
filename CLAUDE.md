@@ -103,6 +103,12 @@ docker compose exec app pytest tests/ --cov=app --cov-report=term-missing
 # E2E tests (requires Playwright on host, app running)
 E2E_BASE_URL=http://localhost:8000 pytest tests/e2e -v
 
+# Live E2E integration tests (against running Snapper instance)
+# Tests all 15 rule types, approval workflow, PII vault, emergency block, audit trail
+bash scripts/e2e_live_test.sh                                  # on VPS (default http://127.0.0.1:8000)
+SNAPPER_URL=http://localhost:8000 bash scripts/e2e_live_test.sh  # local with custom URL
+E2E_CHAT_ID=<chat_id> bash scripts/e2e_live_test.sh             # with OpenClaw live agent tests
+
 # Linting (inside container)
 docker compose exec app black app/ tests/
 docker compose exec app flake8 app/ tests/

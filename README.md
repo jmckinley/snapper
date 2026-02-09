@@ -569,13 +569,40 @@ E2E tests cover:
 - Integrations page (categories, search, enable/disable)
 - Responsive design
 
+### Live E2E Integration Tests
+
+API-level integration tests that validate the full rule engine against a running Snapper instance. Tests all 15 rule types end-to-end via `curl`, plus approval workflows, PII vault lifecycle, emergency block/unblock, and audit trail verification. Optionally exercises a live OpenClaw agent if available.
+
+```bash
+# Run on VPS (default: http://127.0.0.1:8000)
+bash scripts/e2e_live_test.sh
+
+# Run locally with custom URL
+SNAPPER_URL=http://localhost:8000 bash scripts/e2e_live_test.sh
+
+# Run with live OpenClaw agent tests (requires E2E_CHAT_ID)
+E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_live_test.sh
+```
+
+Live E2E tests cover (39 tests across 7 phases):
+- **Phase 0:** Environment verification (health, Redis, learning mode, agent, audit)
+- **Phase 1:** All 15 rule type evaluators via API (18 tests)
+- **Phase 2:** Live OpenClaw agent tasks through snapper-guard plugin (5 tests, optional)
+- **Phase 3:** Approval workflow (create, poll, approve, deny)
+- **Phase 4:** PII vault lifecycle (create, detect, resolve, auto mode, delete)
+- **Phase 5:** Emergency block/unblock with deny-all rules
+- **Phase 6:** Audit trail verification (counts, deny/allow entries, violations)
+
+Prerequisites: Snapper running (app + postgres + redis), `jq` installed. OpenClaw optional for Phase 2.
+
 ### Test Results
 
 | Suite | Count | Description |
 |-------|-------|-------------|
 | Unit tests | 406 | API, rule engine, middleware, Telegram, PII vault/gate, security monitor, integrations |
-| E2E tests | 120 | Browser-based UI testing (Playwright, skipped without browser) |
-| **Total** | **526** | 485 pass + 41 skip in Docker (E2E tests need Playwright) |
+| E2E tests (Playwright) | 120 | Browser-based UI testing (skipped without browser) |
+| Live E2E integration | 39 | API-level rule engine, approvals, PII vault, emergency block, audit (skips OpenClaw if unavailable) |
+| **Total** | **565** | Full coverage across unit, UI, and live integration layers |
 
 ## Common Commands
 

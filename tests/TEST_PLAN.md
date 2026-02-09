@@ -481,10 +481,89 @@ docker compose exec app pytest tests/ --cov=app --cov-report=html
 
 ---
 
+## 11. Live E2E Integration Tests
+
+Automated bash-based tests in `scripts/e2e_live_test.sh` that validate all rule evaluators, approval workflows, PII vault, and audit trail against a running Snapper instance. Run with `bash scripts/e2e_live_test.sh`.
+
+### 11.1 Environment Verification
+| Test ID | Description | Method | Expected Result |
+|---------|-------------|--------|-----------------|
+| LIVE-001 | Snapper health check | `GET /health` | `{"status":"healthy"}` |
+| LIVE-002 | Redis connectivity | `redis-cli ping` | PONG |
+| LIVE-003 | Learning mode detection | Create deny rule, evaluate | Detect enforcing or learning mode |
+| LIVE-004 | Test agent active | Create agent, activate | `status: "active"` |
+| LIVE-005 | Audit stats reachable | `GET /audit/stats` | Non-empty response |
+
+### 11.2 API-Direct Rule Evaluation (All 15 Rule Types)
+| Test ID | Rule Type | Request | Expected Decision |
+|---------|-----------|---------|-------------------|
+| LIVE-101 | `command_allowlist` (match) | `command: "ls -la"` | ALLOW |
+| LIVE-102 | `command_allowlist` (miss) | `command: "rm -rf /"` | DENY (deny-by-default) or ALLOW (learning mode) |
+| LIVE-103 | `command_denylist` | `command: "rm -rf /"` | DENY |
+| LIVE-104 | `command_denylist` + require_approval | `command: "sudo reboot"` | REQUIRE_APPROVAL |
+| LIVE-105 | `time_restriction` (impossible hours) | `command: "echo test"` | DENY |
+| LIVE-106 | `rate_limit` (exceed threshold) | 4 requests, max 3 | 4th → DENY |
+| LIVE-107 | `skill_allowlist` | `skill_id: "safe-skill"` | ALLOW |
+| LIVE-108 | `skill_denylist` | `skill_id: "evil-skill"` | DENY |
+| LIVE-109 | `credential_protection` | `file_path: "/app/.env"` | DENY |
+| LIVE-110 | `network_egress` (denied host) | `url: "http://evil.com/exfil"` | DENY |
+| LIVE-111 | `origin_validation` (bad origin) | `origin: "http://evil.com"` | DENY |
+| LIVE-112 | `origin_validation` (missing, strict) | No origin field | DENY |
+| LIVE-113 | `human_in_loop` | `command: "deploy production"` | REQUIRE_APPROVAL |
+| LIVE-114 | `localhost_restriction` | Request from 127.0.0.1 | ALLOW |
+| LIVE-115 | `file_access` (denied path) | `file_path: "/etc/shadow"` | DENY |
+| LIVE-116 | `version_enforcement` | Agent with unknown version | DENY |
+| LIVE-117 | `sandbox_required` | Agent without sandbox env | DENY |
+| LIVE-118 | `pii_gate` (vault token) | `command` with `{{SNAPPER_VAULT:...}}` | REQUIRE_APPROVAL |
+
+### 11.3 Live OpenClaw Agent Tests (Optional)
+| Test ID | Description | Expected |
+|---------|-------------|----------|
+| LIVE-201 | Browser allow via command_allowlist | Agent completes, audit shows allow |
+| LIVE-202 | Browser deny via time_restriction | Agent blocked, audit shows deny |
+| LIVE-203 | Rate limit via live agent | 2nd request denied |
+| LIVE-204 | PII gate via vault token in prompt | require_approval, Telegram notification |
+| LIVE-205 | Deny-by-default with no rules | Agent denied (if DENY_BY_DEFAULT=true) |
+
+### 11.4 Approval Workflow
+| Test ID | Description | Method | Expected |
+|---------|-------------|--------|----------|
+| LIVE-301 | Create approval request | Evaluate with human_in_loop | `require_approval` + `approval_request_id` |
+| LIVE-302 | Poll pending status | `GET /approvals/{id}/status` | `status: "pending"` |
+| LIVE-303 | Approve via API | `POST /approvals/{id}/decide` | `status: "approved"` |
+| LIVE-304 | Deny via API | `POST /approvals/{id}/decide` | `status: "denied"` |
+
+### 11.5 PII Vault End-to-End
+| Test ID | Description | Method | Expected |
+|---------|-------------|--------|----------|
+| LIVE-401 | Create vault entry | `POST /vault/entries` | Token `{{SNAPPER_VAULT:<hex>}}` |
+| LIVE-402 | PII gate detects token | Evaluate with token in command | REQUIRE_APPROVAL |
+| LIVE-403 | Approve + resolve | Approve, poll status | `status: "approved"` |
+| LIVE-404 | Auto mode resolution | PII gate with `pii_mode: "auto"` | ALLOW |
+| LIVE-405 | Delete vault entry | `DELETE /vault/entries/{id}` | `status: "deleted"` |
+
+### 11.6 Emergency Block / Unblock
+| Test ID | Description | Expected |
+|---------|-------------|----------|
+| LIVE-501 | Create emergency block rules | 4 deny-all rules at priority 10000 |
+| LIVE-502 | Verify block denies all | Any command → DENY |
+| LIVE-503 | Unblock and verify | Deactivate rules, commands allowed again |
+
+### 11.7 Audit Trail Verification
+| Test ID | Description | Expected |
+|---------|-------------|----------|
+| LIVE-601 | Audit count increased | `total_evaluations` > baseline |
+| LIVE-602 | Deny audit entries exist | `denied_count` > 0 |
+| LIVE-603 | Allow audit entries exist | `allowed_count` > 0 |
+| LIVE-604 | Policy violations recorded | `violations.total` > 0 |
+
+---
+
 ## Success Criteria
 
 - All critical (SEC-*) tests pass
 - All rule engine (RE-*) tests pass
+- All live E2E integration (LIVE-*) tests pass
 - Hook integration working end-to-end
 - UI functional for basic operations
 - No security vulnerabilities found

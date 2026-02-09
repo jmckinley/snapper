@@ -6,6 +6,9 @@
 #   ./scripts/run-e2e-tests.sh --headed     # Run with browser visible
 #   ./scripts/run-e2e-tests.sh --debug      # Run in debug mode
 #
+# For live API-level integration tests (rule engine, approvals, PII vault):
+#   bash scripts/e2e_live_test.sh
+#
 # Prerequisites:
 #   - App must be running (docker compose up -d)
 #   - Playwright browsers must be installed

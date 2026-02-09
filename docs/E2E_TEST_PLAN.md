@@ -326,6 +326,22 @@ Operations that need human approval:
 
 ---
 
+## Automated Live E2E Test Script
+
+The test scenarios in this plan are implemented as an automated bash script:
+
+```bash
+# Run all 39 automated tests (Phases 0-6)
+bash scripts/e2e_live_test.sh
+
+# With live OpenClaw agent tests (Phase 2)
+E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_live_test.sh
+```
+
+The script covers: all 15 rule type evaluators, approval workflow, PII vault lifecycle, emergency block/unblock, and audit trail verification. It creates temporary test agents and rules, validates results, and cleans up on exit. See `tests/TEST_PLAN.md` section 11 for the full test ID mapping (LIVE-001 through LIVE-604).
+
+---
+
 ## Execution Checklist
 
 ### Pre-requisites
@@ -333,8 +349,13 @@ Operations that need human approval:
 - [ ] Test agent registered in Snapper
 - [ ] Security rules configured
 - [ ] Telegram webhook verified
+- [ ] `jq` installed on test host
 
-### Test Execution
+### Automated Tests
+- [ ] Run `bash scripts/e2e_live_test.sh` — 39 tests across 7 phases
+- [ ] Verify 44/44 pass (or 39/39 if OpenClaw unavailable, Phase 2 skipped)
+
+### Manual Test Execution
 - [ ] Group A: Command Blocking (7 tests)
 - [ ] Group B: Approval Workflow (4 tests)
 - [ ] Group C: Skill Installation (3 tests)
@@ -345,7 +366,8 @@ Operations that need human approval:
 - [ ] Chaos Tests (9 tests)
 
 ### Sign-off
-- [ ] All critical tests pass
+- [ ] All automated live E2E tests pass
+- [ ] All critical manual tests pass
 - [ ] No security bypasses found
 - [ ] Performance targets met
 - [ ] Documentation updated
