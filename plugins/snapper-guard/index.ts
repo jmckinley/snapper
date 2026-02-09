@@ -10,7 +10,7 @@
  *   - Deny: blocks the tool call entirely
  */
 
-const VAULT_TOKEN_RE = /\{\{SNAPPER_VAULT:[a-f0-9]{8}\}\}/g;
+const VAULT_TOKEN_RE = /\{\{SNAPPER_VAULT:[a-f0-9]{8,32}\}\}/g;
 
 // Tools that should be evaluated by Snapper
 const EVALUATED_TOOLS = new Set(["browser", "exec", "bash", "write"]);
