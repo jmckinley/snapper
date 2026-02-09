@@ -97,11 +97,11 @@ async def get_current_agent(
             detail="Agent is quarantined due to security violations",
         )
 
-    # Update last used timestamp (async, non-blocking)
+    # Update last used + last seen timestamps (async, non-blocking)
     await db.execute(
         update(Agent)
         .where(Agent.id == agent.id)
-        .values(api_key_last_used=datetime.utcnow())
+        .values(api_key_last_used=datetime.utcnow(), last_seen_at=datetime.utcnow())
     )
 
     return agent

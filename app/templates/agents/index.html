@@ -453,6 +453,30 @@
         }
     }
 
+    function getAgentActivity(agent) {
+        // Determine real connection status from last_seen_at
+        if (agent.status !== 'active') {
+            if (agent.status === 'pending') return { label: '○ Pending', bg: 'bg-yellow-100 text-yellow-800' };
+            if (agent.status === 'suspended') return { label: '⏸ Paused', bg: 'bg-gray-100 text-gray-800' };
+            if (agent.status === 'quarantined') return { label: '⛔ Quarantined', bg: 'bg-red-100 text-red-800' };
+            return { label: agent.status, bg: 'bg-gray-100 text-gray-800' };
+        }
+        const lastSeen = agent.last_seen_at ? new Date(agent.last_seen_at) : null;
+        if (!lastSeen) {
+            return { label: '○ Never seen', bg: 'bg-yellow-100 text-yellow-800' };
+        }
+        const minutesAgo = (Date.now() - lastSeen.getTime()) / 60000;
+        if (minutesAgo < 60) {
+            return { label: '● Connected', bg: 'bg-green-100 text-green-800' };
+        } else if (minutesAgo < 1440) {
+            const hrs = Math.floor(minutesAgo / 60);
+            return { label: `○ ${hrs}h ago`, bg: 'bg-blue-100 text-blue-800' };
+        } else {
+            const days = Math.floor(minutesAgo / 1440);
+            return { label: `○ ${days}d ago`, bg: 'bg-gray-100 text-gray-600' };
+        }
+    }
+
     function renderAgents(agents) {
         const container = document.getElementById('agents-list');
 
@@ -471,7 +495,7 @@
             <div class="px-6 py-4 hover:bg-gray-50">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center space-x-4">
-                        <div class="h-10 w-10 ${agent.status === 'active' ? 'bg-green-100' : 'bg-gray-100'} rounded-full flex items-center justify-center">
+                        <div class="h-10 w-10 ${agent.status === 'active' && agent.last_seen_at && (Date.now() - new Date(agent.last_seen_at).getTime()) < 3600000 ? 'bg-green-100' : agent.status === 'active' ? 'bg-blue-100' : 'bg-gray-100'} rounded-full flex items-center justify-center">
                             ${agent.external_id.includes('openclaw') ? '🦎' : '🤖'}
                         </div>
                         <div>
@@ -480,13 +504,10 @@
                         </div>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            agent.status === 'active' ? 'bg-green-100 text-green-800' :
-                            agent.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                        }">
-                            ${agent.status === 'active' ? '● Connected' : agent.status === 'pending' ? '○ Pending' : agent.status}
-                        </span>
+                        ${(() => { const a = getAgentActivity(agent); return `
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${a.bg}">
+                            ${a.label}
+                        </span>`; })()}
                         <div class="flex space-x-2">
                             ${agent.status === 'active' ?
                                 `<button onclick="suspendAgent('${agent.id}')" class="text-sm text-yellow-600 hover:text-yellow-700">Pause</button>` :

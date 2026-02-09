@@ -1429,8 +1429,9 @@ async def evaluate_request(
                 reason="Invalid API key",
             )
 
-        # Update last used timestamp
+        # Update last used + last seen timestamps
         agent.api_key_last_used = datetime.utcnow()
+        agent.last_seen_at = datetime.utcnow()
 
     # Fall back to external_id lookup if no API key
     if not agent and request.agent_id:
