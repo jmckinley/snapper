@@ -164,63 +164,162 @@ def fetch_github_advisories(self):
 
 
 async def _fetch_github_advisories_async():
-    """Async implementation of GitHub advisory fetch."""
-    if not settings.GITHUB_TOKEN:
-        logger.warning("GitHub token not configured, skipping advisory fetch")
-        return
+    """Async implementation of GitHub advisory fetch.
 
-    # GraphQL query for security advisories
-    query = """
-    query {
-        securityAdvisories(first: 50, orderBy: {field: PUBLISHED_AT, direction: DESC}) {
-            nodes {
-                ghsaId
-                summary
-                description
-                severity
-                publishedAt
-                cvss {
-                    score
-                    vectorString
-                }
-                vulnerabilities(first: 10) {
-                    nodes {
-                        package {
-                            name
-                            ecosystem
-                        }
-                    }
-                }
-                references {
-                    url
-                }
-            }
-        }
-    }
+    Uses the GitHub Advisory Database REST API to fetch recent
+    reviewed advisories for the pip ecosystem. Works with or without
+    a GITHUB_TOKEN (unauthenticated requests have lower rate limits).
     """
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if settings.GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    else:
+        logger.warning(
+            "GITHUB_TOKEN not configured; using unauthenticated access "
+            "(lower rate limits). Set GITHUB_TOKEN for higher throughput."
+        )
+
+    # REST API: fetch reviewed advisories for the pip ecosystem
+    base_url = "https://api.github.com/advisories"
+    params = {
+        "type": "reviewed",
+        "ecosystem": "pip",
+        "per_page": 50,
+        "sort": "published",
+        "direction": "desc",
+    }
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(
-                "https://api.github.com/graphql",
-                json={"query": query},
-                headers={
-                    "Authorization": f"Bearer {settings.GITHUB_TOKEN}",
-                    "Content-Type": "application/json",
-                },
+            response = await client.get(
+                base_url,
+                params=params,
+                headers=headers,
                 timeout=60.0,
             )
             response.raise_for_status()
-            data = response.json()
+            advisories = response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"GitHub advisory API returned {e.response.status_code}: "
+                f"{e.response.text[:200]}"
+            )
+            return
         except Exception as e:
-            logger.error(f"Failed to fetch from GitHub: {e}")
+            logger.error(f"Failed to fetch from GitHub advisories API: {e}")
             return
 
-    advisories = data.get("data", {}).get("securityAdvisories", {}).get("nodes", [])
+    if not isinstance(advisories, list):
+        logger.error(
+            f"Unexpected GitHub response type: {type(advisories).__name__}"
+        )
+        return
+
     logger.info(f"Found {len(advisories)} advisories from GitHub")
 
-    # Process and store advisories (similar to NVD)
-    # ... implementation similar to NVD ...
+    # Map GitHub severity strings to our IssueSeverity enum
+    severity_map = {
+        "critical": IssueSeverity.CRITICAL,
+        "high": IssueSeverity.HIGH,
+        "medium": IssueSeverity.MEDIUM,
+        "low": IssueSeverity.LOW,
+    }
+
+    from sqlalchemy import select
+
+    async with get_db_context() as db:
+        created_count = 0
+        for advisory in advisories:
+            # Prefer the CVE ID if available, fall back to GHSA ID
+            ghsa_id = advisory.get("ghsa_id", "")
+            cve_id = advisory.get("cve_id") or ghsa_id
+
+            if not cve_id:
+                continue
+
+            # Check if already exists (by cve_id)
+            stmt = select(SecurityIssue).where(
+                SecurityIssue.cve_id == cve_id
+            )
+            existing = (await db.execute(stmt)).scalar_one_or_none()
+            if existing:
+                continue
+
+            # Extract fields
+            summary = advisory.get("summary", "No summary")
+            description = advisory.get("description", summary)
+            severity_str = (advisory.get("severity") or "medium").lower()
+            severity = severity_map.get(severity_str, IssueSeverity.MEDIUM)
+            html_url = advisory.get("html_url", "")
+
+            # CVSS data
+            cvss = advisory.get("cvss", {}) or {}
+            cvss_score = cvss.get("score")
+            cvss_vector = cvss.get("vector_string")
+
+            # Published timestamp
+            published_at = None
+            published_str = advisory.get("published_at")
+            if published_str:
+                try:
+                    published_at = datetime.fromisoformat(
+                        published_str.replace("Z", "+00:00")
+                    )
+                except (ValueError, AttributeError):
+                    pass
+
+            # Collect references
+            references = []
+            if html_url:
+                references.append(html_url)
+            for ref in advisory.get("references", []) or []:
+                ref_url = ref if isinstance(ref, str) else ref.get("url", "")
+                if ref_url and ref_url not in references:
+                    references.append(ref_url)
+
+            # Extract affected package names
+            affected_components = []
+            for vuln in advisory.get("vulnerabilities", []) or []:
+                pkg = vuln.get("package", {}) or {}
+                pkg_name = pkg.get("name")
+                if pkg_name and pkg_name not in affected_components:
+                    affected_components.append(pkg_name)
+
+            # Affected version ranges
+            affected_versions = []
+            for vuln in advisory.get("vulnerabilities", []) or []:
+                vr = vuln.get("vulnerable_version_range")
+                if vr:
+                    affected_versions.append(vr)
+
+            issue = SecurityIssue(
+                cve_id=cve_id,
+                title=f"{cve_id}: {summary[:200]}",
+                description=description[:5000],
+                severity=severity,
+                cvss_score=cvss_score,
+                cvss_vector=cvss_vector,
+                status=IssueStatus.ACTIVE,
+                source="github",
+                source_url=html_url,
+                published_at=published_at,
+                references=references,
+                affected_components=affected_components,
+                affected_versions=affected_versions,
+                auto_generate_rules=True,
+                details={
+                    "ghsa_id": ghsa_id,
+                    "github_severity": severity_str,
+                },
+            )
+            db.add(issue)
+            created_count += 1
+
+        await db.commit()
+        logger.info(f"Created {created_count} new SecurityIssue records from GitHub")
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=300)
@@ -241,31 +340,56 @@ def scan_clawhub_skills(self):
 
 
 async def _scan_clawhub_skills_async():
-    """Async implementation of ClawHub skill scan."""
-    # This would integrate with ClawHub's API to scan skills
-    # For now, this is a placeholder that would:
-    # 1. Fetch recent/popular skills from ClawHub
-    # 2. Analyze each skill for suspicious patterns
-    # 3. Update the malicious_skills table
+    """Async implementation of ClawHub skill scan.
 
-    logger.info("ClawHub scan - placeholder implementation")
+    Populates the malicious_skills table from the curated
+    MALICIOUS_SKILL_RECORDS list (sourced from ClawHavoc campaign
+    analysis, ToxicSkills study, and Snyk research). Uses upsert
+    logic to avoid duplicates on re-runs.
+    """
+    from sqlalchemy import select
+    from app.scripts.apply_security_defaults import MALICIOUS_SKILL_RECORDS
 
-    # Known malicious patterns to check for
-    suspicious_patterns = [
-        r"eval\s*\(",
-        r"exec\s*\(",
-        r"subprocess\.call",
-        r"os\.system",
-        r"curl.*\|.*sh",
-        r"base64\.decode",
-        r"requests\.post.*credentials",
-    ]
+    async with get_db_context() as db:
+        created_count = 0
+        updated_count = 0
 
-    # In a real implementation, this would:
-    # 1. Call ClawHub API to get skill list
-    # 2. Download and analyze skill code
-    # 3. Check against suspicious patterns
-    # 4. Flag or block malicious skills
+        for record_data in MALICIOUS_SKILL_RECORDS:
+            skill_id = record_data["skill_id"]
+
+            # Check if skill_id already exists
+            stmt = select(MaliciousSkill).where(
+                MaliciousSkill.skill_id == skill_id
+            )
+            existing = (await db.execute(stmt)).scalar_one_or_none()
+
+            if existing:
+                # Update last_seen_at to mark as still active
+                existing.last_seen_at = datetime.utcnow()
+                updated_count += 1
+                continue
+
+            skill = MaliciousSkill(
+                skill_id=skill_id,
+                skill_name=record_data["skill_name"],
+                author=record_data.get("author"),
+                threat_type=record_data["threat_type"],
+                severity=record_data["severity"],
+                analysis_notes=record_data.get("description"),
+                indicators=record_data.get("indicators", {}),
+                confidence=record_data.get("confidence", "medium"),
+                source=record_data.get("source", "scan"),
+                is_blocked=record_data.get("is_blocked", True),
+                is_verified=record_data.get("is_verified", False),
+            )
+            db.add(skill)
+            created_count += 1
+
+        await db.commit()
+        logger.info(
+            f"ClawHub scan complete: {created_count} new skills added, "
+            f"{updated_count} existing skills refreshed"
+        )
 
 
 @celery_app.task(bind=True)

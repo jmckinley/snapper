@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.integration_templates import (
@@ -82,15 +82,24 @@ async def list_integrations(
     result = await db.execute(query)
     existing_rules = result.scalars().all()
 
-    # Build a set of enabled integration IDs based on rule names
+    # Build a set of enabled integration IDs.
+    # Check both the new source/source_reference fields (for rules created via
+    # the enable endpoint) and the legacy name-prefix pattern (for rules
+    # created before the source field was added).
     enabled_integrations = set()
     integration_rule_counts = {}
 
     for rule in existing_rules:
         for template_id, template in INTEGRATION_TEMPLATES.items():
-            # Check if rule name matches any template rule name prefix
-            template_prefix = f"{template['name']} -"
-            if rule.name.startswith(template_prefix):
+            matched = False
+            # New way: source-based detection
+            if rule.source == "integration" and rule.source_reference == template_id:
+                matched = True
+            # Legacy fallback: name-prefix detection
+            elif rule.name.startswith(f"{template['name']} -"):
+                matched = True
+
+            if matched:
                 enabled_integrations.add(template_id)
                 integration_rule_counts[template_id] = integration_rule_counts.get(template_id, 0) + 1
 
@@ -154,11 +163,14 @@ async def get_integration(
             detail=f"Integration '{integration_id}' not found",
         )
 
-    # Check if enabled
+    # Check if enabled — match by source_reference (new) or name prefix (legacy)
     query = select(Rule).where(
         Rule.is_active == True,
         Rule.is_deleted == False,
-        Rule.name.like(f"{template['name']} -%"),
+        or_(
+            Rule.name.like(f"{template['name']} -%"),
+            (Rule.source == "integration") & (Rule.source_reference == integration_id),
+        ),
     )
     if agent_id:
         query = query.where(Rule.agent_id == agent_id)
@@ -221,10 +233,13 @@ async def enable_integration(
             detail=f"Integration '{integration_id}' not found",
         )
 
-    # Check if already enabled
+    # Check if already enabled — match by source_reference (new) or name prefix (legacy)
     query = select(Rule).where(
         Rule.is_active == True,
-        Rule.name.like(f"{template['name']} -%"),
+        or_(
+            Rule.name.like(f"{template['name']} -%"),
+            (Rule.source == "integration") & (Rule.source_reference == integration_id),
+        ),
     )
     if request.agent_id:
         query = query.where(Rule.agent_id == request.agent_id)
@@ -303,10 +318,13 @@ async def disable_integration(
             detail=f"Integration '{integration_id}' not found",
         )
 
-    # Find existing active rules for this integration
+    # Find existing active rules for this integration — match by source_reference (new) or name prefix (legacy)
     query = select(Rule).where(
         Rule.is_deleted == False,
-        Rule.name.like(f"{template['name']} -%"),
+        or_(
+            Rule.name.like(f"{template['name']} -%"),
+            (Rule.source == "integration") & (Rule.source_reference == integration_id),
+        ),
     )
     if agent_id:
         query = query.where(Rule.agent_id == agent_id)

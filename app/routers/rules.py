@@ -35,7 +35,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rules", dependencies=[Depends(default_rate_limit)])
 
-# Pre-built rule templates
+# Pre-built rule templates.
+# These templates cover agents/tools not in the Integrations page.
+# For service-specific rules (Gmail, GitHub, Slack, AWS, etc.),
+# see app/data/integration_templates.py.
 RULE_TEMPLATES = {
     "cve-2026-25253-mitigation": {
         "id": "cve-2026-25253-mitigation",
@@ -245,206 +248,10 @@ RULE_TEMPLATES = {
     },
     # =========================================================================
     # MCP SERVER / INTEGRATION TEMPLATES
+    # (Service-specific templates for Gmail, GitHub, Slack, AWS, etc. have
+    #  been moved to app/data/integration_templates.py — only non-overlapping
+    #  MCP server templates remain here.)
     # =========================================================================
-    "gmail-protection": {
-        "id": "gmail-protection",
-        "name": "Gmail Protection",
-        "description": "Security rules for Gmail MCP server - controls email access, sending, and deletion",
-        "category": "mcp-integration",
-        "severity": "high",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "gmail",
-            "require_approval_for": ["send_email", "delete_email", "modify_labels"],
-            "allowed_operations": ["read_email", "search_email", "list_labels"],
-            "blocked_operations": ["delete_all", "forward_all"],
-            "rate_limit": {"max_sends": 50, "window_hours": 24},
-            "allowed_recipients_pattern": None,  # null = allow all
-            "blocked_recipients_pattern": r".*@(competitor|spam)\.com$",
-            "max_attachment_size_mb": 25,
-            "timeout_seconds": 300,
-        },
-        "tags": ["gmail", "email", "mcp", "google"],
-        "is_recommended": True,
-    },
-    "google-calendar-protection": {
-        "id": "google-calendar-protection",
-        "name": "Google Calendar Protection",
-        "description": "Security rules for Google Calendar MCP server - controls event creation and modification",
-        "category": "mcp-integration",
-        "severity": "medium",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "google-calendar",
-            "require_approval_for": ["create_event", "delete_event", "invite_attendees"],
-            "allowed_operations": ["read_events", "list_calendars", "search_events"],
-            "blocked_operations": ["delete_calendar", "share_calendar_public"],
-            "max_attendees_per_event": 50,
-            "allowed_calendars": [],  # empty = allow all
-            "timeout_seconds": 300,
-        },
-        "tags": ["calendar", "google", "mcp", "scheduling"],
-        "is_recommended": True,
-    },
-    "google-drive-protection": {
-        "id": "google-drive-protection",
-        "name": "Google Drive Protection",
-        "description": "Security rules for Google Drive MCP server - controls file access and sharing",
-        "category": "mcp-integration",
-        "severity": "high",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "google-drive",
-            "require_approval_for": ["delete_file", "share_public", "share_external", "move_to_trash"],
-            "allowed_operations": ["read_file", "list_files", "search_files", "create_file"],
-            "blocked_operations": ["empty_trash", "share_with_anyone_link"],
-            "protected_folders": ["Confidential", "HR", "Finance", "Legal"],
-            "max_file_size_mb": 100,
-            "timeout_seconds": 300,
-        },
-        "tags": ["drive", "google", "mcp", "file-storage"],
-        "is_recommended": True,
-    },
-    "slack-protection": {
-        "id": "slack-protection",
-        "name": "Slack Protection",
-        "description": "Security rules for Slack MCP server - controls messaging and channel operations",
-        "category": "mcp-integration",
-        "severity": "high",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "slack",
-            "require_approval_for": ["post_message", "create_channel", "invite_user", "upload_file"],
-            "allowed_operations": ["read_messages", "list_channels", "search_messages"],
-            "blocked_operations": ["delete_channel", "remove_user", "post_to_all_channels"],
-            "allowed_channels": [],  # empty = allow all
-            "blocked_channels": ["#announcements", "#exec-team", "#hr-confidential"],
-            "rate_limit": {"max_messages": 100, "window_hours": 1},
-            "timeout_seconds": 300,
-        },
-        "tags": ["slack", "messaging", "mcp", "chat"],
-        "is_recommended": True,
-    },
-    "github-protection": {
-        "id": "github-protection",
-        "name": "GitHub Protection",
-        "description": "Security rules for GitHub MCP server - controls repository and code operations",
-        "category": "mcp-integration",
-        "severity": "critical",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "github",
-            "require_approval_for": ["push_code", "create_pr", "merge_pr", "delete_branch", "create_release"],
-            "allowed_operations": ["read_code", "list_repos", "list_prs", "list_issues", "read_pr"],
-            "blocked_operations": ["delete_repo", "force_push_main", "disable_branch_protection"],
-            "protected_branches": ["main", "master", "production", "release/*"],
-            "protected_repos": [],  # specific repos that need extra protection
-            "require_pr_for_changes": True,
-            "timeout_seconds": 600,
-        },
-        "tags": ["github", "code", "mcp", "version-control"],
-        "is_recommended": True,
-    },
-    "linear-protection": {
-        "id": "linear-protection",
-        "name": "Linear Protection",
-        "description": "Security rules for Linear MCP server - controls issue and project management",
-        "category": "mcp-integration",
-        "severity": "medium",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.LOG_ONLY,
-        "default_parameters": {
-            "integration": "linear",
-            "require_approval_for": ["delete_issue", "archive_project", "modify_workflow"],
-            "allowed_operations": ["read_issues", "create_issue", "update_issue", "add_comment"],
-            "blocked_operations": ["delete_project", "remove_team_member"],
-            "timeout_seconds": 300,
-        },
-        "tags": ["linear", "project-management", "mcp", "issues"],
-        "is_recommended": True,
-    },
-    "notion-protection": {
-        "id": "notion-protection",
-        "name": "Notion Protection",
-        "description": "Security rules for Notion MCP server - controls page and database operations",
-        "category": "mcp-integration",
-        "severity": "medium",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "notion",
-            "require_approval_for": ["delete_page", "share_public", "modify_permissions"],
-            "allowed_operations": ["read_page", "create_page", "update_page", "search"],
-            "blocked_operations": ["delete_workspace", "share_with_web"],
-            "protected_pages": [],  # page IDs that need extra protection
-            "timeout_seconds": 300,
-        },
-        "tags": ["notion", "wiki", "mcp", "documentation"],
-        "is_recommended": True,
-    },
-    "postgres-protection": {
-        "id": "postgres-protection",
-        "name": "PostgreSQL Protection",
-        "description": "Security rules for PostgreSQL MCP server - controls database operations",
-        "category": "mcp-integration",
-        "severity": "critical",
-        "rule_type": RuleType.COMMAND_DENYLIST,
-        "default_action": RuleAction.DENY,
-        "default_parameters": {
-            "integration": "postgres",
-            "blocked_operations": ["DROP DATABASE", "DROP TABLE", "TRUNCATE", "DELETE FROM.*WHERE 1=1"],
-            "require_approval_for": ["DELETE", "UPDATE", "ALTER TABLE", "CREATE INDEX"],
-            "allowed_operations": ["SELECT"],
-            "blocked_patterns": [
-                r"DROP\s+(DATABASE|TABLE|SCHEMA)",
-                r"TRUNCATE",
-                r"DELETE\s+FROM\s+\w+\s*;",  # DELETE without WHERE
-                r"UPDATE\s+\w+\s+SET.*WHERE\s+1\s*=\s*1",
-                r"--",  # SQL comments (potential injection)
-                r";.*DROP",  # Chained DROP
-            ],
-            "max_rows_affected": 1000,
-            "read_only_mode": False,
-            "timeout_seconds": 30,
-        },
-        "tags": ["postgres", "database", "mcp", "sql"],
-        "is_recommended": True,
-    },
-    "filesystem-protection": {
-        "id": "filesystem-protection",
-        "name": "Filesystem Protection",
-        "description": "Security rules for Filesystem MCP server - controls file read/write operations",
-        "category": "mcp-integration",
-        "severity": "critical",
-        "rule_type": RuleType.CREDENTIAL_PROTECTION,
-        "default_action": RuleAction.DENY,
-        "default_parameters": {
-            "integration": "filesystem",
-            "allowed_directories": ["./", "/tmp", "/home/user/projects"],
-            "blocked_directories": ["/etc", "/var", "/root", "/usr", "/bin", "/sbin"],
-            "blocked_patterns": [
-                r"\.env$",
-                r"\.pem$",
-                r"\.key$",
-                r"id_rsa",
-                r"\.ssh/",
-                r"\.aws/",
-                r"\.gnupg/",
-                r"/etc/passwd",
-                r"/etc/shadow",
-            ],
-            "require_approval_for": ["write", "delete", "move"],
-            "allowed_operations": ["read", "list"],
-            "max_file_size_mb": 50,
-        },
-        "tags": ["filesystem", "files", "mcp", "local"],
-        "is_recommended": True,
-    },
     "brave-search-protection": {
         "id": "brave-search-protection",
         "name": "Brave Search Protection",
@@ -550,51 +357,6 @@ RULE_TEMPLATES = {
         "tags": ["sentry", "error-tracking", "mcp", "monitoring"],
         "is_recommended": False,
     },
-    "cloudflare-protection": {
-        "id": "cloudflare-protection",
-        "name": "Cloudflare Protection",
-        "description": "Security rules for Cloudflare MCP server - controls DNS and CDN operations",
-        "category": "mcp-integration",
-        "severity": "critical",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "cloudflare",
-            "require_approval_for": ["modify_dns", "purge_cache", "modify_firewall", "modify_workers"],
-            "allowed_operations": ["list_zones", "get_dns_records", "get_analytics"],
-            "blocked_operations": ["delete_zone", "disable_ssl", "disable_firewall"],
-            "protected_zones": [],  # zone IDs that need extra protection
-            "timeout_seconds": 600,
-        },
-        "tags": ["cloudflare", "dns", "mcp", "cdn"],
-        "is_recommended": True,
-    },
-    "aws-protection": {
-        "id": "aws-protection",
-        "name": "AWS Protection",
-        "description": "Security rules for AWS MCP server - controls cloud resource operations",
-        "category": "mcp-integration",
-        "severity": "critical",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "aws",
-            "require_approval_for": [
-                "create_instance", "terminate_instance", "modify_security_group",
-                "create_bucket", "delete_bucket", "modify_iam"
-            ],
-            "allowed_operations": ["describe_*", "list_*", "get_*"],
-            "blocked_operations": [
-                "delete_vpc", "delete_subnet", "modify_root_credentials",
-                "create_access_key", "attach_admin_policy"
-            ],
-            "protected_resources": ["prod-*", "production-*"],
-            "allowed_regions": ["us-east-1", "us-west-2", "eu-west-1"],
-            "timeout_seconds": 600,
-        },
-        "tags": ["aws", "cloud", "mcp", "infrastructure"],
-        "is_recommended": True,
-    },
     "stripe-protection": {
         "id": "stripe-protection",
         "name": "Stripe Protection",
@@ -635,45 +397,6 @@ RULE_TEMPLATES = {
             "timeout_seconds": 300,
         },
         "tags": ["twilio", "sms", "mcp", "communications"],
-        "is_recommended": True,
-    },
-    "discord-protection": {
-        "id": "discord-protection",
-        "name": "Discord Protection",
-        "description": "Security rules for Discord MCP server - controls bot and messaging operations",
-        "category": "mcp-integration",
-        "severity": "medium",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.REQUIRE_APPROVAL,
-        "default_parameters": {
-            "integration": "discord",
-            "require_approval_for": ["send_message", "create_channel", "ban_user", "kick_user"],
-            "allowed_operations": ["read_messages", "list_channels", "list_members"],
-            "blocked_operations": ["delete_server", "mass_ban", "post_to_all_channels"],
-            "blocked_channels": [],  # channel IDs to block
-            "rate_limit": {"max_messages": 60, "window_minutes": 1},
-            "timeout_seconds": 300,
-        },
-        "tags": ["discord", "chat", "mcp", "community"],
-        "is_recommended": True,
-    },
-    "jira-protection": {
-        "id": "jira-protection",
-        "name": "Jira Protection",
-        "description": "Security rules for Jira MCP server - controls issue and project management",
-        "category": "mcp-integration",
-        "severity": "medium",
-        "rule_type": RuleType.HUMAN_IN_LOOP,
-        "default_action": RuleAction.LOG_ONLY,
-        "default_parameters": {
-            "integration": "jira",
-            "require_approval_for": ["delete_issue", "modify_workflow", "delete_project"],
-            "allowed_operations": ["read_issue", "create_issue", "update_issue", "add_comment", "search"],
-            "blocked_operations": ["delete_project", "modify_permissions"],
-            "protected_projects": [],  # project keys that need extra protection
-            "timeout_seconds": 300,
-        },
-        "tags": ["jira", "project-management", "mcp", "atlassian"],
         "is_recommended": True,
     },
     "confluence-protection": {

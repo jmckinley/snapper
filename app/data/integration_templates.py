@@ -25,6 +25,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__gmail__.*",
         "rules": [
             {
+                "id": "gmail-read-allowlist",
                 "name": "Gmail - Allow Read Operations",
                 "description": "Allow reading emails, listing messages, searching",
                 "rule_type": "command_allowlist",
@@ -36,6 +37,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "gmail-send-approval",
                 "name": "Gmail - Approval for Send",
                 "description": "Require approval before sending emails",
                 "rule_type": "command_allowlist",
@@ -47,6 +49,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "gmail-draft-approval",
                 "name": "Gmail - Approval for Draft",
                 "description": "Require approval for creating drafts",
                 "rule_type": "command_allowlist",
@@ -58,6 +61,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "gmail-block-delete",
                 "name": "Gmail - Block Delete",
                 "description": "Block permanent email deletion",
                 "rule_type": "command_denylist",
@@ -186,6 +190,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__telegram__.*",
         "rules": [
             {
+                "id": "telegram-read-allowlist",
                 "name": "Telegram - Allow Read Operations",
                 "description": "Allow reading messages and chat info",
                 "rule_type": "command_allowlist",
@@ -197,6 +202,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "telegram-send-approval",
                 "name": "Telegram - Approval for Send",
                 "description": "Require approval before sending messages",
                 "rule_type": "command_allowlist",
@@ -208,6 +214,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "telegram-block-delete",
                 "name": "Telegram - Block Delete",
                 "description": "Block message deletion",
                 "rule_type": "command_denylist",
@@ -229,6 +236,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__discord__.*",
         "rules": [
             {
+                "id": "discord-read-allowlist",
                 "name": "Discord - Allow Read Operations",
                 "description": "Allow reading messages, channels, servers",
                 "rule_type": "command_allowlist",
@@ -240,6 +248,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "discord-message-approval",
                 "name": "Discord - Approval for Messages",
                 "description": "Require approval before sending messages",
                 "rule_type": "command_allowlist",
@@ -251,6 +260,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "discord-block-admin",
                 "name": "Discord - Block Admin Operations",
                 "description": "Block server admin operations",
                 "rule_type": "command_denylist",
@@ -275,6 +285,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__google_calendar__.*|mcp__gcal__.*",
         "rules": [
             {
+                "id": "google_calendar-read-allowlist",
                 "name": "Calendar - Allow Read Operations",
                 "description": "Allow viewing calendars and events",
                 "rule_type": "command_allowlist",
@@ -286,6 +297,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "google_calendar-write-approval",
                 "name": "Calendar - Approval for Create/Update",
                 "description": "Require approval for creating or modifying events",
                 "rule_type": "command_allowlist",
@@ -297,6 +309,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "google_calendar-delete-approval",
                 "name": "Calendar - Approval for Delete",
                 "description": "Require approval before deleting events",
                 "rule_type": "command_allowlist",
@@ -318,6 +331,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__google_drive__.*|mcp__gdrive__.*",
         "rules": [
             {
+                "id": "google_drive-read-allowlist",
                 "name": "Drive - Allow Read Operations",
                 "description": "Allow listing and reading files",
                 "rule_type": "command_allowlist",
@@ -329,6 +343,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "google_drive-upload-approval",
                 "name": "Drive - Approval for Upload/Create",
                 "description": "Require approval for uploading files",
                 "rule_type": "command_allowlist",
@@ -340,6 +355,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "google_drive-block-delete",
                 "name": "Drive - Block Delete",
                 "description": "Block file deletion",
                 "rule_type": "command_denylist",
@@ -351,6 +367,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "google_drive-block-sharing",
                 "name": "Drive - Block Sharing Changes",
                 "description": "Block changing file sharing permissions",
                 "rule_type": "command_denylist",
@@ -372,6 +389,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__notion__.*",
         "rules": [
             {
+                "id": "notion-read-allowlist",
                 "name": "Notion - Allow Read Operations",
                 "description": "Allow reading pages, databases, blocks",
                 "rule_type": "command_allowlist",
@@ -383,6 +401,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "notion-write-approval",
                 "name": "Notion - Approval for Write",
                 "description": "Require approval for creating/updating content",
                 "rule_type": "command_allowlist",
@@ -394,6 +413,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "notion-block-delete",
                 "name": "Notion - Block Delete",
                 "description": "Block page/database deletion",
                 "rule_type": "command_denylist",
@@ -415,6 +435,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__linear__.*",
         "rules": [
             {
+                "id": "linear-read-allowlist",
                 "name": "Linear - Allow Read Operations",
                 "description": "Allow reading issues, projects, teams",
                 "rule_type": "command_allowlist",
@@ -426,6 +447,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "linear-update-allowlist",
                 "name": "Linear - Allow Issue Updates",
                 "description": "Allow updating issue status and comments",
                 "rule_type": "command_allowlist",
@@ -437,6 +459,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "linear-create-approval",
                 "name": "Linear - Approval for Create",
                 "description": "Require approval for creating issues",
                 "rule_type": "command_allowlist",
@@ -448,6 +471,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "linear-block-delete",
                 "name": "Linear - Block Delete",
                 "description": "Block issue deletion",
                 "rule_type": "command_denylist",
@@ -675,6 +699,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__gitlab__.*",
         "rules": [
             {
+                "id": "gitlab-read-allowlist",
                 "name": "GitLab - Allow Read Operations",
                 "description": "Allow reading projects, issues, MRs",
                 "rule_type": "command_allowlist",
@@ -686,6 +711,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "gitlab-write-approval",
                 "name": "GitLab - Approval for Write",
                 "description": "Require approval for creating/updating",
                 "rule_type": "command_allowlist",
@@ -697,6 +723,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "gitlab-block-dangerous",
                 "name": "GitLab - Block Dangerous Operations",
                 "description": "Block destructive operations",
                 "rule_type": "command_denylist",
@@ -718,6 +745,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__jira__.*",
         "rules": [
             {
+                "id": "jira-read-allowlist",
                 "name": "Jira - Allow Read Operations",
                 "description": "Allow reading issues, projects, boards",
                 "rule_type": "command_allowlist",
@@ -729,6 +757,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "jira-status-allowlist",
                 "name": "Jira - Allow Status Updates",
                 "description": "Allow updating issue status and comments",
                 "rule_type": "command_allowlist",
@@ -740,6 +769,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "jira-create-approval",
                 "name": "Jira - Approval for Create",
                 "description": "Require approval for creating issues",
                 "rule_type": "command_allowlist",
@@ -751,6 +781,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "jira-block-delete",
                 "name": "Jira - Block Delete",
                 "description": "Block issue deletion",
                 "rule_type": "command_denylist",
@@ -775,6 +806,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__aws__.*",
         "rules": [
             {
+                "id": "aws-read-allowlist",
                 "name": "AWS - Allow Read Operations",
                 "description": "Allow describing and listing resources",
                 "rule_type": "command_allowlist",
@@ -786,6 +818,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "aws-create-approval",
                 "name": "AWS - Approval for Create",
                 "description": "Require approval for creating resources",
                 "rule_type": "command_allowlist",
@@ -797,6 +830,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "aws-block-destructive",
                 "name": "AWS - Block Destructive Operations",
                 "description": "Block delete, terminate, and dangerous operations",
                 "rule_type": "command_denylist",
@@ -808,6 +842,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "aws-block-iam",
                 "name": "AWS - Block IAM Changes",
                 "description": "Block IAM policy and role modifications",
                 "rule_type": "command_denylist",
@@ -829,6 +864,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__kubernetes__.*|mcp__k8s__.*",
         "rules": [
             {
+                "id": "kubernetes-read-allowlist",
                 "name": "K8s - Allow Read Operations",
                 "description": "Allow getting and listing resources",
                 "rule_type": "command_allowlist",
@@ -840,6 +876,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "kubernetes-apply-approval",
                 "name": "K8s - Approval for Apply",
                 "description": "Require approval for applying manifests",
                 "rule_type": "command_allowlist",
@@ -851,6 +888,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "kubernetes-block-delete",
                 "name": "K8s - Block Delete",
                 "description": "Block resource deletion",
                 "rule_type": "command_denylist",
@@ -872,6 +910,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__docker__.*",
         "rules": [
             {
+                "id": "docker-read-allowlist",
                 "name": "Docker - Allow Read Operations",
                 "description": "Allow listing and inspecting containers/images",
                 "rule_type": "command_allowlist",
@@ -883,6 +922,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "docker-run-approval",
                 "name": "Docker - Approval for Run",
                 "description": "Require approval for running containers",
                 "rule_type": "command_allowlist",
@@ -894,6 +934,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "docker-block-destructive",
                 "name": "Docker - Block Destructive Operations",
                 "description": "Block removing containers and images",
                 "rule_type": "command_denylist",
@@ -915,6 +956,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__vercel__.*",
         "rules": [
             {
+                "id": "vercel-read-allowlist",
                 "name": "Vercel - Allow Read Operations",
                 "description": "Allow listing projects, deployments, domains",
                 "rule_type": "command_allowlist",
@@ -926,6 +968,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "vercel-deploy-approval",
                 "name": "Vercel - Approval for Deploy",
                 "description": "Require approval for deployments",
                 "rule_type": "command_allowlist",
@@ -937,6 +980,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "vercel-env-approval",
                 "name": "Vercel - Approval for Environment Variables",
                 "description": "Require approval for env var changes",
                 "rule_type": "command_allowlist",
@@ -948,6 +992,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "vercel-block-delete",
                 "name": "Vercel - Block Delete Operations",
                 "description": "Block project and deployment deletion",
                 "rule_type": "command_denylist",
@@ -969,6 +1014,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__railway__.*",
         "rules": [
             {
+                "id": "railway-read-allowlist",
                 "name": "Railway - Allow Read Operations",
                 "description": "Allow listing projects, services, deployments",
                 "rule_type": "command_allowlist",
@@ -980,6 +1026,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "railway-deploy-approval",
                 "name": "Railway - Approval for Deploy",
                 "description": "Require approval for deployments",
                 "rule_type": "command_allowlist",
@@ -991,6 +1038,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "railway-vars-approval",
                 "name": "Railway - Approval for Variables",
                 "description": "Require approval for variable changes",
                 "rule_type": "command_allowlist",
@@ -1002,6 +1050,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "railway-block-delete",
                 "name": "Railway - Block Delete Operations",
                 "description": "Block project and service deletion",
                 "rule_type": "command_denylist",
@@ -1023,6 +1072,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__supabase__.*",
         "rules": [
             {
+                "id": "supabase-read-allowlist",
                 "name": "Supabase - Allow Read Operations",
                 "description": "Allow reading data, listing projects",
                 "rule_type": "command_allowlist",
@@ -1034,6 +1084,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "supabase-write-approval",
                 "name": "Supabase - Approval for Data Write",
                 "description": "Require approval for insert/update",
                 "rule_type": "command_allowlist",
@@ -1045,6 +1096,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "supabase-auth-approval",
                 "name": "Supabase - Approval for Auth Changes",
                 "description": "Require approval for auth operations",
                 "rule_type": "command_allowlist",
@@ -1056,6 +1108,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "supabase-block-delete",
                 "name": "Supabase - Block Delete Operations",
                 "description": "Block data and resource deletion",
                 "rule_type": "command_denylist",
@@ -1067,6 +1120,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "supabase-block-schema",
                 "name": "Supabase - Block Schema Changes",
                 "description": "Block database schema modifications",
                 "rule_type": "command_denylist",
@@ -1088,6 +1142,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__netlify__.*",
         "rules": [
             {
+                "id": "netlify-read-allowlist",
                 "name": "Netlify - Allow Read Operations",
                 "description": "Allow listing sites, deploys, forms",
                 "rule_type": "command_allowlist",
@@ -1099,6 +1154,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "netlify-deploy-approval",
                 "name": "Netlify - Approval for Deploy",
                 "description": "Require approval for deployments",
                 "rule_type": "command_allowlist",
@@ -1110,6 +1166,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "netlify-block-delete",
                 "name": "Netlify - Block Delete Operations",
                 "description": "Block site deletion",
                 "rule_type": "command_denylist",
@@ -1131,6 +1188,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__planetscale__.*|mcp__pscale__.*",
         "rules": [
             {
+                "id": "planetscale-read-allowlist",
                 "name": "PlanetScale - Allow Read Operations",
                 "description": "Allow SELECT queries and listing",
                 "rule_type": "command_allowlist",
@@ -1142,6 +1200,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "planetscale-write-approval",
                 "name": "PlanetScale - Approval for Write",
                 "description": "Require approval for insert/update",
                 "rule_type": "command_allowlist",
@@ -1153,6 +1212,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "planetscale-branch-approval",
                 "name": "PlanetScale - Approval for Branch Operations",
                 "description": "Require approval for branch management",
                 "rule_type": "command_allowlist",
@@ -1164,6 +1224,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "planetscale-block-destructive",
                 "name": "PlanetScale - Block Destructive Operations",
                 "description": "Block delete, drop operations",
                 "rule_type": "command_denylist",
@@ -1185,6 +1246,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__neon__.*",
         "rules": [
             {
+                "id": "neon-read-allowlist",
                 "name": "Neon - Allow Read Operations",
                 "description": "Allow SELECT queries and project listing",
                 "rule_type": "command_allowlist",
@@ -1196,6 +1258,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "neon-write-approval",
                 "name": "Neon - Approval for Write",
                 "description": "Require approval for data writes",
                 "rule_type": "command_allowlist",
@@ -1207,6 +1270,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "neon-branch-approval",
                 "name": "Neon - Approval for Branch Operations",
                 "description": "Require approval for branch management",
                 "rule_type": "command_allowlist",
@@ -1218,6 +1282,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "neon-block-destructive",
                 "name": "Neon - Block Destructive Operations",
                 "description": "Block delete and drop operations",
                 "rule_type": "command_denylist",
@@ -1239,6 +1304,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__cloudflare__.*|mcp__cf__.*",
         "rules": [
             {
+                "id": "cloudflare-read-allowlist",
                 "name": "Cloudflare - Allow Read Operations",
                 "description": "Allow listing zones, DNS records, analytics",
                 "rule_type": "command_allowlist",
@@ -1250,6 +1316,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "cloudflare-dns-approval",
                 "name": "Cloudflare - Approval for DNS Changes",
                 "description": "Require approval for DNS modifications",
                 "rule_type": "command_allowlist",
@@ -1261,6 +1328,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "cloudflare-worker-approval",
                 "name": "Cloudflare - Approval for Worker Deploy",
                 "description": "Require approval for Worker deployments",
                 "rule_type": "command_allowlist",
@@ -1272,6 +1340,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "cloudflare-block-delete",
                 "name": "Cloudflare - Block Delete Operations",
                 "description": "Block zone and record deletion",
                 "rule_type": "command_denylist",
@@ -1293,6 +1362,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__render__.*",
         "rules": [
             {
+                "id": "render-read-allowlist",
                 "name": "Render - Allow Read Operations",
                 "description": "Allow listing services, deploys, logs",
                 "rule_type": "command_allowlist",
@@ -1304,6 +1374,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "render-deploy-approval",
                 "name": "Render - Approval for Deploy",
                 "description": "Require approval for deployments",
                 "rule_type": "command_allowlist",
@@ -1315,6 +1386,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "render-env-approval",
                 "name": "Render - Approval for Env Changes",
                 "description": "Require approval for environment variables",
                 "rule_type": "command_allowlist",
@@ -1326,6 +1398,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "render-block-delete",
                 "name": "Render - Block Delete Operations",
                 "description": "Block service deletion",
                 "rule_type": "command_denylist",
@@ -1347,6 +1420,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__flyio__.*|mcp__fly__.*",
         "rules": [
             {
+                "id": "flyio-read-allowlist",
                 "name": "Fly.io - Allow Read Operations",
                 "description": "Allow listing apps, machines, status",
                 "rule_type": "command_allowlist",
@@ -1358,6 +1432,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "flyio-deploy-approval",
                 "name": "Fly.io - Approval for Deploy",
                 "description": "Require approval for deployments",
                 "rule_type": "command_allowlist",
@@ -1369,6 +1444,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "flyio-secrets-approval",
                 "name": "Fly.io - Approval for Secrets",
                 "description": "Require approval for secret changes",
                 "rule_type": "command_allowlist",
@@ -1380,6 +1456,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "flyio-block-destructive",
                 "name": "Fly.io - Block Destructive Operations",
                 "description": "Block app and machine deletion",
                 "rule_type": "command_denylist",
@@ -1401,6 +1478,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__digitalocean__.*|mcp__do__.*",
         "rules": [
             {
+                "id": "digitalocean-read-allowlist",
                 "name": "DigitalOcean - Allow Read Operations",
                 "description": "Allow listing droplets, apps, databases",
                 "rule_type": "command_allowlist",
@@ -1412,6 +1490,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "digitalocean-create-approval",
                 "name": "DigitalOcean - Approval for Create",
                 "description": "Require approval for creating resources",
                 "rule_type": "command_allowlist",
@@ -1423,6 +1502,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "digitalocean-block-destructive",
                 "name": "DigitalOcean - Block Destructive Operations",
                 "description": "Block droplet and resource deletion",
                 "rule_type": "command_denylist",
@@ -1447,6 +1527,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__postgres__.*|mcp__postgresql__.*",
         "rules": [
             {
+                "id": "postgresql-read-allowlist",
                 "name": "PostgreSQL - Allow Read Operations",
                 "description": "Allow SELECT queries",
                 "rule_type": "command_allowlist",
@@ -1458,6 +1539,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "postgresql-write-approval",
                 "name": "PostgreSQL - Approval for Write",
                 "description": "Require approval for INSERT/UPDATE",
                 "rule_type": "command_allowlist",
@@ -1469,6 +1551,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "postgresql-block-destructive",
                 "name": "PostgreSQL - Block Destructive Operations",
                 "description": "Block DELETE, DROP, TRUNCATE",
                 "rule_type": "command_denylist",
@@ -1490,6 +1573,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__mongodb__.*|mcp__mongo__.*",
         "rules": [
             {
+                "id": "mongodb-read-allowlist",
                 "name": "MongoDB - Allow Read Operations",
                 "description": "Allow find queries",
                 "rule_type": "command_allowlist",
@@ -1501,6 +1585,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "mongodb-write-approval",
                 "name": "MongoDB - Approval for Write",
                 "description": "Require approval for insert/update",
                 "rule_type": "command_allowlist",
@@ -1512,6 +1597,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "mongodb-block-destructive",
                 "name": "MongoDB - Block Destructive Operations",
                 "description": "Block delete and drop operations",
                 "rule_type": "command_denylist",
@@ -1536,6 +1622,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__filesystem__.*",
         "rules": [
             {
+                "id": "filesystem-read-allowlist",
                 "name": "Filesystem - Allow Read Operations",
                 "description": "Allow reading files and listing directories",
                 "rule_type": "command_allowlist",
@@ -1547,6 +1634,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "filesystem-write-approval",
                 "name": "Filesystem - Approval for Write",
                 "description": "Require approval for creating/modifying files",
                 "rule_type": "command_allowlist",
@@ -1558,6 +1646,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "filesystem-block-delete",
                 "name": "Filesystem - Block Delete",
                 "description": "Block file and directory deletion",
                 "rule_type": "command_denylist",
@@ -1569,6 +1658,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "filesystem-block-sensitive",
                 "name": "Filesystem - Block Sensitive Paths",
                 "description": "Block access to sensitive system paths",
                 "rule_type": "credential_protection",
@@ -1597,6 +1687,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "Bash",
         "rules": [
             {
+                "id": "shell-safe-allowlist",
                 "name": "Shell - Allow Safe Commands",
                 "description": "Allow common read-only commands",
                 "rule_type": "command_allowlist",
@@ -1620,6 +1711,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "shell-git-read-allowlist",
                 "name": "Shell - Allow Git Read",
                 "description": "Allow git status, log, diff commands",
                 "rule_type": "command_allowlist",
@@ -1633,6 +1725,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "shell-git-write-approval",
                 "name": "Shell - Approval for Git Write",
                 "description": "Require approval for git commits, push",
                 "rule_type": "command_allowlist",
@@ -1646,6 +1739,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "shell-block-dangerous",
                 "name": "Shell - Block Dangerous Commands",
                 "description": "Block rm -rf, sudo, format, etc.",
                 "rule_type": "command_denylist",
@@ -1681,6 +1775,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__openai__.*",
         "rules": [
             {
+                "id": "openai-completions-allowlist",
                 "name": "OpenAI - Allow Completions",
                 "description": "Allow chat and completion calls",
                 "rule_type": "command_allowlist",
@@ -1692,6 +1787,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "openai-rate-limit",
                 "name": "OpenAI - Rate Limit",
                 "description": "Limit API calls to prevent cost overruns",
                 "rule_type": "rate_limit",
@@ -1714,6 +1810,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "mcp_matcher": "mcp__zapier__.*",
         "rules": [
             {
+                "id": "zapier-read-allowlist",
                 "name": "Zapier - Allow Read Operations",
                 "description": "Allow listing zaps and triggers",
                 "rule_type": "command_allowlist",
@@ -1725,6 +1822,7 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
                 }
             },
             {
+                "id": "zapier-trigger-approval",
                 "name": "Zapier - Approval for Triggers",
                 "description": "Require approval for triggering workflows",
                 "rule_type": "command_allowlist",

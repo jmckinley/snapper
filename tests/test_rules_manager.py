@@ -245,13 +245,13 @@ class TestRuleManagement:
         response = httpx.get(f"{API_URL}/rules/templates")
         assert response.status_code == 200
         templates = response.json()
-        assert len(templates) >= 20  # We have 25+ templates
+        assert len(templates) >= 15  # Non-integration templates
 
-        # Check for key templates
+        # Check for key templates (service-specific ones moved to integration_templates)
         template_ids = [t["id"] for t in templates]
-        assert "gmail-protection" in template_ids
-        assert "github-protection" in template_ids
         assert "credential-protection" in template_ids
+        assert "openclaw-safe-commands" in template_ids
+        assert "pii-gate-protection" in template_ids
 
     def test_apply_template(self):
         """RU-011: Apply CVE mitigation template."""

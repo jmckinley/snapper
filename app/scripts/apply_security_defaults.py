@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from app.config import get_settings
 from app.models.rules import Rule, RuleAction, RuleType
-from app.models.security_issues import SecurityIssue, IssueSeverity, IssueStatus
+from app.models.security_issues import (
+    MaliciousSkill,
+    SecurityIssue,
+    IssueSeverity,
+    IssueStatus,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -97,6 +102,587 @@ MALICIOUS_SKILL_PATTERNS = [
 # Malicious publishers to block entirely
 MALICIOUS_PUBLISHERS = [
     "hightower6eu",  # 314+ malicious skills in ClawHavoc campaign
+]
+
+# Detailed malicious skill records for the malicious_skills database table.
+# Each entry maps to a MaliciousSkill model row with full threat classification.
+MALICIOUS_SKILL_RECORDS = [
+    # --- Original blocklist (general malware tools) ---
+    {
+        "skill_id": "shell-executor-pro",
+        "skill_name": "Shell Executor Pro",
+        "author": None,
+        "threat_type": "rce",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Executes arbitrary shell commands without sandboxing or user approval.",
+        "indicators": {"patterns": ["subprocess.call", "os.system"], "behavior": "unrestricted_shell"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "file-exfiltrator",
+        "skill_name": "File Exfiltrator",
+        "author": None,
+        "threat_type": "data_exfil",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Reads and transmits local files to external servers.",
+        "indicators": {"patterns": ["requests.post", "open("], "behavior": "file_upload"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "credential-harvester",
+        "skill_name": "Credential Harvester",
+        "author": None,
+        "threat_type": "credential_theft",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Harvests credentials from environment variables, config files, and keychains.",
+        "indicators": {"patterns": ["os.environ", ".env", "keychain"], "behavior": "credential_access"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "crypto-miner-hidden",
+        "skill_name": "Crypto Miner (Hidden)",
+        "author": None,
+        "threat_type": "cryptominer",
+        "severity": IssueSeverity.HIGH,
+        "description": "Runs cryptocurrency mining in background processes consuming system resources.",
+        "indicators": {"patterns": ["hashlib", "threading"], "behavior": "cpu_intensive_loop"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "reverse-shell-kit",
+        "skill_name": "Reverse Shell Kit",
+        "author": None,
+        "threat_type": "backdoor",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Opens reverse shell connections to attacker-controlled servers.",
+        "indicators": {"patterns": ["socket.connect", "/dev/tcp"], "behavior": "reverse_shell"},
+        "confidence": "confirmed",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "keylogger-stealth",
+        "skill_name": "Keylogger Stealth",
+        "author": None,
+        "threat_type": "spyware",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Captures keystrokes and sends them to external endpoints.",
+        "indicators": {"patterns": ["pynput", "keyboard.hook"], "behavior": "input_capture"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "ransomware-toolkit",
+        "skill_name": "Ransomware Toolkit",
+        "author": None,
+        "threat_type": "ransomware",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Encrypts user files and demands ransom for decryption keys.",
+        "indicators": {"patterns": ["cryptography.fernet", "os.walk"], "behavior": "file_encryption"},
+        "confidence": "confirmed",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "botnet-client",
+        "skill_name": "Botnet Client",
+        "author": None,
+        "threat_type": "botnet",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Connects to C2 server and executes remote commands as part of a botnet.",
+        "indicators": {"patterns": ["socket", "json.loads", "eval"], "behavior": "c2_communication"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "data-wiper",
+        "skill_name": "Data Wiper",
+        "author": None,
+        "threat_type": "destructive",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Recursively deletes files and overwrites disk sectors.",
+        "indicators": {"patterns": ["shutil.rmtree", "os.remove"], "behavior": "mass_deletion"},
+        "confidence": "confirmed",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "privilege-escalator",
+        "skill_name": "Privilege Escalator",
+        "author": None,
+        "threat_type": "privilege_escalation",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Attempts to escalate privileges via SUID exploits and sudo misconfigurations.",
+        "indicators": {"patterns": ["chmod u+s", "sudo"], "behavior": "priv_escalation"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    # --- ClawHavoc campaign typosquatting variants ---
+    {
+        "skill_id": "clawhub",
+        "skill_name": "clawhub (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat of official ClawHub CLI. Part of ClawHavoc campaign distributing macOS malware via ClickFix instructions.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting", "malware_type": "ClickFix"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawhub1",
+        "skill_name": "clawhub1 (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawhubb",
+        "skill_name": "clawhubb (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawhubcli",
+        "skill_name": "clawhubcli (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawwhub",
+        "skill_name": "clawwhub (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "cllawhub",
+        "skill_name": "cllawhub (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawdhub",
+        "skill_name": "clawdhub (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawdhub1",
+        "skill_name": "clawdhub1 (typosquat)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.CRITICAL,
+        "description": "Typosquat variant of ClawHub CLI. ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "typosquatting"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    # --- ClawHavoc random suffix variants (representative sample) ---
+    {
+        "skill_id": "clawhub-6yr3b",
+        "skill_name": "clawhub-6yr3b (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-c9y4p",
+        "skill_name": "clawhub-c9y4p (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-d4kxr",
+        "skill_name": "clawhub-d4kxr (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-f3qcn",
+        "skill_name": "clawhub-f3qcn (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-gpcrq",
+        "skill_name": "clawhub-gpcrq (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-gstca",
+        "skill_name": "clawhub-gstca (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-hh1fd",
+        "skill_name": "clawhub-hh1fd (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-hh2km",
+        "skill_name": "clawhub-hh2km (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-hylhq",
+        "skill_name": "clawhub-hylhq (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-i7oci",
+        "skill_name": "clawhub-i7oci (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-i9zhz",
+        "skill_name": "clawhub-i9zhz (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-ja7eh",
+        "skill_name": "clawhub-ja7eh (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-krmvq",
+        "skill_name": "clawhub-krmvq (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-oihpl",
+        "skill_name": "clawhub-oihpl (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-olgys",
+        "skill_name": "clawhub-olgys (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-osasg",
+        "skill_name": "clawhub-osasg (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-rkvny",
+        "skill_name": "clawhub-rkvny (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-sxtsn",
+        "skill_name": "clawhub-sxtsn (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-tlxx5",
+        "skill_name": "clawhub-tlxx5 (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-uoeym",
+        "skill_name": "clawhub-uoeym (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-wixce",
+        "skill_name": "clawhub-wixce (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    {
+        "skill_id": "clawhub-wotp2",
+        "skill_name": "clawhub-wotp2 (random suffix)",
+        "author": "hightower6eu",
+        "threat_type": "typosquatting",
+        "severity": IssueSeverity.HIGH,
+        "description": "Random-suffix ClawHub typosquat. Part of ClawHavoc campaign batch generation.",
+        "indicators": {"campaign": "ClawHavoc", "technique": "random_suffix_typosquatting"},
+        "confidence": "high",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": False,
+    },
+    # --- Auto-updater category (dynamic payload fetching) ---
+    {
+        "skill_id": "auto-update-helper",
+        "skill_name": "Auto Update Helper",
+        "author": None,
+        "threat_type": "dropper",
+        "severity": IssueSeverity.HIGH,
+        "description": "Auto-updater that fetches and executes dynamic payloads from remote servers.",
+        "indicators": {"patterns": ["urllib.request", "exec("], "behavior": "dynamic_payload_fetch"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "skill-auto-updater",
+        "skill_name": "Skill Auto Updater",
+        "author": None,
+        "threat_type": "dropper",
+        "severity": IssueSeverity.HIGH,
+        "description": "Masquerades as skill updater but downloads and runs arbitrary code.",
+        "indicators": {"patterns": ["requests.get", "eval("], "behavior": "dynamic_payload_fetch"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "clawhub-updater",
+        "skill_name": "ClawHub Updater (fake)",
+        "author": "hightower6eu",
+        "threat_type": "dropper",
+        "severity": IssueSeverity.HIGH,
+        "description": "Fake ClawHub updater that downloads malware. Part of ClawHavoc campaign.",
+        "indicators": {"campaign": "ClawHavoc", "behavior": "dynamic_payload_fetch"},
+        "confidence": "confirmed",
+        "source": "intel_feed",
+        "is_blocked": True,
+        "is_verified": True,
+    },
+    {
+        "skill_id": "self-update-tool",
+        "skill_name": "Self Update Tool",
+        "author": None,
+        "threat_type": "dropper",
+        "severity": IssueSeverity.HIGH,
+        "description": "Self-updating tool that replaces its own code with remotely fetched payloads.",
+        "indicators": {"patterns": ["__file__", "urllib"], "behavior": "self_modification"},
+        "confidence": "high",
+        "source": "scan",
+        "is_blocked": True,
+        "is_verified": False,
+    },
 ]
 
 # Default security rules to apply
@@ -444,6 +1030,54 @@ async def create_global_rules(session: AsyncSession) -> int:
     return created
 
 
+async def create_malicious_skill_records(session: AsyncSession) -> int:
+    """Create MaliciousSkill database records from the known malicious skills list.
+
+    Populates the malicious_skills table so the Security page's
+    Malicious Skills tab shows data. Uses upsert logic to avoid
+    duplicates on re-runs.
+
+    Returns the number of records created.
+    """
+    created = 0
+
+    for record_data in MALICIOUS_SKILL_RECORDS:
+        # Check if skill_id already exists
+        result = await session.execute(
+            select(MaliciousSkill).where(
+                MaliciousSkill.skill_id == record_data["skill_id"]
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            logger.info(
+                f"MaliciousSkill '{record_data['skill_id']}' already exists, skipping"
+            )
+            continue
+
+        skill = MaliciousSkill(
+            id=uuid4(),
+            skill_id=record_data["skill_id"],
+            skill_name=record_data["skill_name"],
+            author=record_data.get("author"),
+            threat_type=record_data["threat_type"],
+            severity=record_data["severity"],
+            analysis_notes=record_data.get("description"),
+            indicators=record_data.get("indicators", {}),
+            confidence=record_data.get("confidence", "medium"),
+            source=record_data.get("source", "seed"),
+            is_blocked=record_data.get("is_blocked", True),
+            is_verified=record_data.get("is_verified", False),
+        )
+        session.add(skill)
+        created += 1
+        logger.info(f"Created MaliciousSkill: {record_data['skill_id']}")
+
+    await session.commit()
+    return created
+
+
 async def create_security_issues(session: AsyncSession) -> int:
     """Create known security issues/CVEs if they don't exist.
 
@@ -498,14 +1132,19 @@ async def main():
 
     async with async_session() as session:
         # Create global security rules
-        logger.info("\n[1/2] Creating global security rules...")
+        logger.info("\n[1/3] Creating global security rules...")
         rules_created = await create_global_rules(session)
         logger.info(f"Created {rules_created} new security rules")
 
         # Create known CVE entries
-        logger.info("\n[2/2] Creating known CVE entries...")
+        logger.info("\n[2/3] Creating known CVE entries...")
         issues_created = await create_security_issues(session)
         logger.info(f"Created {issues_created} new CVE entries")
+
+        # Create malicious skill database records
+        logger.info("\n[3/3] Creating malicious skill records...")
+        skills_created = await create_malicious_skill_records(session)
+        logger.info(f"Created {skills_created} new malicious skill records")
 
     await engine.dispose()
 
@@ -515,6 +1154,7 @@ async def main():
     logger.info("\nSummary:")
     logger.info(f"  - Security rules created: {rules_created}")
     logger.info(f"  - CVE entries created: {issues_created}")
+    logger.info(f"  - Malicious skill records created: {skills_created}")
     logger.info(f"  - Malicious skills in blocklist: {len(MALICIOUS_SKILLS)}")
     logger.info("\nNext steps:")
     logger.info("  1. Access the dashboard at http://localhost:8000")
