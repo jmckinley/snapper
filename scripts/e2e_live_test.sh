@@ -27,8 +27,8 @@ if [[ -n "$HOST_HEADER" ]]; then
 fi
 AGENT_EID="e2e-test-agent"
 CHAT_ID="${E2E_CHAT_ID:-}"
-OPENCLAW_CONTAINER="${OPENCLAW_CONTAINER:-openclaw-gateway}"
-REDIS_CONTAINER="${REDIS_CONTAINER:-snapper-redis}"
+OPENCLAW_CONTAINER="${OPENCLAW_CONTAINER:-openclaw-openclaw-gateway-1}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-snapper-redis-1}"
 
 # ============================================================
 # Counters & state
@@ -269,6 +269,14 @@ fi
 
 # We need a valid agent for evaluation. Create one now.
 log "Creating test agent..."
+# Hard-delete any soft-deleted leftover from a prior run
+STALE_ID=$(api_curl "${API}/agents?search=${AGENT_EID}&include_deleted=true" \
+    | jq -r ".items[] | select(.external_id == \"${AGENT_EID}\") | .id" 2>/dev/null)
+if [[ -n "$STALE_ID" ]]; then
+    api_curl -X DELETE "${API}/agents/${STALE_ID}?hard_delete=true" >/dev/null 2>&1
+    log "Cleaned up stale agent $STALE_ID"
+fi
+
 AGENT_RESP=$(api_curl -X POST "${API}/agents" \
     -H "Content-Type: application/json" \
     -d "{
@@ -278,7 +286,7 @@ AGENT_RESP=$(api_curl -X POST "${API}/agents" \
         \"trust_level\": \"standard\"
     }")
 
-# If agent already exists, try to fetch it
+# If agent already exists (active), try to fetch it
 if [[ -z "$AGENT_RESP" ]] || echo "$AGENT_RESP" | jq -e '.detail' >/dev/null 2>&1; then
     AGENT_RESP=$(api_curl "${API}/agents?search=${AGENT_EID}" \
         | jq '.items[0] // empty')
