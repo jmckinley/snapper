@@ -266,6 +266,15 @@ async def help_page(request: Request):
     )
 
 
+@app.get("/terms", tags=["dashboard"])
+async def terms_page(request: Request):
+    """Terms of service page."""
+    return templates.TemplateResponse(
+        "terms.html",
+        {"request": request, "settings": settings},
+    )
+
+
 @app.get("/docs", tags=["dashboard"])
 async def docs_page(request: Request):
     """API documentation page."""

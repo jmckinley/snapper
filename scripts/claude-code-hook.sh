@@ -24,7 +24,7 @@
 #
 # Or run: snapper integrate claude-code
 
-SNAPPER_URL="${SNAPPER_URL:-https://76.13.127.76:8443}"
+SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
 SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-claude-code-$(hostname)}"
 SNAPPER_API_KEY="${SNAPPER_API_KEY:-}"  # Optional: snp_xxx for authenticated requests
 APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"

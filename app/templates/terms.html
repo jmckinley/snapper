@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Terms of Service - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Terms of Service</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow rounded-lg p-8 prose prose-gray max-w-none">
+    <p class="text-sm text-gray-500 mb-6">Effective Date: February 7, 2026</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">1. Acceptance of Terms</h2>
+    <p class="text-gray-700 mb-4">By using Snapper ("the Software"), you agree to these Terms of Service. If you do not agree, do not use the Software.</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">2. Description of Service</h2>
+    <p class="text-gray-700 mb-4">Snapper is an Agent Application Firewall (AAF) that inspects and enforces security policy on AI agent traffic. It provides rule-based control, PII protection, approval workflows, and audit logging for AI agents including OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents.</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">3. License</h2>
+    <p class="text-gray-700 mb-4">Snapper is open-source software licensed under the <a href="https://opensource.org/licenses/MIT" class="text-primary-600 hover:text-primary-800 underline">MIT License</a>.</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">4. Use at Your Own Risk</h2>
+    <p class="text-gray-700 mb-2">The Software is provided "as is" without warranty of any kind. You are solely responsible for:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Configuring security rules appropriate for your environment</li>
+        <li>Protecting your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> and API keys</li>
+        <li>Securing your deployment (firewall, TLS, access controls)</li>
+        <li>Backing up your data and encryption keys</li>
+        <li>Evaluating whether the Software meets your security requirements</li>
+    </ul>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">5. No Guarantee of Security</h2>
+    <p class="text-gray-700 mb-2">While Snapper is designed to enhance AI agent security, no software can guarantee complete protection. Snapper:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Does not replace proper network security, access controls, or monitoring</li>
+        <li>May not detect all malicious actions or PII patterns</li>
+        <li>Depends on correct configuration to be effective</li>
+        <li>Should be used as one layer in a defense-in-depth strategy</li>
+    </ul>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Data Handling</h2>
+    <p class="text-gray-700 mb-2">Snapper processes and stores:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li><strong>Audit logs</strong> of agent actions (commands, file access, network requests)</li>
+        <li><strong>PII vault entries</strong> encrypted with Fernet (AES-128-CBC) derived from your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code></li>
+        <li><strong>Agent metadata</strong> including API keys (stored as SHA-256 hashes)</li>
+        <li><strong>Approval workflow state</strong> in Redis (with configurable TTL)</li>
+    </ul>
+    <p class="text-gray-700 mb-4">All data is stored locally in your PostgreSQL and Redis instances. Snapper does not transmit data to external servers unless you configure external alerting (Telegram, Slack, email, webhooks).</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">7. PII Vault</h2>
+    <p class="text-gray-700 mb-4">The PII vault encrypts sensitive data using a key derived from your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> via HKDF. <strong>Changing or losing your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code> after storing vault entries will make them permanently unrecoverable.</strong> You are responsible for securely backing up your <code class="bg-gray-100 px-1 rounded text-sm">SECRET_KEY</code>.</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">8. Third-Party Integrations</h2>
+    <p class="text-gray-700 mb-4">Snapper integrates with third-party services (Telegram, Slack, PagerDuty, GitHub, NVD) when configured by you. These integrations are subject to the respective third-party terms of service. Snapper is not responsible for third-party service availability or data handling.</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Limitation of Liability</h2>
+    <p class="text-gray-700 mb-2">To the maximum extent permitted by law, the authors and contributors of Snapper shall not be liable for any direct, indirect, incidental, special, consequential, or exemplary damages arising from the use or inability to use the Software, including but not limited to:</p>
+    <ul class="list-disc pl-6 text-gray-700 mb-4 space-y-1">
+        <li>Data loss or corruption</li>
+        <li>Security breaches</li>
+        <li>Unauthorized access to systems</li>
+        <li>Loss of business or revenue</li>
+        <li>Damages from AI agent actions that bypass security rules</li>
+    </ul>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Modifications</h2>
+    <p class="text-gray-700 mb-4">These terms may be updated from time to time. Continued use of the Software after changes constitutes acceptance of the modified terms. Check this document for the latest version.</p>
+
+    <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">11. Contact</h2>
+    <p class="text-gray-700 mb-4">For questions about these terms, open an issue at <a href="https://github.com/jmckinley/snapper/issues" class="text-primary-600 hover:text-primary-800 underline">github.com/jmckinley/snapper/issues</a>.</p>
+</div>
+{% endblock %}

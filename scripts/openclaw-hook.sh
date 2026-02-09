@@ -5,7 +5,7 @@
 # Install: Copy to ~/.openclaw/hooks/pre_tool_use.sh
 # Or run: snapper integrate openclaw
 
-SNAPPER_URL="${SNAPPER_URL:-https://76.13.127.76:8443}"
+SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
 SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-openclaw-$(hostname)}"
 SNAPPER_API_KEY="${SNAPPER_API_KEY:-}"  # Optional: snp_xxx for authenticated requests
 APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"  # 5 minutes default

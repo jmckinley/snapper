@@ -2,9 +2,7 @@
 E2E tests for the setup wizard with agent-type selection and install-config.
 
 Run with:
-    E2E_BASE_URL=https://76.13.127.76:8443 npx playwright test tests/e2e/test_wizard.py
-    or:
-    E2E_BASE_URL=https://76.13.127.76:8443 pytest tests/e2e/test_wizard.py -v
+    E2E_BASE_URL=http://localhost:8000 pytest tests/e2e/test_wizard.py -v
 """
 
 import os
@@ -13,7 +11,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
-BASE_URL = os.environ.get("E2E_BASE_URL", "https://76.13.127.76:8443")
+BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 

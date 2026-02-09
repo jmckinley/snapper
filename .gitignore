@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 *.env
+sandbox-workspace/.env
 .mcp.json
 gmail-config/
 mcp-configs/

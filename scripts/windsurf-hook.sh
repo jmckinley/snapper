@@ -23,7 +23,7 @@
 # Source Snapper env if available
 [ -f ~/.codeium/windsurf/.env.snapper ] && set -a && . ~/.codeium/windsurf/.env.snapper && set +a
 
-SNAPPER_URL="${SNAPPER_URL:-https://76.13.127.76:8443}"
+SNAPPER_URL="${SNAPPER_URL:-http://localhost:8000}"
 SNAPPER_AGENT_ID="${SNAPPER_AGENT_ID:-windsurf-$(hostname)}"
 SNAPPER_API_KEY="${SNAPPER_API_KEY:-}"
 APPROVAL_TIMEOUT="${SNAPPER_APPROVAL_TIMEOUT:-300}"
