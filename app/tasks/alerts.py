@@ -1,10 +1,13 @@
 """Alert notification tasks."""
 
+import asyncio
 import logging
 import smtplib
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Optional
+from uuid import UUID
 
 import httpx
 
@@ -13,6 +16,53 @@ from app.tasks import celery_app
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _run_async(coro):
+    """Run async coroutine in sync Celery context."""
+    loop = asyncio.get_event_loop()
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
+async def _persist_alert(title, message, severity, channels, metadata):
+    """Persist Alert record to database."""
+    try:
+        from app.database import get_db_context
+        from app.models.audit_logs import Alert, AuditSeverity
+
+        severity_map = {
+            "critical": AuditSeverity.CRITICAL,
+            "error": AuditSeverity.ERROR,
+            "high": AuditSeverity.ERROR,
+            "warning": AuditSeverity.WARNING,
+            "info": AuditSeverity.INFO,
+        }
+
+        # Extract agent_id from metadata if present
+        agent_id = None
+        if metadata and metadata.get("agent_id"):
+            try:
+                agent_id = UUID(metadata["agent_id"]) if isinstance(metadata["agent_id"], str) else None
+            except (ValueError, TypeError):
+                pass
+
+        async with get_db_context() as db:
+            alert = Alert(
+                alert_type="rule_enforcement",
+                severity=severity_map.get(severity, AuditSeverity.INFO),
+                agent_id=agent_id,
+                title=title,
+                message=message,
+                details=metadata or {},
+                notification_channels=channels or [],
+                notification_sent_at=datetime.utcnow(),
+            )
+            db.add(alert)
+    except Exception as e:
+        logger.warning(f"Failed to persist alert to database: {e}")
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
@@ -67,6 +117,12 @@ def send_alert(
     if errors:
         # Log errors but don't fail the task
         logger.error(f"Alert delivery errors: {errors}")
+
+    # Persist alert record to database
+    try:
+        _run_async(_persist_alert(title, message, severity, channels, metadata))
+    except Exception as e:
+        logger.warning(f"Failed to persist alert record: {e}")
 
 
 def _send_email_alert(title: str, message: str, severity: str):

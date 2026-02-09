@@ -15,57 +15,17 @@
     <!-- Security Settings -->
     <div class="bg-white shadow rounded-lg p-6">
         <h2 class="text-lg font-medium text-gray-900 mb-4">Security Settings</h2>
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="text-sm font-medium text-gray-900">Deny by Default</h3>
-                    <p class="text-sm text-gray-500">When no rules match, deny the request (recommended)</p>
-                </div>
-                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Enabled</span>
-            </div>
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="text-sm font-medium text-gray-900">WebSocket Origin Validation</h3>
-                    <p class="text-sm text-gray-500">Mitigate CVE-2026-25253 by validating origin headers</p>
-                </div>
-                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Enabled</span>
-            </div>
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="text-sm font-medium text-gray-900">Localhost Only Mode</h3>
-                    <p class="text-sm text-gray-500">Restrict access to localhost connections only</p>
-                </div>
-                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Enabled</span>
-            </div>
+        <div id="security-toggles" class="space-y-4">
+            <div class="text-sm text-gray-500">Loading configuration...</div>
         </div>
     </div>
 
     <!-- Alert Configuration -->
     <div class="bg-white shadow rounded-lg p-6">
         <h2 class="text-lg font-medium text-gray-900 mb-4">Alert Notifications</h2>
-        <div class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Email Alerts</label>
-                <input type="email" placeholder="admin@example.com" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Slack Webhook URL</label>
-                <input type="url" placeholder="https://hooks.slack.com/..." class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Alert Severity Threshold</label>
-                <select class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
-                    <option value="critical">Critical only</option>
-                    <option value="high">High and above</option>
-                    <option value="medium">Medium and above</option>
-                    <option value="all">All alerts</option>
-                </select>
-            </div>
-        </div>
-        <div class="mt-4">
-            <button class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                Save Alert Settings
-            </button>
+        <p class="text-sm text-gray-500 mb-4">Alert settings are configured via environment variables in your <code class="bg-gray-100 px-1 rounded">.env</code> file.</p>
+        <div id="alert-status" class="space-y-4">
+            <div class="text-sm text-gray-500">Loading...</div>
         </div>
     </div>
 
@@ -78,7 +38,7 @@
                 </svg>
                 <h2 class="text-lg font-medium text-gray-900">Telegram Integration</h2>
             </div>
-            <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">Popular with OpenClaw</span>
+            <span id="telegram-status-badge" class="px-2 py-1 text-xs font-medium rounded-full"></span>
         </div>
         <p class="text-sm text-gray-500 mb-4">
             Get instant notifications and approve/deny requests directly from Telegram.
@@ -148,6 +108,103 @@
 
 {% block scripts %}
 <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        loadSecuritySettings();
+    });
+
+    async function loadSecuritySettings() {
+        try {
+            const response = await fetch('/api/v1/setup/status');
+            const data = await response.json();
+            const config = data.config || {};
+
+            const toggles = [
+                {
+                    label: 'Deny by Default',
+                    desc: 'When no rules match, deny the request (recommended for production)',
+                    key: 'deny_by_default',
+                    value: config.deny_by_default ?? false,
+                },
+                {
+                    label: 'Learning Mode',
+                    desc: 'Log violations but allow all requests (disable for enforcement)',
+                    key: 'learning_mode',
+                    value: config.learning_mode ?? true,
+                    inverted: true, // "enabled" is actually the insecure state
+                },
+                {
+                    label: 'Require API Key',
+                    desc: 'Require agents to authenticate with an API key',
+                    key: 'require_api_key',
+                    value: config.require_api_key ?? false,
+                },
+                {
+                    label: 'WebSocket Origin Validation',
+                    desc: 'Mitigate CVE-2026-25253 by validating origin headers',
+                    key: 'validate_websocket_origin',
+                    value: config.validate_websocket_origin ?? true,
+                },
+                {
+                    label: 'Localhost Only Mode',
+                    desc: 'Restrict agent connections to localhost only',
+                    key: 'require_localhost_only',
+                    value: config.require_localhost_only ?? false,
+                },
+            ];
+
+            const container = document.getElementById('security-toggles');
+            container.innerHTML = toggles.map(t => {
+                const isSecure = t.inverted ? !t.value : t.value;
+                const badge = t.value
+                    ? `<span class="px-3 py-1 text-sm font-medium ${isSecure ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} rounded-full">Enabled</span>`
+                    : `<span class="px-3 py-1 text-sm font-medium ${isSecure ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} rounded-full">Disabled</span>`;
+                return `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-900">${t.label}</h3>
+                            <p class="text-sm text-gray-500">${t.desc}</p>
+                        </div>
+                        ${badge}
+                    </div>
+                `;
+            }).join('');
+
+            // Alert channel status
+            const alertChannels = [
+                { label: 'Email (SMTP)', configured: !!(config.smtp_host && config.smtp_user) },
+                { label: 'Slack', configured: !!config.slack_webhook_url },
+                { label: 'Telegram', configured: !!config.telegram_bot_token },
+                { label: 'PagerDuty', configured: !!config.pagerduty_api_key },
+            ];
+
+            const alertContainer = document.getElementById('alert-status');
+            alertContainer.innerHTML = alertChannels.map(ch => `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-medium text-gray-900">${ch.label}</h3>
+                    </div>
+                    <span class="px-3 py-1 text-sm font-medium ${ch.configured ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} rounded-full">
+                        ${ch.configured ? 'Configured' : 'Not configured'}
+                    </span>
+                </div>
+            `).join('') + `
+                <p class="text-xs text-gray-400 mt-2">Configure alert channels by setting environment variables in your .env file. See the documentation for details.</p>
+            `;
+
+            // Telegram status badge
+            const tgBadge = document.getElementById('telegram-status-badge');
+            if (config.telegram_bot_token) {
+                tgBadge.textContent = 'Configured';
+                tgBadge.className = 'px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full';
+            } else {
+                tgBadge.textContent = 'Not configured';
+                tgBadge.className = 'px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full';
+            }
+        } catch (error) {
+            console.error('Failed to load settings:', error);
+        }
+    }
+
     async function exportRules() {
         try {
             const response = await fetch('/api/v1/rules/export', {
@@ -196,7 +253,6 @@
         }
 
         try {
-            // Test by sending a message directly via Telegram API
             const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -209,13 +265,13 @@
 
             const data = await response.json();
             if (data.ok) {
-                alert('✅ Success! Check your Telegram for the test message.');
+                alert('Success! Check your Telegram for the test message.');
             } else {
-                alert('❌ Error: ' + (data.description || 'Unknown error'));
+                alert('Error: ' + (data.description || 'Unknown error'));
             }
         } catch (error) {
             console.error('Telegram test failed:', error);
-            alert('❌ Failed to connect to Telegram. Check your settings.');
+            alert('Failed to connect to Telegram. Check your settings.');
         }
     }
 
@@ -223,15 +279,10 @@
         const token = document.getElementById('telegram-token').value;
         const chatId = document.getElementById('telegram-chat-id').value;
 
-        // In a real implementation, this would save to the backend
-        // For now, show instructions to add to .env
-        const envConfig = `# Add to your .env file:
-TELEGRAM_BOT_TOKEN=${token}
-TELEGRAM_CHAT_ID=${chatId}`;
+        const envConfig = `# Add to your .env file:\nTELEGRAM_BOT_TOKEN=${token}\nTELEGRAM_CHAT_ID=${chatId}`;
 
-        alert('To save Telegram settings, add these to your .env file:\n\n' + envConfig);
+        alert('To save Telegram settings, add these to your .env file and restart:\n\n' + envConfig);
 
-        // Copy to clipboard
         navigator.clipboard.writeText(envConfig).then(() => {
             console.log('Config copied to clipboard');
         });

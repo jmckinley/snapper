@@ -35,6 +35,7 @@ class SetupStatus(BaseModel):
     rules_count: int
     has_global_rules: bool
     setup_complete: bool
+    config: Optional[dict] = None
 
 
 class DiscoveredInstance(BaseModel):
@@ -146,12 +147,31 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
     is_first_run = agents_count == 0
     setup_complete = agents_count > 0 and rules_count > 0
 
+    # Expose non-secret config for settings page
+    from app.config import get_settings
+    s = get_settings()
+    config = {
+        "deny_by_default": s.DENY_BY_DEFAULT,
+        "learning_mode": s.LEARNING_MODE,
+        "require_api_key": s.REQUIRE_API_KEY,
+        "validate_websocket_origin": s.VALIDATE_WEBSOCKET_ORIGIN,
+        "require_localhost_only": s.REQUIRE_LOCALHOST_ONLY,
+        "rate_limit_enabled": s.RATE_LIMIT_ENABLED,
+        # Boolean flags for configured channels (no secrets exposed)
+        "smtp_host": bool(s.SMTP_HOST),
+        "smtp_user": bool(s.SMTP_USER),
+        "slack_webhook_url": bool(s.SLACK_WEBHOOK_URL),
+        "telegram_bot_token": bool(s.TELEGRAM_BOT_TOKEN),
+        "pagerduty_api_key": bool(s.PAGERDUTY_API_KEY),
+    }
+
     return SetupStatus(
         is_first_run=is_first_run,
         agents_count=agents_count,
         rules_count=rules_count,
         has_global_rules=global_rules_count > 0,
         setup_complete=setup_complete,
+        config=config,
     )
 
 

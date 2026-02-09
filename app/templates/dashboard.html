@@ -101,7 +101,7 @@
                     </svg>
                 </div>
                 <div class="ml-4">
-                    <p class="text-sm font-medium text-gray-500">Blocked Today</p>
+                    <p class="text-sm font-medium text-gray-500">Blocked (24h)</p>
                     <p id="stat-blocked" class="text-2xl font-bold text-gray-900">--</p>
                 </div>
             </div>
@@ -307,15 +307,20 @@
 
     async function loadStats() {
         try {
-            // Fetch today's blocked count
-            const blockedResponse = await fetch('/api/v1/audit/logs?action=request_denied&page_size=1');
-            const blockedData = await blockedResponse.json();
-            document.getElementById('stat-blocked').textContent = blockedData.total || '0';
+            // Use audit stats endpoint for accurate 24h counts
+            const statsResponse = await fetch('/api/v1/audit/stats?hours=24');
+            const stats = await statsResponse.json();
+            document.getElementById('stat-blocked').textContent = stats.denied_count || '0';
 
-            // Fetch pending approvals
-            const pendingResponse = await fetch('/api/v1/audit/logs?action=request_pending_approval&page_size=1');
-            const pendingData = await pendingResponse.json();
-            document.getElementById('stat-pending').textContent = pendingData.total || '0';
+            // Fetch actual pending approvals from Redis via approvals endpoint
+            try {
+                const pendingResponse = await fetch('/api/v1/approvals/pending');
+                const pendingData = await pendingResponse.json();
+                document.getElementById('stat-pending').textContent = pendingData.count || '0';
+            } catch {
+                // Fallback to stats pending count if approvals endpoint unavailable
+                document.getElementById('stat-pending').textContent = stats.pending_count || '0';
+            }
         } catch (error) {
             console.error('Failed to load stats:', error);
             document.getElementById('stat-blocked').textContent = '0';

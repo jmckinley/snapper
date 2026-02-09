@@ -8,12 +8,12 @@ from uuid import UUID
 
 import yaml
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
-from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
+from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
 from app.models.rules import Rule, RuleAction, RuleType, RULE_PARAMETER_SCHEMAS
 from app.schemas.rules import (
     ApplyTemplateRequest,
@@ -1512,6 +1512,19 @@ async def evaluate_request(
     engine = RuleEngine(db, redis)
     result = await engine.evaluate(context)
 
+    # Update agent activity counters
+    agent.last_rule_evaluation_at = datetime.utcnow()
+    if result.decision.value == "deny":
+        agent.violation_count = (agent.violation_count or 0) + 1
+
+    # Update match_count and last_matched_at for all matched rules
+    if result.matched_rules:
+        await db.execute(
+            update(Rule)
+            .where(Rule.id.in_(result.matched_rules))
+            .values(match_count=Rule.match_count + 1, last_matched_at=datetime.utcnow())
+        )
+
     # Get matched rule name if we have a blocking rule
     matched_rule_name = None
     if result.blocking_rule:
@@ -1520,25 +1533,54 @@ async def evaluate_request(
         if blocking_rule:
             matched_rule_name = blocking_rule.name
 
-    # Log to audit trail
+    # Log to audit trail (all decisions: allow, deny, require_approval)
+    audit_action_map = {
+        "allow": AuditAction.REQUEST_ALLOWED,
+        "deny": AuditAction.REQUEST_DENIED,
+        "require_approval": AuditAction.REQUEST_PENDING_APPROVAL,
+    }
+    audit_severity_map = {
+        "allow": AuditSeverity.INFO,
+        "deny": AuditSeverity.WARNING,
+        "require_approval": AuditSeverity.INFO,
+    }
+    audit_log = AuditLog(
+        action=audit_action_map.get(result.decision.value, AuditAction.REQUEST_DENIED),
+        severity=audit_severity_map.get(result.decision.value, AuditSeverity.WARNING),
+        agent_id=agent.id,
+        rule_id=result.blocking_rule,
+        message=f"{result.decision.value.upper()}: {result.reason}",
+        old_value=None,
+        new_value={
+            "request_type": request.request_type,
+            "command": request.command,
+            "file_path": request.file_path,
+            "tool_name": request.tool_name,
+            "decision": result.decision.value,
+        },
+    )
+    db.add(audit_log)
+    await db.commit()
+
     if result.decision.value in ("deny", "require_approval"):
-        audit_log = AuditLog(
-            action=AuditAction.REQUEST_DENIED if result.decision.value == "deny" else AuditAction.REQUEST_PENDING_APPROVAL,
-            severity=AuditSeverity.WARNING if result.decision.value == "deny" else AuditSeverity.INFO,
-            agent_id=agent.id,
-            rule_id=result.blocking_rule,
-            message=f"{result.decision.value.upper()}: {result.reason}",
-            old_value=None,
-            new_value={
-                "request_type": request.request_type,
-                "command": request.command,
-                "file_path": request.file_path,
-                "tool_name": request.tool_name,
-                "decision": result.decision.value,
-            },
-        )
-        db.add(audit_log)
-        await db.commit()
+        # Create PolicyViolation record for denials
+        if result.decision.value == "deny":
+            violation = PolicyViolation(
+                violation_type="rule_denial",
+                severity=AuditSeverity.WARNING,
+                agent_id=agent.id,
+                rule_id=result.blocking_rule,
+                audit_log_id=audit_log.id,
+                description=f"Agent '{agent.name}' denied: {result.reason}",
+                context={
+                    "request_type": request.request_type,
+                    "command": request.command,
+                    "file_path": request.file_path,
+                    "tool_name": request.tool_name,
+                },
+            )
+            db.add(violation)
+            await db.commit()
 
         # Send notification for blocked events (async, don't wait)
         try:

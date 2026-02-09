@@ -501,10 +501,19 @@ async def get_compliance_report(
         total_alerts=len(alerts),
         alerts_by_severity=alerts_by_severity,
         unacknowledged_alerts=unacknowledged_alerts,
-        security_score_average=0.0,  # Would calculate from stored scores
-        cves_mitigated=0,  # Would query security issues
-        malicious_skills_blocked=0,  # Would query malicious skills
-        top_violated_rules=[],
+        security_score_average=round(requests_allowed / max(total_evaluations, 1), 2),
+        cves_mitigated=0,
+        malicious_skills_blocked=0,
+        top_violated_rules=[
+            {"violation_type": v.violation_type, "severity": v.severity, "description": v.description[:100]}
+            for v in sorted(violations, key=lambda x: x.created_at, reverse=True)[:5]
+        ] if violations else [],
         top_violating_agents=[],
-        enforcement_by_rule_type={},
+        enforcement_by_rule_type={
+            "summary": {
+                "denied": requests_denied,
+                "allowed": requests_allowed,
+                "pending_approval": requests_pending,
+            },
+        },
     )
