@@ -566,15 +566,16 @@ E2E tests cover:
 - Rule creation and template application
 - Setup wizard with 6 agent type cards
 - Security and audit pages
+- Integrations page (categories, search, enable/disable)
 - Responsive design
 
 ### Test Results
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 288 | API, rule engine, middleware, Telegram, PII vault/gate |
-| Integration tests | 41 | Live app testing (skipped in CI) |
-| E2E tests | 81 | Browser-based UI testing (Playwright) |
+| Unit tests | 406 | API, rule engine, middleware, Telegram, PII vault/gate, security monitor, integrations |
+| E2E tests | 120 | Browser-based UI testing (Playwright, skipped without browser) |
+| **Total** | **526** | 485 pass + 41 skip in Docker (E2E tests need Playwright) |
 
 ## Common Commands
 

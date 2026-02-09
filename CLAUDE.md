@@ -93,6 +93,9 @@ docker compose exec app pytest tests/test_pii_vault.py tests/test_pii_gate.py -v
 docker compose exec app pytest tests/test_allow_once_always.py -v
 docker compose exec app pytest tests/test_telegram_callbacks.py -v
 docker compose exec app pytest tests/test_openclaw_templates.py -v
+docker compose exec app pytest tests/test_integrations.py tests/test_security_monitor.py -v
+docker compose exec app pytest tests/test_security_research.py tests/test_security_defaults.py -v
+docker compose exec app pytest tests/test_integration_templates.py -v
 
 # Run with coverage
 docker compose exec app pytest tests/ --cov=app --cov-report=term-missing
