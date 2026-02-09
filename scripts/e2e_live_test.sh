@@ -989,43 +989,45 @@ fi
 # 4.6 Create vault entry with placeholder value
 log "4.6 Create vault entry with placeholder"
 PH_RESP=$(api_curl -X POST "${API}/vault/entries" \
+    -H "Content-Type: application/json" \
     -H "X-Internal-Source: telegram" \
-    -d '{
-        "owner_chat_id":"'"${VAULT_OWNER}"'",
-        "label":"Test Visa Placeholder",
-        "category":"credit_card",
-        "raw_value":"4532015112830366",
-        "placeholder_value":"4242424242424242"
-    }')
+    -d "{
+        \"owner_chat_id\": \"${VAULT_OWNER}\",
+        \"label\": \"Test Visa Placeholder\",
+        \"category\": \"credit_card\",
+        \"raw_value\": \"4532015112830366\",
+        \"placeholder_value\": \"4242424242424242\"
+    }")
 PH_TOKEN=$(echo "$PH_RESP" | jq -r '.token // empty')
 PH_ID=$(echo "$PH_RESP" | jq -r '.id // empty')
 PH_PLACEHOLDER=$(echo "$PH_RESP" | jq -r '.placeholder_value // empty')
-if [[ -n "$PH_TOKEN" && "$PH_PLACEHOLDER" == "4242424242424242" ]]; then
-    pass "4.6 Vault entry created with placeholder=$PH_PLACEHOLDER"
+if [[ -n "$PH_ID" ]]; then
     CREATED_VAULT_IDS+=("$PH_ID")
-else
-    fail "4.6 Vault entry with placeholder (got: $PH_PLACEHOLDER)"
 fi
+assert_eq "$PH_PLACEHOLDER" "4242424242424242" "4.6 Vault entry created with placeholder"
+assert_not_eq "$PH_TOKEN" "" "4.6 Vault entry has token"
 
 # 4.7 PII gate detects placeholder credit card in tool_input
 log "4.7 PII gate detects placeholder credit card"
 if [[ -n "$PH_TOKEN" ]]; then
-    PH_EVAL=$(api_curl -X POST "${API}/rules/evaluate" \
-        -d '{
-            "agent_id":"'"${AGENT_EXTERNAL_ID}"'",
-            "request_type":"browser_action",
-            "tool_name":"browser",
-            "tool_input":{
-                "action":"fill",
-                "fields":[{"ref":"cc","value":"4242424242424242"}],
-                "url":"https://store.example.com/checkout"
-            }
-        }')
+    PH_EVAL=$(evaluate "{
+        \"agent_id\":\"${AGENT_EID}\",
+        \"request_type\":\"browser_action\",
+        \"tool_name\":\"browser\",
+        \"tool_input\":{
+            \"action\":\"fill\",
+            \"fields\":[{\"ref\":\"cc\",\"value\":\"4242424242424242\"}],
+            \"url\":\"https://store.example.com/checkout\"
+        }
+    }")
     PH_DECISION=$(echo "$PH_EVAL" | jq -r '.decision // empty')
+    TOTAL=$((TOTAL + 1))
     if [[ "$PH_DECISION" == "require_approval" || "$PH_DECISION" == "allow" ]]; then
-        pass "4.7 PII gate detected placeholder (decision=$PH_DECISION)"
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 4.7 PII gate detected placeholder (decision=$PH_DECISION)"
     else
-        fail "4.7 Expected require_approval or allow, got: $PH_DECISION"
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 4.7 Expected require_approval or allow, got: $PH_DECISION"
     fi
 else
     TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
