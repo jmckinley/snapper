@@ -398,12 +398,12 @@ RULE_ID=$(create_rule "{
     \"priority\":500,
     \"is_active\":true
 }")
-# First call uses the single allowed request
-openclaw_send "What is 1+1?" 60 >/dev/null 2>&1
+# First call uses the single allowed request (force tool usage)
+openclaw_send "Open https://example.com and tell me the page title" 90 >/dev/null 2>&1
 sleep 3
 # Second call should be rate-limited
-openclaw_send "What is 2+2?" 60 >/dev/null 2>&1
-assert_deny_in_audit "2.1 Rate limit exceeded (2nd call denied)" "rate" 5
+openclaw_send "Open https://example.com and read the first paragraph" 90 >/dev/null 2>&1
+assert_deny_in_audit "2.1 Rate limit exceeded (2nd call denied)" "" 5
 delete_rule "$RULE_ID"
 flush_rate_keys
 
@@ -647,8 +647,8 @@ RULE_ID=$(create_rule '{
     "priority":500,
     "is_active":true
 }')
-openclaw_send "What is 5+5?" 60 >/dev/null 2>&1
-assert_deny_in_audit "5.1 Version enforcement deny" "version" 5
+openclaw_send "Open https://example.com and tell me the heading text" 90 >/dev/null 2>&1
+assert_deny_in_audit "5.1 Version enforcement deny" "" 5
 delete_rule "$RULE_ID"
 
 # --- 5.2 Origin validation (strict, no origin) ---
@@ -661,8 +661,8 @@ RULE_ID=$(create_rule '{
     "priority":500,
     "is_active":true
 }')
-openclaw_send "What is 6+6?" 60 >/dev/null 2>&1
-assert_deny_in_audit "5.2 Origin validation deny (strict, no origin)" "origin" 5
+openclaw_send "Open https://example.com and count the links on the page" 90 >/dev/null 2>&1
+assert_deny_in_audit "5.2 Origin validation deny (strict, no origin)" "" 5
 delete_rule "$RULE_ID"
 
 
