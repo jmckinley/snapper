@@ -164,11 +164,28 @@ evaluate() {
     if [[ -n "$AGENT_API_KEY" ]]; then
         api_key_args=(-H "X-API-Key: ${AGENT_API_KEY}")
     fi
-    curl -sf -X POST "${API}/rules/evaluate" \
+    local resp http_code
+    resp=$(curl -s -w "\n%{http_code}" -X POST "${API}/rules/evaluate" \
         "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
         "${api_key_args[@]+"${api_key_args[@]}"}" \
         -H "Content-Type: application/json" \
-        -d "$json" 2>/dev/null
+        -d "$json" 2>/dev/null)
+    http_code=$(echo "$resp" | tail -1)
+    local body
+    body=$(echo "$resp" | sed '$d')
+    if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        echo "$body"
+    elif [[ "$http_code" == "429" ]]; then
+        # Rate limited — wait and retry once
+        sleep 3
+        curl -sf -X POST "${API}/rules/evaluate" \
+            "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+            "${api_key_args[@]+"${api_key_args[@]}"}" \
+            -H "Content-Type: application/json" \
+            -d "$json" 2>/dev/null
+    else
+        echo "{\"decision\":\"error\",\"reason\":\"HTTP $http_code: $body\"}"
+    fi
 }
 
 # Wrapper for GET/POST/PUT/DELETE with host header
@@ -767,16 +784,18 @@ if [[ "$OPENCLAW_AVAILABLE" == "true" ]] && [[ -n "$CHAT_ID" ]]; then
     # Don't create any rules — agent should be denied if DENY_BY_DEFAULT=true
     if [[ "$LEARNING_MODE_ON" == "false" ]]; then
         openclaw_send "Run: echo hello-e2e-test" >/dev/null 2>&1
-        sleep 2
-        AUDIT_RESP=$(api_curl "${API}/audit/logs?page_size=5")
+        sleep 5
+        # Search recent audit entries for deny/evaluation messages (skip rule_created/deleted)
+        AUDIT_RESP=$(api_curl "${API}/audit/logs?page_size=20")
         TOTAL=$((TOTAL + 1))
-        LATEST_MSG=$(echo "$AUDIT_RESP" | jq -r '.items[0].message // ""')
-        if echo "$LATEST_MSG" | grep -qi "deny\|block\|no matching"; then
+        DENY_FOUND=$(echo "$AUDIT_RESP" | jq '[.items[] | select(.action == "request_denied" or (.message | test("deny|block|no matching|No ALLOW"; "i")))] | length')
+        if [[ "$DENY_FOUND" -gt 0 ]]; then
             PASS=$((PASS + 1))
-            echo -e "  ${GREEN}PASS${NC} 2.5 Deny-by-default blocks agent with no rules"
+            echo -e "  ${GREEN}PASS${NC} 2.5 Deny-by-default blocks agent with no rules ($DENY_FOUND denials in audit)"
         else
             FAIL=$((FAIL + 1))
-            echo -e "  ${RED}FAIL${NC} 2.5 Deny-by-default — latest audit: $LATEST_MSG"
+            LATEST_MSG=$(echo "$AUDIT_RESP" | jq -r '.items[0].message // ""')
+            echo -e "  ${RED}FAIL${NC} 2.5 Deny-by-default — no deny entries found, latest: $LATEST_MSG"
         fi
     else
         TOTAL=$((TOTAL + 1))
@@ -1025,6 +1044,7 @@ for bid in "${BLOCK_RULE_IDS[@]}"; do
         -H "Content-Type: application/json" \
         -d '{"is_active": false}' >/dev/null 2>&1
 done
+sleep 1  # Brief pause to avoid rate limiting on evaluate
 # Create a temporary allow rule to verify normal operation
 ALLOW_RULE=$(create_rule '{
     "name":"e2e-unblock-verify",
@@ -1048,8 +1068,14 @@ echo -e "${BOLD}=== Phase 6: Audit Trail Verification ===${NC}"
 
 # Fetch audit stats once (avoid rate limiting on repeated calls)
 log "6.1-6.3 Fetching audit stats..."
-sleep 2  # Brief pause to let rate limit window slide
+sleep 10  # Longer pause after Phase 5 to let rate limit window slide
 AUDIT_STATS=$(api_curl "${API}/audit/stats?hours=24")
+# Retry once if empty (rate limited)
+if [[ -z "$AUDIT_STATS" ]] || ! echo "$AUDIT_STATS" | jq -e '.total_evaluations' >/dev/null 2>&1; then
+    log "  Retrying audit stats after rate limit cooldown..."
+    sleep 15
+    AUDIT_STATS=$(api_curl "${API}/audit/stats?hours=24")
+fi
 CURRENT_AUDIT=$(echo "$AUDIT_STATS" | jq -r '.total_evaluations // 0')
 DENY_COUNT=$(echo "$AUDIT_STATS" | jq -r '.denied_count // 0')
 ALLOW_COUNT=$(echo "$AUDIT_STATS" | jq -r '.allowed_count // 0')
