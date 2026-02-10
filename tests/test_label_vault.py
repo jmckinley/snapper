@@ -101,15 +101,13 @@ class TestFindVaultLabels:
         # All word chars with no boundary — regex can't truncate mid-word
         assert len(labels) == 0
 
-    def test_too_long_label_with_delimiter(self):
-        """Labels over 64 chars truncate when followed by a delimiter."""
-        long_label = "A" + "b" * 63 + "C"  # 65 chars
-        text = f'"vault:{long_label}"'  # Quote delimiter after label
+    def test_65_char_label_rejected(self):
+        """Labels over 64 continuous word chars never match (no internal boundary)."""
+        long_label = "A" + "b" * 63 + "C"  # 65 chars, all word chars
+        text = f'"vault:{long_label}"'
         labels = find_vault_labels(text)
-        # Regex matches up to 64 chars, quote provides word boundary
-        assert len(labels) == 1
-        matched_label = labels[0].replace("vault:", "")
-        assert len(matched_label) == 64
+        # Regex max is 64 chars, but \b can't split a run of word chars
+        assert len(labels) == 0
 
     def test_label_with_spaces_not_matched(self):
         """Labels with spaces should not be matched (use hyphens instead)."""
