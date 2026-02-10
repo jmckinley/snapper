@@ -26,31 +26,31 @@ class TestFindVaultLabels:
 
     def test_single_label(self):
         """Should find a single vault label."""
-        text = 'fill the field with vault:My Visa'
+        text = 'fill the field with vault:My-Visa'
         labels = find_vault_labels(text)
-        assert labels == ["vault:My Visa"]
+        assert labels == ["vault:My-Visa"]
 
     def test_multiple_labels(self):
         """Should find multiple vault labels."""
-        text = 'use vault:My Visa for card and vault:home-email for email'
+        text = 'use vault:My-Visa for card and vault:home-email for email'
         labels = find_vault_labels(text)
         assert len(labels) == 2
-        assert "vault:My Visa" in labels
+        assert "vault:My-Visa" in labels
         assert "vault:home-email" in labels
 
     def test_case_insensitive(self):
         """Should match case-insensitively."""
-        text = 'use VAULT:My Card or Vault:Other Card'
+        text = 'use VAULT:My-Card or Vault:Other-Card'
         labels = find_vault_labels(text)
         assert len(labels) == 2
 
     def test_in_json_context(self):
         """Should find labels inside JSON strings."""
-        tool_input = {"action": "fill", "fields": [{"ref": "cc", "value": "vault:My Visa"}]}
+        tool_input = {"action": "fill", "fields": [{"ref": "cc", "value": "vault:My-Visa"}]}
         text = json.dumps(tool_input)
         labels = find_vault_labels(text)
         assert len(labels) == 1
-        assert "vault:My Visa" in labels
+        assert "vault:My-Visa" in labels
 
     def test_with_hyphens_and_underscores(self):
         """Should match labels with hyphens and underscores."""
@@ -77,9 +77,7 @@ class TestFindVaultLabels:
         """Should not match 'vault:' with no label text."""
         text = 'the vault: is empty'
         labels = find_vault_labels(text)
-        # "vault:" followed by space then "is" — "is" starts with alphanumeric
-        # but the regex needs the colon to be directly followed by alnum
-        # "vault: is" — space after colon means no match
+        # "vault:" followed by space then "is" — space after colon means no match
         assert len(labels) == 0
 
     def test_no_match_on_special_chars_only(self):
@@ -101,11 +99,19 @@ class TestFindVaultLabels:
         long_label = "A" * 65
         text = f'vault:{long_label}'
         labels = find_vault_labels(text)
-        # Should still match (up to 64 chars of it)
+        # Should still match (up to 64 chars of it) since all chars are word chars
         assert len(labels) == 1
         # The match will be truncated by the regex
         matched_label = labels[0].replace("vault:", "")
         assert len(matched_label) <= 64
+
+    def test_label_with_spaces_not_matched(self):
+        """Labels with spaces should not be matched (use hyphens instead)."""
+        text = 'vault:My Visa'
+        labels = find_vault_labels(text)
+        # Only "vault:My" matches, not "vault:My Visa"
+        assert len(labels) == 1
+        assert labels[0] == "vault:My"
 
 
 # ============================================================================
@@ -117,14 +123,14 @@ class TestExtractLabelFromRef:
     """Test vault: prefix stripping."""
 
     def test_strips_prefix(self):
-        assert extract_label_from_ref("vault:My Visa") == "My Visa"
+        assert extract_label_from_ref("vault:My-Visa") == "My-Visa"
 
     def test_case_insensitive_prefix(self):
-        assert extract_label_from_ref("VAULT:My Card") == "My Card"
+        assert extract_label_from_ref("VAULT:My-Card") == "My-Card"
 
     def test_no_prefix(self):
         """Should return input unchanged if no vault: prefix."""
-        assert extract_label_from_ref("My Visa") == "My Visa"
+        assert extract_label_from_ref("My-Visa") == "My-Visa"
 
     def test_empty_after_prefix(self):
         assert extract_label_from_ref("vault:") == ""
@@ -144,7 +150,7 @@ class TestGetEntriesByLabel:
         from app.services.pii_vault import get_entries_by_label
 
         mock_entry = MagicMock(spec=PIIVaultEntry)
-        mock_entry.label = "My Visa"
+        mock_entry.label = "My-Visa"
         mock_entry.token = "{{SNAPPER_VAULT:a1b2c3d4e5f6a7b8}}"
         mock_entry.owner_chat_id = "12345"
 
@@ -156,7 +162,7 @@ class TestGetEntriesByLabel:
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        entries = await get_entries_by_label(mock_db, "my visa", "12345")
+        entries = await get_entries_by_label(mock_db, "my-visa", "12345")
         assert len(entries) == 1
         assert entries[0].token == "{{SNAPPER_VAULT:a1b2c3d4e5f6a7b8}}"
 
@@ -173,7 +179,7 @@ class TestGetEntriesByLabel:
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        entries = await get_entries_by_label(mock_db, "My Visa", "99999")
+        entries = await get_entries_by_label(mock_db, "My-Visa", "99999")
         assert len(entries) == 0
         # Verify execute was called (query was built)
         mock_db.execute.assert_called_once()
@@ -266,19 +272,19 @@ class TestPIIGateLabelDetection:
                 "tool_name": "browser",
                 "tool_input": {
                     "action": "fill",
-                    "fields": [{"ref": "cc", "value": "vault:My Visa"}],
+                    "fields": [{"ref": "cc", "value": "vault:My-Visa"}],
                 },
             },
         )
 
-        with patch("app.services.rule_engine.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
+        with patch("app.services.pii_vault.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
             mock_lookup.return_value = [mock_entry]
             matches, action = await engine._evaluate_pii_gate(pii_gate_rule, context)
 
         assert matches is True
         assert action == RuleAction.REQUIRE_APPROVAL
         pii_detected = context.metadata.get("pii_detected", {})
-        assert "vault:My Visa" in pii_detected.get("label_matches", {})
+        assert "vault:My-Visa" in pii_detected.get("label_matches", {})
 
     @pytest.mark.asyncio
     async def test_label_auto_mode_allows(self, mock_db, mock_redis, auto_mode_rule):
@@ -296,12 +302,12 @@ class TestPIIGateLabelDetection:
                 "tool_name": "browser",
                 "tool_input": {
                     "action": "fill",
-                    "fields": [{"ref": "cc", "value": "vault:My Visa"}],
+                    "fields": [{"ref": "cc", "value": "vault:My-Visa"}],
                 },
             },
         )
 
-        with patch("app.services.rule_engine.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
+        with patch("app.services.pii_vault.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
             mock_lookup.return_value = [mock_entry]
             matches, action = await engine._evaluate_pii_gate(auto_mode_rule, context)
 
@@ -325,11 +331,11 @@ class TestPIIGateLabelDetection:
             },
         )
 
-        with patch("app.services.rule_engine.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
+        with patch("app.services.pii_vault.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
             mock_lookup.return_value = []
             matches, action = await engine._evaluate_pii_gate(pii_gate_rule, context)
 
-        # No vault tokens, no raw PII, no matched labels → nothing found
+        # No vault tokens, no raw PII, no matched labels -> nothing found
         assert matches is False
 
     @pytest.mark.asyncio
@@ -338,14 +344,14 @@ class TestPIIGateLabelDetection:
         mock_entry = MagicMock(spec=PIIVaultEntry)
         mock_entry.token = "{{SNAPPER_VAULT:b2c3d4e5f6a7b8c9}}"
         mock_entry.owner_chat_id = "12345"
-        mock_entry.label = "My Email"
+        mock_entry.label = "My-Email"
         mock_entry.category = MagicMock()
         mock_entry.category.value = "email"
         mock_entry.masked_value = "j***@example.com"
 
         # Mock get_entry_by_token for the vault token enrichment
         mock_token_entry = MagicMock(spec=PIIVaultEntry)
-        mock_token_entry.label = "My Visa"
+        mock_token_entry.label = "My-Visa"
         mock_token_entry.category = MagicMock()
         mock_token_entry.category.value = "credit_card"
         mock_token_entry.masked_value = "****-****-****-1234"
@@ -361,13 +367,13 @@ class TestPIIGateLabelDetection:
                     "action": "fill",
                     "fields": [
                         {"ref": "cc", "value": "{{SNAPPER_VAULT:a1b2c3d4}}"},
-                        {"ref": "email", "value": "vault:My Email"},
+                        {"ref": "email", "value": "vault:My-Email"},
                     ],
                 },
             },
         )
 
-        with patch("app.services.rule_engine.get_entries_by_label", new_callable=AsyncMock) as mock_label_lookup, \
+        with patch("app.services.pii_vault.get_entries_by_label", new_callable=AsyncMock) as mock_label_lookup, \
              patch("app.services.pii_vault.get_entry_by_token", new_callable=AsyncMock) as mock_token_lookup:
             mock_label_lookup.return_value = [mock_entry]
             mock_token_lookup.return_value = mock_token_entry
@@ -378,7 +384,7 @@ class TestPIIGateLabelDetection:
         assert action == RuleAction.REQUIRE_APPROVAL
         pii_detected = context.metadata.get("pii_detected", {})
         assert len(pii_detected.get("vault_tokens", [])) == 1
-        assert "vault:My Email" in pii_detected.get("label_matches", {})
+        assert "vault:My-Email" in pii_detected.get("label_matches", {})
 
     @pytest.mark.asyncio
     async def test_strict_mode_with_label_not_denied(self, mock_db, mock_redis):
@@ -414,12 +420,12 @@ class TestPIIGateLabelDetection:
                 "tool_name": "browser",
                 "tool_input": {
                     "action": "fill",
-                    "fields": [{"ref": "cc", "value": "vault:My Visa"}],
+                    "fields": [{"ref": "cc", "value": "vault:My-Visa"}],
                 },
             },
         )
 
-        with patch("app.services.rule_engine.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
+        with patch("app.services.pii_vault.get_entries_by_label", new_callable=AsyncMock) as mock_lookup:
             mock_lookup.return_value = [mock_entry]
             matches, action = await engine._evaluate_pii_gate(rule, context)
 
@@ -447,15 +453,15 @@ class TestVaultLabelRegex:
 
     def test_adjacent_punctuation(self):
         """Labels adjacent to punctuation should still match."""
-        text = 'Enter "vault:My Visa" in the field'
+        text = 'Enter "vault:My-Visa" in the field'
         labels = find_vault_labels(text)
-        assert "vault:My Visa" in labels
+        assert "vault:My-Visa" in labels
 
     def test_label_in_json_value(self):
         """Labels in JSON values should match."""
-        text = '{"value": "vault:Home Address"}'
+        text = '{"value": "vault:Home-Address"}'
         labels = find_vault_labels(text)
-        assert "vault:Home Address" in labels
+        assert "vault:Home-Address" in labels
 
     def test_label_with_numbers(self):
         """Labels with numbers should match."""

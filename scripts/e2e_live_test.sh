@@ -1061,7 +1061,7 @@ LABEL_RESP=$(api_curl -X POST "${API}/vault/entries" \
     -H "X-Internal-Source: telegram" \
     -d "{
         \"owner_chat_id\": \"${VAULT_OWNER}\",
-        \"label\": \"E2E Test Card\",
+        \"label\": \"E2E-Test-Card\",
         \"category\": \"credit_card\",
         \"raw_value\": \"4111111111111111\"
     }")
@@ -1088,7 +1088,7 @@ LABEL_EVAL=$(evaluate "{
     \"tool_name\":\"browser\",
     \"tool_input\":{
         \"action\":\"fill\",
-        \"fields\":[{\"ref\":\"cc\",\"value\":\"vault:E2E Test Card\"}],
+        \"fields\":[{\"ref\":\"cc\",\"value\":\"vault:E2E-Test-Card\"}],
         \"url\":\"https://store.example.com/checkout\"
     }
 }")
@@ -1119,7 +1119,7 @@ LABEL_AUTO_EVAL=$(evaluate "{
     \"tool_name\":\"browser\",
     \"tool_input\":{
         \"action\":\"fill\",
-        \"fields\":[{\"ref\":\"cc\",\"value\":\"vault:E2E Test Card\"}]
+        \"fields\":[{\"ref\":\"cc\",\"value\":\"vault:E2E-Test-Card\"}]
     }
 }")
 LABEL_AUTO_DECISION=$(echo "$LABEL_AUTO_EVAL" | jq -r '.decision // empty')

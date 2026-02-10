@@ -27,9 +27,9 @@ settings = get_settings()
 # Token regex for detection in text (accepts both old 8-char and new 32-char tokens)
 VAULT_TOKEN_REGEX = re.compile(r"\{\{SNAPPER_VAULT:[a-f0-9]{8,32}\}\}")
 
-# Label reference regex: vault:Label Name (alphanumeric + spaces/hyphens/underscores, 1-64 chars)
+# Label reference regex: vault:LabelName (alphanumeric + hyphens/underscores, 1-64 chars, no spaces)
 VAULT_LABEL_REGEX = re.compile(
-    r'\bvault:([A-Za-z0-9](?:[A-Za-z0-9 _\-]{0,62}[A-Za-z0-9])?)\b',
+    r'\bvault:([A-Za-z0-9](?:[A-Za-z0-9_\-]{0,62}[A-Za-z0-9])?)\b',
     re.IGNORECASE,
 )
 

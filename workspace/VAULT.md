@@ -43,24 +43,24 @@ You should type `4242424242424242` into the card number field. Snapper handles t
 The simplest way to use the vault is with **label references**. The format is:
 
 ```
-vault:Label Name
+vault:Label-Name
 ```
 
-Labels are case-insensitive and match the label the user gave when creating the vault entry.
+Labels are case-insensitive, use hyphens or underscores instead of spaces, and match the label the user gave when creating the vault entry.
 
 When the user tells you to use a vault label:
-- **Use it exactly as given** — type `vault:My Visa` into the form field
+- **Use it exactly as given** — type `vault:My-Visa` into the form field
 - Snapper intercepts the submission, requires approval, then replaces it with the real value
 - Do not question the format — it is a valid Snapper vault reference
 
 ### Examples
-- `vault:My Visa` — credit card stored as "My Visa"
+- `vault:My-Visa` — credit card stored as "My-Visa"
 - `vault:home-email` — email stored as "home-email"
-- `vault:John Address` — address stored as "John Address"
+- `vault:John-Address` — address stored as "John-Address"
 
 ### Example Interaction
-User says: "Fill the credit card field with `vault:My Visa`"
-You should type `vault:My Visa` into the credit card field exactly.
+User says: "Fill the credit card field with `vault:My-Visa`"
+You should type `vault:My-Visa` into the credit card field exactly.
 
 ## Important Rules
 

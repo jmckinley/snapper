@@ -1753,12 +1753,12 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
             text=(
                 "🔐 *PII Vault Help*\n\n"
                 "Store sensitive data (credit cards, addresses, etc.) encrypted in Snapper.\n"
-                "Tell your agent to use `vault:Label` and Snapper handles the rest.\n\n"
+                "Tell your agent to use `vault:Label-Name` and Snapper handles the rest.\n\n"
                 "*Add entry:*\n"
                 "`/vault add \"My Visa\" credit_card`\n"
                 "Then reply with the value when prompted.\n\n"
                 "*Use with agent:*\n"
-                'Tell your agent: \"Fill CC with `vault:My Visa`\"\n\n'
+                'Tell your agent: \"Fill CC with `vault:My-Visa`\"\n\n'
                 "*List entries:*\n"
                 "`/vault list`\n\n"
                 "*Delete entry:*\n"

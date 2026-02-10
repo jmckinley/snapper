@@ -11,7 +11,7 @@
  */
 
 const VAULT_TOKEN_RE = /\{\{SNAPPER_VAULT:[a-f0-9]{8,32}\}\}/g;
-const VAULT_LABEL_RE = /\bvault:[A-Za-z0-9](?:[A-Za-z0-9 _\-]{0,62}[A-Za-z0-9])?\b/gi;
+const VAULT_LABEL_RE = /\bvault:[A-Za-z0-9](?:[A-Za-z0-9_\-]{0,62}[A-Za-z0-9])?\b/gi;
 
 // Tools that should be evaluated by Snapper
 const EVALUATED_TOOLS = new Set(["browser", "exec", "bash", "write"]);
