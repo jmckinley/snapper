@@ -1049,6 +1049,98 @@ fi
 
 
 # ============================================================
+# Phase 4b: Vault Label References (vault:Label)
+# ============================================================
+echo ""
+echo -e "${BOLD}=== Phase 4b: Vault Label References ===${NC}"
+
+# 4.9 Create vault entry for label test
+log "4.9 Create vault entry for label test"
+LABEL_RESP=$(api_curl -X POST "${API}/vault/entries" \
+    -H "Content-Type: application/json" \
+    -H "X-Internal-Source: telegram" \
+    -d "{
+        \"owner_chat_id\": \"${VAULT_OWNER}\",
+        \"label\": \"E2E Test Card\",
+        \"category\": \"credit_card\",
+        \"raw_value\": \"4111111111111111\"
+    }")
+LABEL_ID=$(echo "$LABEL_RESP" | jq -r '.id // empty')
+LABEL_TOKEN=$(echo "$LABEL_RESP" | jq -r '.token // empty')
+if [[ -n "$LABEL_ID" ]]; then
+    CREATED_VAULT_IDS+=("$LABEL_ID")
+fi
+assert_not_eq "$LABEL_TOKEN" "" "4.9 Vault entry created for label test"
+
+# 4.10 PII gate detects vault:Label in tool_input
+log "4.10 PII gate detects vault:Label reference"
+LABEL_RULE_ID=$(create_rule '{
+    "name":"e2e-pii-gate-label",
+    "rule_type":"pii_gate",
+    "action":"require_approval",
+    "parameters":{"detect_vault_tokens":true,"detect_raw_pii":true,"pii_mode":"protected"},
+    "priority":100,
+    "is_active":true
+}')
+LABEL_EVAL=$(evaluate "{
+    \"agent_id\":\"${AGENT_EID}\",
+    \"request_type\":\"browser_action\",
+    \"tool_name\":\"browser\",
+    \"tool_input\":{
+        \"action\":\"fill\",
+        \"fields\":[{\"ref\":\"cc\",\"value\":\"vault:E2E Test Card\"}],
+        \"url\":\"https://store.example.com/checkout\"
+    }
+}")
+LABEL_DECISION=$(echo "$LABEL_EVAL" | jq -r '.decision // empty')
+TOTAL=$((TOTAL + 1))
+if [[ "$LABEL_DECISION" == "require_approval" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4.10 vault:Label triggers require_approval"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4.10 Expected require_approval, got: $LABEL_DECISION"
+fi
+
+# 4.11 vault:Label auto mode returns allow
+log "4.11 vault:Label auto mode"
+delete_rule "$LABEL_RULE_ID"
+LABEL_AUTO_RULE=$(create_rule '{
+    "name":"e2e-pii-auto-label",
+    "rule_type":"pii_gate",
+    "action":"require_approval",
+    "parameters":{"detect_vault_tokens":true,"detect_raw_pii":false,"pii_mode":"auto"},
+    "priority":100,
+    "is_active":true
+}')
+LABEL_AUTO_EVAL=$(evaluate "{
+    \"agent_id\":\"${AGENT_EID}\",
+    \"request_type\":\"browser_action\",
+    \"tool_name\":\"browser\",
+    \"tool_input\":{
+        \"action\":\"fill\",
+        \"fields\":[{\"ref\":\"cc\",\"value\":\"vault:E2E Test Card\"}]
+    }
+}")
+LABEL_AUTO_DECISION=$(echo "$LABEL_AUTO_EVAL" | jq -r '.decision // empty')
+assert_eq "$LABEL_AUTO_DECISION" "allow" "4.11 vault:Label auto mode returns allow"
+delete_rule "$LABEL_AUTO_RULE"
+
+# 4.12 Delete vault label test entry
+log "4.12 Delete vault label test entry"
+if [[ -n "$LABEL_ID" ]]; then
+    DEL_LABEL=$(api_curl -X DELETE "${API}/vault/entries/${LABEL_ID}?owner_chat_id=${VAULT_OWNER}" \
+        -H "X-Internal-Source: telegram")
+    DEL_LABEL_STATUS=$(echo "$DEL_LABEL" | jq -r '.status // empty')
+    assert_eq "$DEL_LABEL_STATUS" "deleted" "4.12 Vault label entry deleted"
+    CREATED_VAULT_IDS=("${CREATED_VAULT_IDS[@]/$LABEL_ID/}")
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4.12 No label entry to delete"
+fi
+
+
+# ============================================================
 # Phase 5: Emergency Block / Unblock
 # ============================================================
 echo ""

@@ -27,7 +27,7 @@ celery_app.conf.update(
 )
 
 # Import task modules to register them
-from app.tasks import security_research, alerts  # noqa
+from app.tasks import security_research, alerts, telegram_cleanup  # noqa
 
 # Configure periodic tasks (Celery Beat)
 celery_app.conf.beat_schedule = {
@@ -60,5 +60,10 @@ celery_app.conf.beat_schedule = {
     "weekly-security-digest": {
         "task": "app.tasks.security_research.send_weekly_digest",
         "schedule": 604800,  # 7 days
+    },
+    # Clean up old Telegram bot messages every 6 hours
+    "cleanup-telegram-bot-messages": {
+        "task": "app.tasks.telegram_cleanup.cleanup_bot_messages",
+        "schedule": 21600,  # 6 hours
     },
 }

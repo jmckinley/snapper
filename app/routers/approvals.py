@@ -214,9 +214,11 @@ async def check_approval_status(
 
                 destination_domain = None
                 placeholder_matches = {}
+                label_matches = {}
                 if approval.pii_context:
                     destination_domain = approval.pii_context.get("destination_domain")
                     placeholder_matches = approval.pii_context.get("placeholder_matches", {})
+                    label_matches = approval.pii_context.get("label_matches", {})
 
                 async with async_session_factory() as db:
                     resolved_data = await resolve_tokens(
@@ -238,6 +240,19 @@ async def check_approval_status(
                             if resolved_data is None:
                                 resolved_data = {}
                             resolved_data.update(placeholder_resolved)
+
+                    # Also resolve label-mapped entries (re-key by vault:Label ref)
+                    if label_matches:
+                        label_resolved = await resolve_placeholders(
+                            db=db,
+                            placeholder_map=label_matches,
+                            destination_domain=destination_domain,
+                            requester_chat_id=approval.owner_chat_id,
+                        )
+                        if label_resolved:
+                            if resolved_data is None:
+                                resolved_data = {}
+                            resolved_data.update(label_resolved)
 
                     await db.commit()
 

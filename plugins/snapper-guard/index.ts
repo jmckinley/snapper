@@ -11,6 +11,7 @@
  */
 
 const VAULT_TOKEN_RE = /\{\{SNAPPER_VAULT:[a-f0-9]{8,32}\}\}/g;
+const VAULT_LABEL_RE = /\bvault:[A-Za-z0-9](?:[A-Za-z0-9 _\-]{0,62}[A-Za-z0-9])?\b/gi;
 
 // Tools that should be evaluated by Snapper
 const EVALUATED_TOOLS = new Set(["browser", "exec", "bash", "write"]);
@@ -60,6 +61,12 @@ function containsVaultTokens(obj: unknown): boolean {
   const json = JSON.stringify(obj);
   VAULT_TOKEN_RE.lastIndex = 0;
   return VAULT_TOKEN_RE.test(json);
+}
+
+function containsVaultLabels(obj: unknown): boolean {
+  const json = JSON.stringify(obj);
+  VAULT_LABEL_RE.lastIndex = 0;
+  return VAULT_LABEL_RE.test(json);
 }
 
 /**
@@ -201,9 +208,10 @@ export default function register(api: any) {
         return;
       }
 
-      // Quick check: if no vault tokens and not a browser tool, skip
+      // Quick check: if no vault tokens/labels and not a browser tool, skip
       const hasTokens = containsVaultTokens(params);
-      if (!hasTokens && toolName !== "browser") {
+      const hasLabels = containsVaultLabels(params);
+      if (!hasTokens && !hasLabels && toolName !== "browser") {
         return;
       }
 

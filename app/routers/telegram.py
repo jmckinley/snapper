@@ -33,7 +33,7 @@ BOT_COMMANDS = [
     {"command": "rules", "description": "View active security rules"},
     {"command": "pending", "description": "List pending approvals"},
     {"command": "test", "description": "Test rule enforcement"},
-    {"command": "purge", "description": "Purge PII from agent data"},
+    {"command": "purge", "description": "Delete old bot messages from chat"},
     {"command": "vault", "description": "Manage PII vault entries"},
     {"command": "pii", "description": "Toggle PII protection mode"},
     {"command": "block", "description": "Emergency block ALL actions"},
@@ -418,7 +418,7 @@ async def telegram_webhook(request: Request):
                 "/pending - List pending approvals\n"
                 "/vault - Manage encrypted PII storage\n"
                 "/pii - PII protection mode\n"
-                "/purge - Purge PII from agent data\n"
+                "/purge - Delete old bot messages from chat\n"
                 "/block - Emergency block all actions\n"
                 "/unblock - Resume normal operation\n\n"
                 f"Your Chat ID: `{chat_id}`\n"
@@ -449,8 +449,10 @@ async def telegram_webhook(request: Request):
                 "/pii - Show current PII gate mode\n"
                 "/pii protected - Require approval for PII\n"
                 "/pii auto - Auto-resolve vault tokens\n\n"
-                "*Data:*\n"
-                "/purge - Purge PII from agent data\n\n"
+                "*Chat:*\n"
+                "/purge - Delete old bot messages\n"
+                "/purge all - Delete all tracked messages\n"
+                "/purge 7d - Delete messages older than 7 days\n\n"
                 "*Emergency:*\n"
                 "/block - Block ALL agent actions\n"
                 "/unblock - Resume normal operation\n\n"
@@ -559,7 +561,7 @@ async def telegram_webhook(request: Request):
     elif text.startswith("/pii"):
         await _handle_pii_command(chat_id, text, message)
     elif text.startswith("/purge"):
-        await _handle_purge_command(chat_id, text, message)
+        await _handle_purge_chat_command(chat_id, text, message)
 
     return {"ok": True}
 
@@ -616,6 +618,19 @@ def _escape_markdown(text: str) -> str:
     return text
 
 
+async def _track_bot_message(chat_id: int, message_id: int):
+    """Track a bot message ID in Redis sorted set for later purge."""
+    try:
+        from app.redis_client import redis_client
+        import time
+        key = f"bot_messages:{chat_id}"
+        await redis_client.zadd(key, {str(message_id): time.time()})
+        # Refresh TTL: 30 days
+        await redis_client.expire(key, 30 * 86400)
+    except Exception as e:
+        logger.debug(f"Failed to track bot message: {e}")
+
+
 async def _send_message(chat_id: int, text: str):
     """Send a message via Telegram Bot API."""
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -629,16 +644,26 @@ async def _send_message(chat_id: int, text: str):
             },
             timeout=30.0,
         )
-        if response.status_code != 200:
+        if response.status_code == 200:
+            result = response.json()
+            msg_id = result.get("result", {}).get("message_id")
+            if msg_id:
+                await _track_bot_message(chat_id, msg_id)
+        else:
             logger.error(f"Telegram sendMessage failed: {response.status_code} - {response.text}")
             # Retry without Markdown if parsing failed
             if "parse" in response.text.lower() or "markdown" in response.text.lower():
                 logger.info("Retrying without Markdown parsing")
-                await client.post(
+                retry_resp = await client.post(
                     url,
                     json={"chat_id": chat_id, "text": text},
                     timeout=30.0,
                 )
+                if retry_resp.status_code == 200:
+                    result = retry_resp.json()
+                    msg_id = result.get("result", {}).get("message_id")
+                    if msg_id:
+                        await _track_bot_message(chat_id, msg_id)
 
 
 async def _answer_callback(callback_id: str, text: str):
@@ -890,13 +915,23 @@ async def _send_message_with_keyboard(chat_id: int, text: str, reply_markup: Opt
 
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=payload, timeout=30.0)
-        if response.status_code != 200:
+        if response.status_code == 200:
+            result = response.json()
+            msg_id = result.get("result", {}).get("message_id")
+            if msg_id:
+                await _track_bot_message(chat_id, msg_id)
+        else:
             logger.error(f"Telegram sendMessage failed: {response.status_code} - {response.text}")
             # Retry without Markdown if parsing failed
             if "parse" in response.text.lower() or "markdown" in response.text.lower():
                 logger.info("Retrying without Markdown parsing")
                 payload.pop("parse_mode", None)
-                await client.post(url, json=payload, timeout=30.0)
+                retry_resp = await client.post(url, json=payload, timeout=30.0)
+                if retry_resp.status_code == 200:
+                    result = retry_resp.json()
+                    msg_id = result.get("result", {}).get("message_id")
+                    if msg_id:
+                        await _track_bot_message(chat_id, msg_id)
 
 
 async def _handle_rules_command(chat_id: int, text: str):
@@ -1688,7 +1723,8 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                 for e in entries[:15]:
                     cat = e.category.value if hasattr(e.category, "value") else e.category
                     lines.append(f"  `{cat}`: *{e.label}*")
-                    lines.append(f"    `{e.token}`")
+                    lines.append(f"    Use: `vault:{e.label}`")
+                    lines.append(f"    Token: `{e.token}`")
                     lines.append(f"    Masked: `{e.masked_value}`")
                     if e.placeholder_value:
                         lines.append(f"    Placeholder: `{e.placeholder_value}`")
@@ -1717,10 +1753,12 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
             text=(
                 "🔐 *PII Vault Help*\n\n"
                 "Store sensitive data (credit cards, addresses, etc.) encrypted in Snapper.\n"
-                "Get a token to give to your AI agent instead of raw data.\n\n"
+                "Tell your agent to use `vault:Label` and Snapper handles the rest.\n\n"
                 "*Add entry:*\n"
                 "`/vault add \"My Visa\" credit_card`\n"
                 "Then reply with the value when prompted.\n\n"
+                "*Use with agent:*\n"
+                'Tell your agent: \"Fill CC with `vault:My Visa`\"\n\n'
                 "*List entries:*\n"
                 "`/vault list`\n\n"
                 "*Delete entry:*\n"
@@ -2369,3 +2407,116 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
         "redacted_count": redacted_count,
         "cache_keys_deleted": cache_keys_deleted,
     }
+
+
+async def _handle_purge_chat_command(chat_id: int, text: str, message: dict):
+    """
+    Handle /purge command — delete old bot messages from the Telegram chat.
+
+    Usage:
+        /purge          — delete bot messages older than 24h (default)
+        /purge 7d       — delete bot messages older than 7 days
+        /purge 2h       — delete bot messages older than 2 hours
+        /purge all      — delete all tracked bot messages
+    """
+    import asyncio
+    import time
+    from app.redis_client import redis_client
+
+    parts = text.split(maxsplit=1)
+    arg = parts[1].strip().lower() if len(parts) > 1 else ""
+
+    # Parse threshold
+    if arg == "all":
+        cutoff_ts = time.time()  # Everything up to now
+    elif arg:
+        # Parse duration like "7d", "2h", "30m"
+        match = re.match(r'^(\d+)([dhm])$', arg)
+        if not match:
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    "Usage: `/purge [duration|all]`\n\n"
+                    "Examples:\n"
+                    "`/purge` — older than 24h\n"
+                    "`/purge 7d` — older than 7 days\n"
+                    "`/purge 2h` — older than 2 hours\n"
+                    "`/purge all` — delete all tracked messages"
+                ),
+            )
+            return
+        amount = int(match.group(1))
+        unit = match.group(2)
+        multiplier = {"d": 86400, "h": 3600, "m": 60}[unit]
+        cutoff_ts = time.time() - (amount * multiplier)
+    else:
+        # Default: 24 hours
+        cutoff_ts = time.time() - 86400
+
+    key = f"bot_messages:{chat_id}"
+
+    # Get messages older than cutoff
+    if arg == "all":
+        message_ids = await redis_client.zrangebyscore(key, "-inf", "+inf")
+    else:
+        message_ids = await redis_client.zrangebyscore(key, "-inf", str(cutoff_ts))
+
+    if not message_ids:
+        await _send_message(
+            chat_id=chat_id,
+            text="No tracked bot messages to delete.",
+        )
+        return
+
+    # Telegram deleteMessage API — only works for messages < 48h old
+    telegram_url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/deleteMessage"
+    deleted = 0
+    too_old = 0
+    failed = 0
+    telegram_48h_cutoff = time.time() - (48 * 3600)
+
+    async with httpx.AsyncClient() as client:
+        for mid_raw in message_ids:
+            mid = int(mid_raw) if isinstance(mid_raw, (str, bytes)) else mid_raw
+
+            # Get the score (timestamp) for this message
+            score = await redis_client.zscore(key, str(mid))
+
+            if score and float(score) < telegram_48h_cutoff:
+                # Too old for Telegram to delete — just remove from tracking
+                too_old += 1
+                await redis_client.zrem(key, str(mid))
+                continue
+
+            try:
+                resp = await client.post(
+                    telegram_url,
+                    json={"chat_id": chat_id, "message_id": mid},
+                    timeout=10.0,
+                )
+                if resp.status_code == 200 and resp.json().get("ok"):
+                    deleted += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+
+            # Remove from tracking regardless
+            await redis_client.zrem(key, str(mid))
+
+            # Small delay to avoid rate limits
+            if deleted % 20 == 0 and deleted > 0:
+                await asyncio.sleep(1)
+
+    # Report results
+    lines = ["🗑️ *Purge Complete*\n"]
+    if deleted:
+        lines.append(f"Deleted: {deleted} message(s)")
+    if too_old:
+        lines.append(f"Too old to delete (>48h): {too_old}")
+    if failed:
+        lines.append(f"Failed: {failed}")
+    if not deleted and not too_old and not failed:
+        lines.append("No messages needed deletion.")
+
+    await _send_message(chat_id=chat_id, text="\n".join(lines))

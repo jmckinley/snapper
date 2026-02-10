@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 import base64
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -26,6 +26,12 @@ settings = get_settings()
 
 # Token regex for detection in text (accepts both old 8-char and new 32-char tokens)
 VAULT_TOKEN_REGEX = re.compile(r"\{\{SNAPPER_VAULT:[a-f0-9]{8,32}\}\}")
+
+# Label reference regex: vault:Label Name (alphanumeric + spaces/hyphens/underscores, 1-64 chars)
+VAULT_LABEL_REGEX = re.compile(
+    r'\bvault:([A-Za-z0-9](?:[A-Za-z0-9 _\-]{0,62}[A-Za-z0-9])?)\b',
+    re.IGNORECASE,
+)
 
 
 def get_encryption_key() -> bytes:
@@ -496,6 +502,38 @@ async def resolve_tokens(
 def find_vault_tokens(text: str) -> list[str]:
     """Find all vault tokens in a text string."""
     return VAULT_TOKEN_REGEX.findall(text)
+
+
+def find_vault_labels(text: str) -> list[str]:
+    """Find all vault:Label references in a text string.
+
+    Returns the full match strings like "vault:My Visa".
+    """
+    return [f"vault:{m}" for m in VAULT_LABEL_REGEX.findall(text)]
+
+
+def extract_label_from_ref(ref: str) -> str:
+    """Strip the 'vault:' prefix from a vault label reference."""
+    if ref.lower().startswith("vault:"):
+        return ref[6:]
+    return ref
+
+
+async def get_entries_by_label(
+    db: AsyncSession,
+    label: str,
+    owner_chat_id: Optional[str] = None,
+) -> list[PIIVaultEntry]:
+    """Look up vault entries by label (case-insensitive), scoped by owner."""
+    stmt = select(PIIVaultEntry).where(
+        func.lower(PIIVaultEntry.label) == label.lower(),
+        PIIVaultEntry.is_deleted == False,
+    )
+    if owner_chat_id:
+        stmt = stmt.where(PIIVaultEntry.owner_chat_id == str(owner_chat_id))
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 # ============================================================================

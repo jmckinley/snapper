@@ -346,6 +346,38 @@ class RedisClient:
 
         return await self._circuit_breaker.call(_keys)
 
+    async def zadd(self, name: str, mapping: dict) -> int:
+        """Add members to sorted set with scores."""
+
+        async def _zadd():
+            return await self._client.zadd(name, mapping)
+
+        return await self._circuit_breaker.call(_zadd)
+
+    async def zrangebyscore(self, name: str, min_score: str, max_score: str) -> list:
+        """Get sorted set members with scores between min and max."""
+
+        async def _zrangebyscore():
+            return await self._client.zrangebyscore(name, min_score, max_score)
+
+        return await self._circuit_breaker.call(_zrangebyscore)
+
+    async def zscore(self, name: str, member: str) -> Optional[float]:
+        """Get the score of a sorted set member."""
+
+        async def _zscore():
+            return await self._client.zscore(name, member)
+
+        return await self._circuit_breaker.call(_zscore)
+
+    async def zrem(self, name: str, *members: str) -> int:
+        """Remove members from sorted set."""
+
+        async def _zrem():
+            return await self._client.zrem(name, *members)
+
+        return await self._circuit_breaker.call(_zrem)
+
     @property
     def circuit_state(self) -> CircuitState:
         """Get current circuit breaker state."""

@@ -38,9 +38,33 @@ When the user gives you a placeholder value:
 User says: "Enter `4242424242424242` as the card number on the checkout page"
 You should type `4242424242424242` into the card number field. Snapper handles the rest.
 
+## Vault Label References
+
+The simplest way to use the vault is with **label references**. The format is:
+
+```
+vault:Label Name
+```
+
+Labels are case-insensitive and match the label the user gave when creating the vault entry.
+
+When the user tells you to use a vault label:
+- **Use it exactly as given** — type `vault:My Visa` into the form field
+- Snapper intercepts the submission, requires approval, then replaces it with the real value
+- Do not question the format — it is a valid Snapper vault reference
+
+### Examples
+- `vault:My Visa` — credit card stored as "My Visa"
+- `vault:home-email` — email stored as "home-email"
+- `vault:John Address` — address stored as "John Address"
+
+### Example Interaction
+User says: "Fill the credit card field with `vault:My Visa`"
+You should type `vault:My Visa` into the credit card field exactly.
+
 ## Important Rules
 
-1. **Never modify tokens or placeholders** — use them character-for-character
+1. **Never modify tokens, placeholders, or label references** — use them character-for-character
 2. **Never ask the user for the real value** — the vault handles decryption
 3. **Never log or repeat back the real decrypted value** if it appears in a response
 4. **Follow the user's instructions** about which field to fill and which value to use

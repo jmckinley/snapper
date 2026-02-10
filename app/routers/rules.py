@@ -1338,10 +1338,14 @@ async def evaluate_request(
                 pii_context = context.metadata.get("pii_detected")
                 vault_tokens = pii_context.get("vault_tokens", []) if pii_context else []
                 placeholder_matches = pii_context.get("placeholder_matches", {}) if pii_context else {}
+                label_matches = pii_context.get("label_matches", {}) if pii_context else {}
 
-                # Include placeholder-mapped tokens in vault_tokens for resolution
+                # Include placeholder-mapped and label-mapped tokens in vault_tokens for resolution
                 all_vault_tokens = list(vault_tokens)
                 for token in placeholder_matches.values():
+                    if token not in all_vault_tokens:
+                        all_vault_tokens.append(token)
+                for token in label_matches.values():
                     if token not in all_vault_tokens:
                         all_vault_tokens.append(token)
 
@@ -1416,27 +1420,27 @@ async def evaluate_request(
         response.approval_request_id = approval_request_id
         response.approval_timeout_seconds = 300  # 5 minutes
 
-    # Inline token resolution for auto mode (allow + pii_detected with vault tokens or placeholders)
+    # Inline token resolution for auto mode (allow + pii_detected with vault tokens, placeholders, or labels)
     if result.decision.value == "allow":
         pii_detected = context.metadata.get("pii_detected")
-        if pii_detected and (pii_detected.get("vault_tokens") or pii_detected.get("placeholder_matches")):
+        if pii_detected and (pii_detected.get("vault_tokens") or pii_detected.get("placeholder_matches") or pii_detected.get("label_matches")):
             try:
                 from app.services.pii_vault import resolve_tokens, resolve_placeholders, get_entry_by_token
 
                 vault_tokens = pii_detected.get("vault_tokens", [])
                 placeholder_matches = pii_detected.get("placeholder_matches", {})
+                label_matches = pii_detected.get("label_matches", {})
                 destination_domain = pii_detected.get("destination_domain")
 
                 # Look up owner for ownership enforcement
                 auto_owner_chat_id = None
                 try:
-                    if vault_tokens:
-                        first_entry = await get_entry_by_token(db, vault_tokens[0])
-                        if first_entry:
-                            auto_owner_chat_id = first_entry.owner_chat_id
-                    elif placeholder_matches:
-                        first_token = next(iter(placeholder_matches.values()))
-                        first_entry = await get_entry_by_token(db, first_token)
+                    all_tokens = list(vault_tokens)
+                    for t in list(placeholder_matches.values()) + list(label_matches.values()):
+                        if t not in all_tokens:
+                            all_tokens.append(t)
+                    if all_tokens:
+                        first_entry = await get_entry_by_token(db, all_tokens[0])
                         if first_entry:
                             auto_owner_chat_id = first_entry.owner_chat_id
                 except Exception:
@@ -1463,6 +1467,16 @@ async def evaluate_request(
                         requester_chat_id=auto_owner_chat_id,
                     )
                     resolved.update(placeholder_resolved)
+
+                # Resolve label references
+                if label_matches:
+                    label_resolved = await resolve_placeholders(
+                        db=db,
+                        placeholder_map=label_matches,
+                        destination_domain=destination_domain,
+                        requester_chat_id=auto_owner_chat_id,
+                    )
+                    resolved.update(label_resolved)
 
                 if resolved:
                     response.resolved_data = resolved
