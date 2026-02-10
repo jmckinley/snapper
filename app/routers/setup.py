@@ -336,7 +336,7 @@ async def quick_register_agent(
         existing_agent.agent_metadata = {"api_key_hash": _hash_api_key(api_key)}
 
         rules_applied = await _apply_security_profile(
-            db, existing_agent.id, request.security_profile
+            db, existing_agent.id, request.security_profile, request.agent_type
         )
         await db.commit()
 
@@ -375,7 +375,7 @@ async def quick_register_agent(
 
     # Apply security profile rules
     rules_applied = await _apply_security_profile(
-        db, agent_id, request.security_profile
+        db, agent_id, request.security_profile, request.agent_type
     )
 
     await db.commit()
@@ -1074,7 +1074,7 @@ def _install_cline_config(
 
 
 async def _apply_security_profile(
-    db: AsyncSession, agent_id, profile: str
+    db: AsyncSession, agent_id, profile: str, agent_type: str = None
 ) -> int:
     """Apply security profile rules to an agent.
 
@@ -1198,5 +1198,37 @@ async def _apply_security_profile(
         )
         db.add(rule)
         count += 1
+
+    # Apply OpenClaw-specific templates (safe commands, dangerous block,
+    # approval required, PII gate) when registering an OpenClaw agent
+    if agent_type == "openclaw":
+        from app.routers.rules import RULE_TEMPLATES
+
+        openclaw_templates = [
+            "openclaw-safe-commands",
+            "openclaw-block-dangerous",
+            "openclaw-require-approval",
+            "pii-gate-protection",
+        ]
+        for tmpl_id in openclaw_templates:
+            tmpl = RULE_TEMPLATES.get(tmpl_id)
+            if not tmpl:
+                continue
+            rule = Rule(
+                id=uuid4(),
+                name=tmpl["name"],
+                description=tmpl["description"],
+                agent_id=agent_id,
+                rule_type=tmpl["rule_type"],
+                action=tmpl["default_action"],
+                priority=100 if tmpl["severity"] == "critical" else 50,
+                parameters=tmpl["default_parameters"],
+                is_active=True,
+                tags=tmpl["tags"],
+                source="template",
+                source_reference=tmpl_id,
+            )
+            db.add(rule)
+            count += 1
 
     return count

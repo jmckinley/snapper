@@ -180,7 +180,7 @@ def get_existing_agent(external_id: str):
     return None
 
 
-def apply_security_profile(agent_id: str, profile: str = "recommended"):
+def apply_security_profile(agent_id: str, profile: str = "recommended", agent_type: str = None):
     """Apply security profile to agent."""
     import urllib.request
 
@@ -203,6 +203,16 @@ def apply_security_profile(agent_id: str, profile: str = "recommended"):
             "credential-protection",
         ],
     }
+
+    # Add OpenClaw-specific templates
+    if agent_type == "openclaw":
+        for profile_rules in templates.values():
+            profile_rules.extend([
+                "openclaw-safe-commands",
+                "openclaw-block-dangerous",
+                "openclaw-require-approval",
+                "pii-gate-protection",
+            ])
 
     rules_to_apply = templates.get(profile, templates["recommended"])
 
