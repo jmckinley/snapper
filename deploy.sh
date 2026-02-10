@@ -649,8 +649,10 @@ if [[ "$SKIP_OPENCLAW" == "false" ]]; then
             OC_AGENT_ID=$(echo "$REG_BODY" | grep -o '"agent_id":"[^"]*"' | cut -d'"' -f4)
             OC_API_KEY=$(echo "$REG_BODY" | grep -o '"api_key":"[^"]*"' | cut -d'"' -f4)
             OC_RULES=$(echo "$REG_BODY" | grep -o '"rules_applied":[0-9]*' | cut -d: -f2)
+            OC_CONFIGURED=true
             ok "OpenClaw agent registered ($OC_RULES security rules applied)"
         elif [[ "$HTTP_CODE" == "409" ]]; then
+            OC_CONFIGURED=true
             ok "OpenClaw agent already registered (re-run detected)"
         else
             warn "Agent registration failed (HTTP $HTTP_CODE) — configure manually at ${EXTERNAL_URL}/wizard"
@@ -856,7 +858,7 @@ fi
 
 # OpenClaw integration
 if [[ "$SKIP_OPENCLAW" == "false" ]]; then
-    if [[ -n "${OC_AGENT_ID:-}" ]]; then
+    if [[ "${OC_CONFIGURED:-}" == "true" ]]; then
         sec_pass "OpenClaw agent registered and rules applied"
     elif docker ps --filter "name=openclaw" --format '{{.Names}}' 2>/dev/null | grep -q openclaw; then
         sec_warn "OpenClaw detected but integration not configured"
@@ -904,7 +906,7 @@ echo -e "  Stop:       $COMPOSE_CMD down"
 echo -e "  Update:     git pull && $COMPOSE_CMD up -d --build --force-recreate"
 echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
-if [[ -n "${OC_AGENT_ID:-}" ]]; then
+if [[ "${OC_CONFIGURED:-}" == "true" ]]; then
     echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/${NC} to see the dashboard"
     echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
     echo -e "    3. Test: Tell your OpenClaw agent to 'run rm -rf /' (should be blocked)"
