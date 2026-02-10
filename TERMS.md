@@ -6,7 +6,7 @@
 
 By accessing, downloading, installing, or using Snapper ("the Software"), you acknowledge that you have read, understood, and agree to be bound by these Terms of Service ("Terms"). If you do not agree to all of these Terms, you must immediately cease all use of the Software and delete all copies in your possession.
 
-These Terms constitute a legally binding agreement between you ("User," "you," or "your") and the authors and contributors of Snapper ("we," "us," or "our").
+These Terms constitute a legally binding agreement between you ("User," "you," or "your") and McKinley Labs LLC ("we," "us," or "our").
 
 ## 2. Eligibility
 
@@ -150,7 +150,7 @@ Snapper integrates with third-party services and depends on third-party software
 
 ## 15. Limitation of Liability
 
-**TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE AUTHORS, CONTRIBUTORS, MAINTAINERS, OR COPYRIGHT HOLDERS OF SNAPPER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES WHATSOEVER, INCLUDING BUT NOT LIMITED TO:**
+**TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL MCKINLEY LABS LLC, ITS OFFICERS, DIRECTORS, EMPLOYEES, CONTRIBUTORS, OR AGENTS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES WHATSOEVER, INCLUDING BUT NOT LIMITED TO:**
 
 - Loss, theft, or corruption of data (including encrypted vault data)
 - Security breaches, data breaches, or unauthorized access to systems or data
@@ -164,13 +164,13 @@ Snapper integrates with third-party services and depends on third-party software
 - Any damages arising from the use or inability to use the Software
 - Any damages arising from unauthorized access to or alteration of your data or transmissions
 
-**THIS LIMITATION APPLIES WHETHER THE DAMAGES ARISE FROM USE OR MISUSE OF THE SOFTWARE, FROM INABILITY TO USE THE SOFTWARE, OR FROM THE INTERRUPTION, SUSPENSION, OR TERMINATION OF THE SOFTWARE, WHETHER THE AUTHORS WERE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES, AND REGARDLESS OF THE THEORY OF LIABILITY (CONTRACT, TORT, STRICT LIABILITY, OR OTHERWISE).**
+**THIS LIMITATION APPLIES WHETHER THE DAMAGES ARISE FROM USE OR MISUSE OF THE SOFTWARE, FROM INABILITY TO USE THE SOFTWARE, OR FROM THE INTERRUPTION, SUSPENSION, OR TERMINATION OF THE SOFTWARE, WHETHER MCKINLEY LABS LLC WAS ADVISED OF THE POSSIBILITY OF SUCH DAMAGES, AND REGARDLESS OF THE THEORY OF LIABILITY (CONTRACT, TORT, STRICT LIABILITY, OR OTHERWISE).**
 
 **IN JURISDICTIONS THAT DO NOT ALLOW THE EXCLUSION OR LIMITATION OF INCIDENTAL OR CONSEQUENTIAL DAMAGES, OUR LIABILITY SHALL BE LIMITED TO THE MAXIMUM EXTENT PERMITTED BY LAW.**
 
 ## 16. Indemnification
 
-You agree to indemnify, defend, and hold harmless the authors, contributors, maintainers, and copyright holders of Snapper from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees and court costs) arising out of or relating to:
+You agree to indemnify, defend, and hold harmless McKinley Labs LLC, its officers, directors, employees, contributors, and agents from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees and court costs) arising out of or relating to:
 
 - Your use or misuse of the Software
 - Your violation of these Terms
@@ -204,7 +204,7 @@ The Software is provided without any guarantee of availability, uptime, support,
 
 ## 21. Class Action Waiver
 
-**YOU AND THE AUTHORS AGREE THAT ANY DISPUTE ARISING OUT OF OR RELATING TO THESE TERMS OR THE SOFTWARE SHALL BE RESOLVED ON AN INDIVIDUAL BASIS ONLY.** You expressly waive any right to participate in a class action, collective action, or representative proceeding of any kind. You agree that:
+**YOU AND MCKINLEY LABS LLC AGREE THAT ANY DISPUTE ARISING OUT OF OR RELATING TO THESE TERMS OR THE SOFTWARE SHALL BE RESOLVED ON AN INDIVIDUAL BASIS ONLY.** You expressly waive any right to participate in a class action, collective action, or representative proceeding of any kind. You agree that:
 
 - All claims must be brought in your individual capacity, not as a plaintiff or class member in any purported class, collective, or representative proceeding
 - You waive any right to a jury trial
@@ -227,7 +227,7 @@ These Terms, together with the MIT License, constitute the entire agreement betw
 
 ## 25. Waiver
 
-The failure of the authors to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver of any provision of these Terms will be effective only if in writing and signed by the authors.
+The failure of McKinley Labs LLC to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver of any provision of these Terms will be effective only if in writing and signed by McKinley Labs LLC.
 
 ## 26. Modifications
 
