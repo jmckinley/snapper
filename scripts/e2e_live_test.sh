@@ -954,7 +954,7 @@ RULE_ID=$(create_rule '{
     "rule_type":"pii_gate",
     "action":"require_approval",
     "parameters":{"detect_vault_tokens":true,"detect_raw_pii":false,"pii_mode":"auto"},
-    "priority":100,
+    "priority":500,
     "is_active":true
 }')
 if [[ -n "$VAULT_TOKEN" ]]; then
@@ -1110,7 +1110,7 @@ LABEL_AUTO_RULE=$(create_rule '{
     "rule_type":"pii_gate",
     "action":"require_approval",
     "parameters":{"detect_vault_tokens":true,"detect_raw_pii":false,"pii_mode":"auto"},
-    "priority":100,
+    "priority":500,
     "is_active":true
 }')
 LABEL_AUTO_EVAL=$(evaluate "{
