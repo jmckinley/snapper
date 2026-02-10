@@ -126,6 +126,6 @@ api_rate_limit = RateLimiter(max_requests=1000, window_seconds=60, key_prefix="a
 
 # Security-hardened rate limiters
 vault_write_rate_limit = RateLimiter(max_requests=10, window_seconds=60, key_prefix="vault_write")
-approval_status_rate_limit = RateLimiter(max_requests=30, window_seconds=60, key_prefix="approval_status")
+approval_status_rate_limit = RateLimiter(max_requests=120, window_seconds=60, key_prefix="approval_status")
 approval_decide_rate_limit = RateLimiter(max_requests=10, window_seconds=60, key_prefix="approval_decide")
 telegram_webhook_rate_limit = RateLimiter(max_requests=60, window_seconds=60, key_prefix="telegram_webhook")
