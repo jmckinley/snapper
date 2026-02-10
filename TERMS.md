@@ -166,26 +166,37 @@ The Software is provided without any guarantee of availability, uptime, support,
 - Maintain backward compatibility
 - Respond to issues, feature requests, or security reports within any timeframe
 
-## 17. Governing Law and Dispute Resolution
+## 17. Class Action Waiver
+
+**YOU AND THE AUTHORS AGREE THAT ANY DISPUTE ARISING OUT OF OR RELATING TO THESE TERMS OR THE SOFTWARE SHALL BE RESOLVED ON AN INDIVIDUAL BASIS ONLY.** You expressly waive any right to participate in a class action, collective action, or representative proceeding of any kind. You agree that:
+
+- All claims must be brought in your individual capacity, not as a plaintiff or class member in any purported class, collective, or representative proceeding
+- You waive any right to a jury trial
+- Any dispute shall first be attempted to be resolved through good-faith negotiation for a period of 30 days before initiating legal proceedings
+- Small claims court actions (within jurisdictional limits) are exempt from this provision
+
+If any part of this class action waiver is found to be unenforceable, the remainder of this dispute resolution section shall still apply.
+
+## 18. Governing Law and Dispute Resolution
 
 These Terms shall be governed by and construed in accordance with the laws of the State of Texas, United States, without regard to its conflict of law provisions. Any dispute arising out of or relating to these Terms or the Software shall be resolved exclusively in the state or federal courts located in Dallas County, Texas, and you consent to the personal jurisdiction of such courts.
 
-## 18. Severability
+## 19. Severability
 
 If any provision of these Terms is held to be invalid, illegal, or unenforceable by a court of competent jurisdiction, such provision shall be modified to the minimum extent necessary to make it valid and enforceable, or if modification is not possible, shall be severed from these Terms. The invalidity of any provision shall not affect the validity or enforceability of the remaining provisions, which shall continue in full force and effect.
 
-## 19. Entire Agreement
+## 20. Entire Agreement
 
 These Terms, together with the MIT License, constitute the entire agreement between you and us regarding the Software and supersede all prior or contemporaneous agreements, representations, warranties, and understandings, whether written, oral, or implied.
 
-## 20. Waiver
+## 21. Waiver
 
 The failure of the authors to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver of any provision of these Terms will be effective only if in writing and signed by the authors.
 
-## 21. Modifications
+## 22. Modifications
 
 We reserve the right to modify these Terms at any time without prior notice. Changes are effective immediately upon being posted in the repository. Your continued use of the Software after any modification constitutes your acceptance of the modified Terms. It is your responsibility to review these Terms periodically for changes.
 
-## 22. Contact
+## 23. Contact
 
 For questions about these terms, open an issue at [github.com/jmckinley/snapper/issues](https://github.com/jmckinley/snapper/issues).
