@@ -8,13 +8,17 @@ By accessing, downloading, installing, or using Snapper ("the Software"), you ac
 
 These Terms constitute a legally binding agreement between you ("User," "you," or "your") and the authors and contributors of Snapper ("we," "us," or "our").
 
-## 2. Description of Service
+## 2. Eligibility
+
+You must be at least 18 years of age and have the legal capacity to enter into a binding agreement in your jurisdiction to use the Software. If you are using the Software on behalf of an organization, you represent and warrant that you have the authority to bind that organization to these Terms. By using the Software, you represent that you meet these requirements.
+
+## 3. Description of Service
 
 Snapper is an Agent Application Firewall (AAF) that inspects and enforces security policy on AI agent traffic. It provides rule-based control, PII protection, approval workflows, and audit logging for AI agents including OpenClaw, Claude Code, Cursor, Windsurf, Cline, and custom agents.
 
 **Snapper is a security tool, not a security guarantee.** The Software is designed to reduce risk, not eliminate it. You acknowledge that AI agent security is an evolving field and that no tool can provide absolute protection against all threats.
 
-## 3. Beta Software
+## 4. Beta Software
 
 Snapper is currently in **beta**. By using the Software, you acknowledge and agree that:
 
@@ -28,11 +32,11 @@ Snapper is currently in **beta**. By using the Software, you acknowledge and agr
 
 **Your use of the Software during the beta period is voluntary and at your own risk.** The limitations and disclaimers in these Terms apply with full force during the beta period and beyond.
 
-## 4. License
+## 5. License
 
 Snapper is open-source software licensed under the MIT License. See [LICENSE](LICENSE) for the full license text. The MIT License governs your right to use, copy, modify, and distribute the Software. These Terms govern additional conditions of use.
 
-## 5. Assumption of Risk
+## 6. Assumption of Risk
 
 **YOU EXPRESSLY ACKNOWLEDGE AND AGREE THAT USE OF THE SOFTWARE IS AT YOUR SOLE RISK.** By using Snapper, you assume full responsibility for:
 
@@ -47,7 +51,21 @@ Snapper is open-source software licensed under the MIT License. See [LICENSE](LI
 - Understanding the security implications of every rule, configuration, and integration you enable
 - Any and all consequences arising from AI agent actions, whether or not those actions were evaluated by Snapper
 
-## 6. No Guarantee of Security
+## 7. Acceptable Use
+
+You agree to use the Software only for lawful purposes and in accordance with these Terms. You shall not use the Software to:
+
+- Facilitate, enable, or conceal any activity that is illegal, fraudulent, or harmful
+- Secure, monitor, or manage AI agents that are used to access systems, networks, or data without proper authorization
+- Process, store, or transmit third-party personally identifiable information without the knowledge and consent of the individuals concerned
+- Circumvent, disable, or interfere with security features of any system, including Snapper itself
+- Develop, test, or deploy malware, ransomware, or other malicious software
+- Conduct unauthorized penetration testing, vulnerability scanning, or security assessments against systems you do not own or have explicit written permission to test
+- Misrepresent Snapper's capabilities to third parties or claim that use of Snapper satisfies specific compliance, regulatory, or contractual security obligations without independent verification
+
+Violation of this section may result in termination of your right to use the Software and may expose you to civil or criminal liability.
+
+## 8. No Guarantee of Security
 
 **THE SOFTWARE DOES NOT AND CANNOT GUARANTEE SECURITY OF ANY KIND.** While Snapper is designed to enhance AI agent security, you expressly acknowledge and agree that:
 
@@ -61,7 +79,7 @@ Snapper is open-source software licensed under the MIT License. See [LICENSE](LI
 - The absence of a blocked action in Snapper's logs does not mean the action was safe, authorized, or desirable
 - Snapper's hook scripts depend on the correct functioning of third-party agent frameworks, and changes to those frameworks may break Snapper's protections without warning
 
-## 7. Disclaimer of Warranties
+## 9. Disclaimer of Warranties
 
 **THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY, COMPLETENESS, RELIABILITY, SECURITY, OR AVAILABILITY.**
 
@@ -73,7 +91,7 @@ We do not warrant that:
 - The results obtained from use of the Software will be accurate, complete, or reliable
 - The encryption, hashing, or other security mechanisms in the Software are free from vulnerabilities
 
-## 8. Data Handling and Privacy
+## 10. Data Handling and Privacy
 
 Snapper processes and stores the following data locally in your infrastructure:
 
@@ -86,7 +104,7 @@ All data is stored in your own PostgreSQL and Redis instances. Snapper does not 
 
 We are not responsible for data breaches, data loss, or unauthorized access to data stored by Snapper, regardless of cause.
 
-## 9. PII Vault and Encryption
+## 11. PII Vault and Encryption
 
 The PII vault encrypts sensitive data using a key derived from your `SECRET_KEY` via HKDF.
 
@@ -99,7 +117,7 @@ The PII vault encrypts sensitive data using a key derived from your `SECRET_KEY`
 
 We make no representations about the strength, adequacy, or suitability of the encryption algorithms used. Cryptographic standards evolve, and what is considered secure today may not be secure in the future.
 
-## 10. Financial Transactions and Real-World Actions
+## 12. Financial Transactions and Real-World Actions
 
 Snapper enables AI agents to perform real-world actions on your behalf, including but not limited to filling out payment forms, submitting credentials to third-party websites, executing financial transactions, and interacting with external services. You expressly acknowledge and agree that:
 
@@ -110,7 +128,7 @@ Snapper enables AI agents to perform real-world actions on your behalf, includin
 - Snapper does not validate that amounts, recipients, account numbers, or other transaction details are correct
 - We are not liable for unauthorized purchases, incorrect payments, overpayments, fraud, or any financial loss resulting from agent actions, regardless of whether those actions passed through Snapper's approval workflow
 
-## 11. Mobile and Remote Approval Risks
+## 13. Mobile and Remote Approval Risks
 
 Snapper's approval workflow may deliver approval requests to mobile devices via Telegram or other notification services. You acknowledge that:
 
@@ -120,7 +138,7 @@ Snapper's approval workflow may deliver approval requests to mobile devices via 
 - Network delays between the agent's request and your approval notification may result in stale context — the agent's environment may have changed between when the request was made and when you review it
 - The "Allow Always" feature permanently authorizes a class of actions without future review; you should use this feature only when you fully understand its implications
 
-## 12. Third-Party Integrations and Dependencies
+## 14. Third-Party Integrations and Dependencies
 
 Snapper integrates with third-party services and depends on third-party software. You acknowledge that:
 
@@ -130,7 +148,7 @@ Snapper integrates with third-party services and depends on third-party software
 - Snapper depends on third-party software libraries, and vulnerabilities in those dependencies may affect the security of the Software
 - Agent hook scripts depend on the specific behavior of third-party AI agents (Cursor, Windsurf, Cline, Claude Code, OpenClaw), which may change without notice
 
-## 13. Limitation of Liability
+## 15. Limitation of Liability
 
 **TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE AUTHORS, CONTRIBUTORS, MAINTAINERS, OR COPYRIGHT HOLDERS OF SNAPPER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES WHATSOEVER, INCLUDING BUT NOT LIMITED TO:**
 
@@ -150,7 +168,7 @@ Snapper integrates with third-party services and depends on third-party software
 
 **IN JURISDICTIONS THAT DO NOT ALLOW THE EXCLUSION OR LIMITATION OF INCIDENTAL OR CONSEQUENTIAL DAMAGES, OUR LIABILITY SHALL BE LIMITED TO THE MAXIMUM EXTENT PERMITTED BY LAW.**
 
-## 14. Indemnification
+## 16. Indemnification
 
 You agree to indemnify, defend, and hold harmless the authors, contributors, maintainers, and copyright holders of Snapper from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees and court costs) arising out of or relating to:
 
@@ -162,15 +180,19 @@ You agree to indemnify, defend, and hold harmless the authors, contributors, mai
 - Your failure to properly configure, maintain, or secure the Software
 - Any data processed, stored, or transmitted through the Software
 
-## 15. No Professional Advice
+## 17. No Professional Advice
 
 The Software does not constitute professional security, legal, compliance, or technical advice. You should consult qualified professionals regarding your specific security, compliance, and regulatory requirements. The presence of security features in the Software does not imply that those features are sufficient for your use case or that your use of the Software satisfies any legal or regulatory obligation.
 
-## 16. Compliance and Regulatory
+## 18. Compliance and Regulatory
 
 You are solely responsible for determining whether your use of the Software complies with all applicable laws, regulations, and industry standards. Snapper is not certified, audited, or approved by any regulatory body. The Software is not designed or intended to meet the requirements of any specific compliance framework (including but not limited to SOC 2, ISO 27001, PCI DSS, HIPAA, FedRAMP, or GDPR) unless explicitly stated in writing.
 
-## 17. Availability and Support
+## 19. Export Controls
+
+The Software includes cryptographic functionality (Fernet/AES encryption) and may be subject to export control laws and regulations, including the U.S. Export Administration Regulations (EAR). You agree to comply with all applicable export and re-export control laws and regulations. You shall not download, use, or export the Software in violation of U.S. law or the laws of your jurisdiction, including to any country, entity, or person subject to U.S. sanctions or export restrictions. You represent and warrant that you are not located in, under the control of, or a national or resident of any country to which export of the Software would be prohibited.
+
+## 20. Availability and Support
 
 The Software is provided without any guarantee of availability, uptime, support, maintenance, or updates. We are under no obligation to:
 
@@ -180,7 +202,7 @@ The Software is provided without any guarantee of availability, uptime, support,
 - Maintain backward compatibility
 - Respond to issues, feature requests, or security reports within any timeframe
 
-## 18. Class Action Waiver
+## 21. Class Action Waiver
 
 **YOU AND THE AUTHORS AGREE THAT ANY DISPUTE ARISING OUT OF OR RELATING TO THESE TERMS OR THE SOFTWARE SHALL BE RESOLVED ON AN INDIVIDUAL BASIS ONLY.** You expressly waive any right to participate in a class action, collective action, or representative proceeding of any kind. You agree that:
 
@@ -191,26 +213,26 @@ The Software is provided without any guarantee of availability, uptime, support,
 
 If any part of this class action waiver is found to be unenforceable, the remainder of this dispute resolution section shall still apply.
 
-## 19. Governing Law and Dispute Resolution
+## 22. Governing Law and Dispute Resolution
 
 These Terms shall be governed by and construed in accordance with the laws of the State of Texas, United States, without regard to its conflict of law provisions. Any dispute arising out of or relating to these Terms or the Software shall be resolved exclusively in the state or federal courts located in Dallas County, Texas, and you consent to the personal jurisdiction of such courts.
 
-## 20. Severability
+## 23. Severability
 
 If any provision of these Terms is held to be invalid, illegal, or unenforceable by a court of competent jurisdiction, such provision shall be modified to the minimum extent necessary to make it valid and enforceable, or if modification is not possible, shall be severed from these Terms. The invalidity of any provision shall not affect the validity or enforceability of the remaining provisions, which shall continue in full force and effect.
 
-## 21. Entire Agreement
+## 24. Entire Agreement
 
 These Terms, together with the MIT License, constitute the entire agreement between you and us regarding the Software and supersede all prior or contemporaneous agreements, representations, warranties, and understandings, whether written, oral, or implied.
 
-## 22. Waiver
+## 25. Waiver
 
 The failure of the authors to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver of any provision of these Terms will be effective only if in writing and signed by the authors.
 
-## 23. Modifications
+## 26. Modifications
 
 We reserve the right to modify these Terms at any time without prior notice. Changes are effective immediately upon being posted in the repository. Your continued use of the Software after any modification constitutes your acceptance of the modified Terms. It is your responsibility to review these Terms periodically for changes.
 
-## 24. Contact
+## 27. Contact
 
 For questions about these terms, open an issue at [github.com/jmckinley/snapper/issues](https://github.com/jmckinley/snapper/issues).
