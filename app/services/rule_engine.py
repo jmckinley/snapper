@@ -190,6 +190,9 @@ class RuleEngine:
                         return result
 
                     elif action == RuleAction.REQUIRE_APPROVAL:
+                        if allow_found:
+                            # A higher-priority rule already allowed; skip
+                            continue
                         # Return pending approval
                         result.decision = EvaluationDecision.REQUIRE_APPROVAL
                         result.blocking_rule = rule.id

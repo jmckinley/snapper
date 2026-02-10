@@ -11,7 +11,7 @@ SNAPPER_API_KEY="${SNAPPER_API_KEY:?Set SNAPPER_API_KEY env var}"
 [ -z "$CMD" ] && exec $REAL_SHELL "$@"
 
 # Call Snapper
-RESP=$(curl -sf -X POST "http://host.docker.internal:8000/api/v1/rules/evaluate" \
+RESP=$(curl -sf -X POST "${SNAPPER_URL:-http://127.0.0.1:8000}/api/v1/rules/evaluate" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $SNAPPER_API_KEY" \
   -d "{\"agent_id\": \"openclaw-main\", \"request_type\": \"command\", \"command\": \"$CMD\"}" 2>/dev/null)
