@@ -672,6 +672,7 @@ Run `python3 scripts/snapper-cli.py security-check` to audit automatically, or `
 - [ ] Caddy is configured with TLS (Let's Encrypt via `--domain`, or self-signed)
 - [ ] PostgreSQL and Redis are not exposed outside the Docker network
 - [ ] All containers have `restart: unless-stopped` (set automatically by compose)
+- [ ] OpenClaw integration configured (if OpenClaw is on the same server — `deploy.sh` handles this automatically)
 - [ ] PII gate rule is active with appropriate categories
 - [ ] Audit logs are being generated (check `/audit` dashboard)
 - [ ] Hook scripts use `https://` URLs (not `http://`)

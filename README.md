@@ -82,6 +82,7 @@ The script handles everything:
 - Builds containers with gunicorn (4 workers) and `restart: unless-stopped`
 - Runs database migrations
 - Configures Caddy reverse proxy (Let's Encrypt with `--domain`, or self-signed for IP-only)
+- **Auto-detects OpenClaw** — registers the agent, applies 7+ security rules, copies hooks, injects env vars, and installs the snapper-guard plugin (skip with `--no-openclaw`)
 - Opens firewall ports and runs a security posture assessment
 
 | Flag | Description |
@@ -90,6 +91,7 @@ The script handles everything:
 | `--port PORT` | HTTPS port (default: 443 with domain, 8443 without) |
 | `--repo URL` | Git repo URL (for forks) |
 | `--yes` | Non-interactive mode (skip confirmation prompts) |
+| `--no-openclaw` | Skip automatic OpenClaw detection and integration |
 
 Result: Snapper at `https://your-domain/` or `https://your-ip:8443`
 
@@ -115,7 +117,9 @@ Auto-detects your agent, registers it, applies a security profile, and writes ho
 
 ### OpenClaw
 
-Two integration methods (can be used together):
+**Production (VPS):** If you deployed with `deploy.sh` and OpenClaw is on the same server, integration is automatic — the agent is registered, rules are applied, hooks are copied, and env vars are injected. No manual steps needed. See [Zero-Config Deployment](docs/OPENCLAW_INTEGRATION.md#zero-config-deployment).
+
+**Local development** or manual setup — two integration methods (can be used together):
 
 **Option A: snapper-guard plugin (recommended)** — Intercepts tool calls natively, supports PII vault token resolution and browser form filling:
 

@@ -62,6 +62,7 @@ cd /opt/snapper
 | `--repo URL` | Git repo URL (for forks) |
 | `--host IP` | Override auto-detected server IP |
 | `--yes` | Non-interactive mode (skip all confirmation prompts) |
+| `--no-openclaw` | Skip automatic OpenClaw detection and integration |
 
 The script handles:
 - **Prerequisite installation** — Installs Docker, Caddy, and UFW if missing (offers to install, or auto-installs with `--yes`)
@@ -70,7 +71,8 @@ The script handles:
 - **Database migrations** — Runs `alembic upgrade head` automatically
 - **TLS configuration** — Let's Encrypt (with `--domain`) or self-signed certificate (IP-only)
 - **Firewall** — Opens necessary ports in UFW (plus ports 80/443 for Let's Encrypt ACME)
-- **Security assessment** — Runs a 15-point security posture check at the end
+- **OpenClaw auto-integration** — If OpenClaw is detected on the same server, automatically registers the agent, applies security rules, copies hooks, injects env vars, and installs the snapper-guard plugin (skip with `--no-openclaw`)
+- **Security assessment** — Runs a security posture check at the end (including OpenClaw integration status)
 
 **Production defaults** (set automatically in `.env`):
 
@@ -132,6 +134,8 @@ snapper.example.com {
 ```
 
 ## First Run
+
+> **Production with OpenClaw?** If you deployed with `deploy.sh` and OpenClaw is on the same server, agent registration and integration are handled automatically — skip to [Verify It Works](#verify-it-works).
 
 ### Option A: CLI (Recommended)
 

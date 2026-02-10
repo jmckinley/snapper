@@ -48,7 +48,7 @@ AI Agent wants to run: rm -rf /important-data
 ### First Steps
 
 1. **Install Snapper** — See [Getting Started](GETTING_STARTED.md) for Docker setup
-2. **Connect your agent** — Run `python scripts/snapper-cli.py init` (auto-detects and configures your agent)
+2. **Connect your agent** — For production with OpenClaw, `deploy.sh` handles this automatically. Otherwise, run `python scripts/snapper-cli.py init` (auto-detects and configures your agent)
 3. **Set up Telegram** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for bot creation
 4. **Configure rules** — Use templates or create custom rules (this guide covers both)
 
@@ -475,7 +475,9 @@ The easiest way to set up any agent is `python scripts/snapper-cli.py init` (see
 
 ### OpenClaw (Recommended: Plugin)
 
-The `snapper-guard` plugin integrates directly with OpenClaw's tool pipeline:
+**Production (VPS):** If you deployed with `deploy.sh`, OpenClaw integration is automatic — the agent is registered, security rules are applied, hooks are installed, and env vars are configured. No manual steps needed. See [Zero-Config Deployment](OPENCLAW_INTEGRATION.md#zero-config-deployment).
+
+**Local development** or manual setup — the `snapper-guard` plugin integrates directly with OpenClaw's tool pipeline:
 
 1. Register your agent in Snapper (via dashboard or API)
 2. Copy the plugin to your OpenClaw config
