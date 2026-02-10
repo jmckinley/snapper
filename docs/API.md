@@ -506,8 +506,10 @@ X-RateLimit-Reset: 1707220800
 ```
 
 Default limits:
-- Evaluate endpoint: 100 requests/minute per agent
-- Other endpoints: 60 requests/minute per IP
+- Evaluate endpoint: 300 requests/minute per agent
+- Telegram webhook: 300 requests/minute
+- Approval status polling: 360 requests/minute
+- Other endpoints: 300 requests/minute per IP
 
 ## Webhooks
 

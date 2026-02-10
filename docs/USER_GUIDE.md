@@ -435,6 +435,8 @@ In **protected** mode, when an agent submits data containing vault tokens or raw
 
 In **auto** mode, vault tokens are resolved immediately. The action is logged but not paused.
 
+**Multiple PII gates:** You can have both modes active at different priorities. A higher-priority auto-mode rule will take precedence over a lower-priority protected-mode rule for vault-only tokens. This lets you auto-resolve known vault tokens while still requiring approval for raw PII detected by a broader rule.
+
 ---
 
 ## Emergency Controls

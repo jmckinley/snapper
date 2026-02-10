@@ -109,6 +109,10 @@ bash scripts/e2e_live_test.sh                                  # on VPS (default
 SNAPPER_URL=http://localhost:8000 bash scripts/e2e_live_test.sh  # local with custom URL
 E2E_CHAT_ID=<chat_id> bash scripts/e2e_live_test.sh             # with OpenClaw live agent tests
 
+# OpenClaw full-pipeline E2E tests (real agent traffic, ~12 min)
+# 19 tests: access control, rate limiting, PII detection, approvals, metadata, emergency block, audit
+E2E_CHAT_ID=<chat_id> bash scripts/e2e_openclaw_test.sh
+
 # Linting (inside container)
 docker compose exec app black app/ tests/
 docker compose exec app flake8 app/ tests/
@@ -155,7 +159,7 @@ async def protected_endpoint():
 ## CLAUDE NOTES
 
 - **Agent Integration**: Study the agent hooks and permissions system before implementing integrations
-- **Security Priority**: All rule evaluations must fail-safe (deny by default)
+- **Security Priority**: All rule evaluations must fail-safe (deny by default). DENY always short-circuits. Higher-priority ALLOW prevents lower-priority REQUIRE_APPROVAL from overriding.
 - **Performance**: Use Redis for caching rules and rate limiting counters
 - **Compatibility**: Currently supports OpenClaw (running in Docker); design rule schema to adapt to future agent frameworks
 - **Security Research**: Implement background job for weekly security research updates since 1/28/26
@@ -169,3 +173,4 @@ async def protected_endpoint():
 - **PII Vault**: Fernet-encrypted PII storage with vault tokens (`{{SNAPPER_VAULT:<8hex>}}`). Key derived from SECRET_KEY via HKDF.
 - **PII Gate**: Rule evaluator that scans tool_input and commands for vault tokens + raw PII patterns. Two modes: protected (require approval) and auto (inline resolution).
 - **snapper-guard Plugin**: OpenClaw plugin (`plugins/snapper-guard/`) that intercepts browser tool calls, calls evaluate endpoint, and replaces vault tokens with real values in tool params via `before_tool_call` hook.
+- **Shell Hooks**: Use `$SNAPPER_URL` and `$SNAPPER_API_KEY` env vars (not hardcoded URLs/keys). Scripts in `scripts/openclaw-hooks/`.

@@ -230,6 +230,7 @@ Create `/opt/openclaw/hooks/snapper-shell.sh`:
 #!/bin/bash
 # Snapper Shell Wrapper for OpenClaw
 REAL_SHELL="/bin/bash"
+SNAPPER_API_KEY="${SNAPPER_API_KEY:?Set SNAPPER_API_KEY env var}"
 
 # If interactive or no args, just run shell
 [ -t 0 ] && [ $# -eq 0 ] && exec $REAL_SHELL
@@ -239,9 +240,9 @@ REAL_SHELL="/bin/bash"
 [ -z "$CMD" ] && exec $REAL_SHELL "$@"
 
 # Call Snapper
-RESP=$(curl -sf -X POST "http://host.docker.internal:8000/api/v1/rules/evaluate" \
+RESP=$(curl -sf -X POST "${SNAPPER_URL:-http://127.0.0.1:8000}/api/v1/rules/evaluate" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_KEY_HERE" \
+  -H "X-API-Key: $SNAPPER_API_KEY" \
   -d "{\"agent_id\": \"openclaw-main\", \"request_type\": \"command\", \"command\": \"$CMD\"}" 2>/dev/null)
 
 # Check decision
@@ -260,6 +261,10 @@ fi
 exec $REAL_SHELL "$@"
 ```
 
+**Important:** The hook uses environment variables instead of hardcoded values:
+- `SNAPPER_URL` — defaults to `http://127.0.0.1:8000` (correct for `network_mode: host`)
+- `SNAPPER_API_KEY` — must be set in the OpenClaw container's environment
+
 Make executable:
 ```bash
 chmod +x /opt/openclaw/hooks/snapper-shell.sh
@@ -276,20 +281,13 @@ services:
       - ./hooks:/app/hooks:ro
     environment:
       SHELL: /app/hooks/snapper-shell.sh
+      SNAPPER_URL: http://127.0.0.1:8000
+      SNAPPER_API_KEY: snp_your_key_here
 ```
 
-### 4. Add host.docker.internal
+> **Note:** If OpenClaw uses `network_mode: host` (recommended for sandbox container access), `http://127.0.0.1:8000` reaches Snapper directly — no `host.docker.internal` or `extra_hosts` needed. If using bridge networking, add `extra_hosts: ["host.docker.internal:host-gateway"]` and set `SNAPPER_URL=http://host.docker.internal:8000`.
 
-Ensure OpenClaw can reach Snapper:
-
-```yaml
-services:
-  openclaw-gateway:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-```
-
-### 5. Restart OpenClaw
+### 4. Restart OpenClaw
 
 ```bash
 docker compose up -d --force-recreate openclaw-gateway
@@ -477,10 +475,13 @@ docker compose exec openclaw-gateway sh -c 'echo $SHELL'
 
 2. Verify network connectivity from OpenClaw container:
    ```bash
-   docker compose exec openclaw-gateway curl http://host.docker.internal:8000/health
+   docker compose exec openclaw-gateway curl http://127.0.0.1:8000/health
    ```
 
-3. Check `extra_hosts` is configured in docker-compose.yml
+3. Check `SNAPPER_URL` and `SNAPPER_API_KEY` env vars are set in the container:
+   ```bash
+   docker compose exec openclaw-gateway bash -c 'echo SNAPPER_URL=$SNAPPER_URL'
+   ```
 
 ### All commands blocked
 

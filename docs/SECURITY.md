@@ -332,16 +332,27 @@ The command hash is the first 16 characters of the SHA-256 hex digest. The key i
 2. Sort by priority (highest first)
 3. Evaluate each active rule:
    - **DENY match → immediate return** (short-circuit, no further evaluation)
-   - **REQUIRE_APPROVAL match → return pending**
+   - **REQUIRE_APPROVAL match → return pending** (unless a higher-priority rule already allowed — see below)
    - **ALLOW match → mark found, continue** (later DENY rules can still override)
    - **LOG_ONLY match → continue**
 4. If an ALLOW was found → return allow
 5. Otherwise → **return deny** (fail closed)
 
+### Priority Precedence
+
+Higher-priority rules take precedence over lower-priority rules of the same permissiveness:
+
+- **DENY always wins** — A deny rule at any priority overrides all allow rules (short-circuits immediately)
+- **ALLOW overrides lower-priority REQUIRE_APPROVAL** — If a higher-priority rule explicitly allows an action, lower-priority rules cannot escalate it to require approval. This enables patterns like a high-priority PII gate in auto-mode (ALLOW with resolved tokens) coexisting with a lower-priority PII gate in protected mode (REQUIRE_APPROVAL) — the auto-mode rule's explicit allow takes precedence.
+- **REQUIRE_APPROVAL does NOT override a prior ALLOW** — Once a higher-priority rule has allowed the action, subsequent require_approval matches are skipped.
+
+This ensures that rule priority is meaningful: an administrator can create a high-priority allow rule that definitively permits an action, without it being overridden by a lower-priority approval requirement.
+
 ### Key Properties
 
 - **No rules = deny** — An agent with no rules cannot do anything
 - **DENY always wins** — A deny rule at any priority overrides all allow rules
+- **ALLOW blocks lower-priority REQUIRE_APPROVAL** — Explicit allows from higher-priority rules are respected
 - **Errors = deny** — Exceptions during evaluation result in deny
 - **No caching** — Rules are always loaded fresh from the database to ensure changes take effect immediately
 - **Learning mode** — When `LEARNING_MODE=true`, denials are logged but not enforced (the action proceeds)
@@ -402,13 +413,13 @@ Vault write operations support an additional authentication layer:
 
 | Endpoint Category | Limit | Window |
 |-------------------|-------|--------|
-| Default (most endpoints) | 100 requests | 60 seconds |
-| Strict (sensitive operations) | 10 requests | 60 seconds |
-| API (high-throughput) | 1,000 requests | 60 seconds |
-| Vault writes | 10 requests | 60 seconds |
-| Approval status polling | 30 requests | 60 seconds |
-| Approval decisions | 10 requests | 60 seconds |
-| Telegram webhooks | 60 requests | 60 seconds |
+| Default (most endpoints) | 300 requests | 60 seconds |
+| Strict (sensitive operations) | 30 requests | 60 seconds |
+| API (high-throughput) | 3,000 requests | 60 seconds |
+| Vault writes | 30 requests | 60 seconds |
+| Approval status polling | 360 requests | 60 seconds |
+| Approval decisions | 30 requests | 60 seconds |
+| Telegram webhooks | 300 requests | 60 seconds |
 
 **Algorithm:** Sliding window using Redis sorted sets (ZSET) with a Lua script for atomic check-and-increment. This avoids the boundary problems of fixed windows.
 

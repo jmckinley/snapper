@@ -326,9 +326,11 @@ Operations that need human approval:
 
 ---
 
-## Automated Live E2E Test Script
+## Automated Live E2E Test Scripts
 
-The test scenarios in this plan are implemented as an automated bash script:
+### API-Level Tests (`scripts/e2e_live_test.sh`)
+
+Tests all 15 rule type evaluators via direct API calls:
 
 ```bash
 # Run all 39 automated tests (Phases 0-6)
@@ -339,6 +341,30 @@ E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_live_test.sh
 ```
 
 The script covers: all 15 rule type evaluators, approval workflow, PII vault lifecycle, emergency block/unblock, and audit trail verification. It creates temporary test agents and rules, validates results, and cleans up on exit. See `tests/TEST_PLAN.md` section 11 for the full test ID mapping (LIVE-001 through LIVE-604).
+
+### OpenClaw Integration Tests (`scripts/e2e_openclaw_test.sh`)
+
+Tests the full pipeline with **real OpenClaw agent traffic** — messages sent through the agent, tool calls intercepted by snapper-guard, rules evaluated, approvals routed:
+
+```bash
+# Run all 19 tests across 8 phases (~12 min)
+E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_openclaw_test.sh
+```
+
+| Phase | Tests | What It Validates |
+|-------|-------|-------------------|
+| 0 | Environment (4) | Snapper health, OpenClaw reachable, test agent |
+| 1 | Access control (3) | Browser allow, time restriction deny, deny-by-default |
+| 2 | Rate limiting (2) | Rate limit exceeded + recovery after window |
+| 3 | PII detection (3) | Browser vault token, browser raw PII, auto-mode resolution |
+| 4 | Approval workflow (2) | Trigger + approve, trigger + deny |
+| 5 | Agent metadata (2) | Version enforcement, origin validation |
+| 6 | Emergency block (2) | Block ALL, unblock + verify |
+| 7 | Audit trail (1) | Audit count increased |
+
+The script sends real messages through the OpenClaw CLI, which triggers the snapper-guard plugin → Snapper evaluate → rule engine pipeline. It creates isolated test agents/rules and cleans up on exit.
+
+**Last validated:** 2026-02-10 — 19/19 passed on live VPS deployment.
 
 ---
 
