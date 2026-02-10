@@ -12,6 +12,7 @@
 #   --port PORT       External HTTPS port (default: 443 with domain, 8443 without)
 #   --repo URL        Git repository URL (default: jmckinley/snapper)
 #   --yes             Skip confirmation prompts (non-interactive mode)
+#   --no-openclaw     Skip automatic OpenClaw detection and integration
 #
 # This script handles the full deployment lifecycle:
 #   1. Clone or update the repository
@@ -21,7 +22,8 @@
 #   5. Configure Caddy reverse proxy
 #   6. Open firewall ports
 #   7. Verify deployment health
-#   8. Security posture assessment
+#   8. OpenClaw auto-integration (if detected)
+#   9. Security posture assessment
 
 set -euo pipefail
 
@@ -31,6 +33,7 @@ SERVER_HOST=""
 SNAPPER_PORT=""
 REPO_URL="https://github.com/jmckinley/snapper.git"
 NON_INTERACTIVE=false
+SKIP_OPENCLAW=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -54,8 +57,12 @@ while [[ $# -gt 0 ]]; do
             NON_INTERACTIVE=true
             shift
             ;;
+        --no-openclaw)
+            SKIP_OPENCLAW=true
+            shift
+            ;;
         --help|-h)
-            head -24 "$0" | tail -21
+            head -26 "$0" | tail -25
             exit 0
             ;;
         *)
@@ -601,7 +608,101 @@ else
     fi
 fi
 
-# ─── Step 9: Security Posture Assessment ─────────────────────────────────
+# ─── Step 9: OpenClaw Integration ─────────────────────────────────────────
+if [[ "$SKIP_OPENCLAW" == "false" ]]; then
+    log "Checking for OpenClaw..."
+
+    OPENCLAW_DIR=""
+    OPENCLAW_CONTAINER=""
+    OPENCLAW_HOOKS_DIR=""
+
+    # Check for OpenClaw directory
+    for dir in /opt/openclaw "$HOME/.openclaw"; do
+        if [[ -d "$dir" ]]; then
+            OPENCLAW_DIR="$dir"
+            break
+        fi
+    done
+
+    # Check for running OpenClaw container
+    OPENCLAW_CONTAINER=$(docker ps --filter "name=openclaw" --filter "status=running" --format '{{.Names}}' | head -1)
+
+    # Determine hooks directory
+    if [[ -n "$OPENCLAW_CONTAINER" ]]; then
+        OPENCLAW_HOOKS_DIR=$(docker inspect "$OPENCLAW_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/app/hooks"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)
+    fi
+    if [[ -z "$OPENCLAW_HOOKS_DIR" && -n "$OPENCLAW_DIR" ]]; then
+        OPENCLAW_HOOKS_DIR="$OPENCLAW_DIR/hooks"
+    fi
+
+    if [[ -n "$OPENCLAW_DIR" || -n "$OPENCLAW_CONTAINER" ]]; then
+        log "OpenClaw detected! Configuring integration..."
+
+        # Register agent via quick-register API (also applies OpenClaw templates)
+        REG_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:8000/api/v1/setup/quick-register \
+            -H "Content-Type: application/json" \
+            -d '{"agent_type":"openclaw","security_profile":"recommended"}' 2>/dev/null)
+        HTTP_CODE=$(echo "$REG_RESPONSE" | tail -1)
+        REG_BODY=$(echo "$REG_RESPONSE" | sed '$d')
+
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            OC_AGENT_ID=$(echo "$REG_BODY" | grep -o '"agent_id":"[^"]*"' | cut -d'"' -f4)
+            OC_API_KEY=$(echo "$REG_BODY" | grep -o '"api_key":"[^"]*"' | cut -d'"' -f4)
+            OC_RULES=$(echo "$REG_BODY" | grep -o '"rules_applied":[0-9]*' | cut -d: -f2)
+            ok "OpenClaw agent registered ($OC_RULES security rules applied)"
+        elif [[ "$HTTP_CODE" == "409" ]]; then
+            ok "OpenClaw agent already registered (re-run detected)"
+        else
+            warn "Agent registration failed (HTTP $HTTP_CODE) — configure manually at ${EXTERNAL_URL}/wizard"
+        fi
+
+        # Copy shell hooks
+        if [[ -n "$OPENCLAW_HOOKS_DIR" ]]; then
+            mkdir -p "$OPENCLAW_HOOKS_DIR"
+            cp "$INSTALL_DIR/scripts/openclaw-hooks/"*.sh "$OPENCLAW_HOOKS_DIR/" 2>/dev/null && \
+                chmod +x "$OPENCLAW_HOOKS_DIR/"*.sh
+            ok "Shell hooks installed to $OPENCLAW_HOOKS_DIR"
+        fi
+
+        # Inject SNAPPER env vars into OpenClaw's .env (only on fresh registration)
+        if [[ -n "${OC_API_KEY:-}" && -n "$OPENCLAW_DIR" ]]; then
+            OC_ENV="$OPENCLAW_DIR/.env"
+            if [[ -f "$OC_ENV" ]]; then
+                sed -i '/^SNAPPER_URL=/d; /^SNAPPER_API_KEY=/d' "$OC_ENV"
+            fi
+            echo "SNAPPER_URL=http://127.0.0.1:8000" >> "$OC_ENV"
+            echo "SNAPPER_API_KEY=$OC_API_KEY" >> "$OC_ENV"
+            ok "SNAPPER_URL and SNAPPER_API_KEY written to $OC_ENV"
+        fi
+
+        # Copy snapper-guard plugin
+        if [[ -n "$OPENCLAW_DIR" ]]; then
+            PLUGIN_DEST="$OPENCLAW_DIR/extensions/snapper-guard"
+            if [[ ! -d "$PLUGIN_DEST" ]]; then
+                mkdir -p "$PLUGIN_DEST"
+                cp "$INSTALL_DIR/plugins/snapper-guard/"* "$PLUGIN_DEST/" 2>/dev/null
+                ok "snapper-guard plugin installed to $PLUGIN_DEST"
+            else
+                ok "snapper-guard plugin already installed"
+            fi
+        fi
+
+        # Offer to restart OpenClaw gateway to activate hooks + env vars
+        if [[ -n "$OPENCLAW_CONTAINER" ]]; then
+            if confirm "Restart OpenClaw gateway to activate Snapper integration?"; then
+                docker restart "$OPENCLAW_CONTAINER"
+                ok "OpenClaw gateway restarted"
+            else
+                warn "Remember to restart OpenClaw manually to activate hooks"
+            fi
+        fi
+    else
+        log "OpenClaw not detected on this server"
+        log "You can register agents later at ${EXTERNAL_URL}/wizard"
+    fi
+fi
+
+# ─── Step 10: Security Posture Assessment ────────────────────────────────
 echo ""
 log "Running security posture assessment..."
 echo ""
@@ -753,6 +854,15 @@ if [[ -f "$INSTALL_DIR/.env" ]]; then
     fi
 fi
 
+# OpenClaw integration
+if [[ "$SKIP_OPENCLAW" == "false" ]]; then
+    if [[ -n "${OC_AGENT_ID:-}" ]]; then
+        sec_pass "OpenClaw agent registered and rules applied"
+    elif docker ps --filter "name=openclaw" --format '{{.Names}}' 2>/dev/null | grep -q openclaw; then
+        sec_warn "OpenClaw detected but integration not configured"
+    fi
+fi
+
 # Non-root user in container
 APP_USER=$($COMPOSE_CMD exec -T app whoami 2>/dev/null || echo "unknown")
 if [[ "$APP_USER" == "snapper" ]]; then
@@ -794,7 +904,13 @@ echo -e "  Stop:       $COMPOSE_CMD down"
 echo -e "  Update:     git pull && $COMPOSE_CMD up -d --build --force-recreate"
 echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
-echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/wizard${NC} to register your first agent"
-echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
-echo -e "    3. Run security check anytime: python3 scripts/snapper-cli.py security-check"
+if [[ -n "${OC_AGENT_ID:-}" ]]; then
+    echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/${NC} to see the dashboard"
+    echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
+    echo -e "    3. Test: Tell your OpenClaw agent to 'run rm -rf /' (should be blocked)"
+else
+    echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/wizard${NC} to register your first agent"
+    echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
+    echo -e "    3. Run security check anytime: python3 scripts/snapper-cli.py security-check"
+fi
 echo ""

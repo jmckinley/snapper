@@ -2,6 +2,40 @@
 
 Complete guide for integrating Snapper with OpenClaw AI assistant.
 
+## Zero-Config Deployment
+
+When running `deploy.sh` on a server where OpenClaw is already installed, Snapper **automatically detects and integrates** with OpenClaw — no manual setup needed.
+
+### What happens automatically
+
+1. **Detects** OpenClaw at `/opt/openclaw` or `~/.openclaw`, and any running `openclaw` container
+2. **Registers** the OpenClaw agent via the quick-register API
+3. **Applies** 7+ security rules (safe commands, dangerous command blocking, approval requirements, PII gate, rate limits, credential protection)
+4. **Copies** shell hooks to OpenClaw's hooks directory
+5. **Injects** `SNAPPER_URL` and `SNAPPER_API_KEY` into OpenClaw's `.env`
+6. **Installs** the snapper-guard plugin to OpenClaw's extensions directory
+7. **Offers** to restart the OpenClaw gateway to activate the integration
+
+### Skipping auto-integration
+
+```bash
+./deploy.sh --no-openclaw
+```
+
+### Re-running deploy.sh
+
+The integration is idempotent. On subsequent runs:
+- Agent registration returns 409 (already exists) — handled gracefully
+- Hooks are re-copied (safe overwrite)
+- Plugin directory is skipped if already present
+- Env vars are only injected on fresh registration (won't overwrite existing API key)
+
+### OpenClaw on a different server
+
+If OpenClaw and Snapper are on separate machines, auto-detection won't find it. Use the manual setup below, and see the [Remote Setup](#remote-setup-separate-servers) section for network configuration.
+
+---
+
 ## Overview
 
 Snapper acts as a security gateway for OpenClaw, validating tool calls and shell commands before execution. Two integration methods are available:
