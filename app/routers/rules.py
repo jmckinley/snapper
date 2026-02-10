@@ -1311,8 +1311,10 @@ async def evaluate_request(
             from app.config import get_settings
             notify_settings = get_settings()
 
-            # Build notification message
-            action_desc = request.command or request.file_path or request.tool_name or request.request_type
+            # Build notification message — use enriched action from PII gate if available
+            pii_ctx = context.metadata.get("pii_detected")
+            pii_action = pii_ctx.get("action") if pii_ctx else None
+            action_desc = pii_action or request.command or request.file_path or request.tool_name or request.request_type
 
             if result.decision.value == "deny" and notify_settings.NOTIFY_ON_BLOCK:
                 send_alert.delay(

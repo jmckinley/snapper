@@ -907,7 +907,7 @@ class RuleEngine:
                 logger.debug(f"Placeholder lookup failed (non-critical): {e}")
                 non_placeholder_pii = list(raw_pii_findings)
 
-        # Detect vault:Label references (e.g., "vault:My Visa")
+        # Detect vault:Label references (e.g., "vault:My-Visa")
         label_matches = {}  # "vault:Label" -> vault_token
         vault_label_refs = find_vault_labels(scan_text)
         if vault_label_refs:
@@ -919,6 +919,15 @@ class RuleEngine:
                     )
                     if entries:
                         label_matches[ref] = entries[0].token
+                        # Enrich vault_token_details for rich Telegram alerts
+                        entry = entries[0]
+                        vault_token_details.append({
+                            "token": entry.token,
+                            "label": entry.label,
+                            "category": entry.category.value if hasattr(entry.category, "value") else str(entry.category),
+                            "masked_value": entry.masked_value,
+                            "source": "label_ref",
+                        })
                 except Exception as e:
                     logger.debug(f"Label lookup failed for '{ref}': {e}")
 
@@ -945,7 +954,7 @@ class RuleEngine:
             "destination_url": destination_url,
             "destination_domain": destination_domain,
             "tool_name": context.metadata.get("tool_name"),
-            "action": tool_input.get("action") if isinstance(tool_input, dict) else None,
+            "action": self._describe_action(tool_input, context),
             "amounts": amounts,
         }
         context.metadata["pii_detected"] = pii_detected
@@ -993,6 +1002,32 @@ class RuleEngine:
         if len(value) > 4:
             return f"{'*' * (len(value) - 4)}{value[-4:]}"
         return "****"
+
+    @staticmethod
+    def _describe_action(tool_input: dict, context) -> str:
+        """Build a human-readable action description for alerts."""
+        if not isinstance(tool_input, dict):
+            return context.metadata.get("tool_name") or "tool call"
+
+        action = tool_input.get("action")
+        tool_name = context.metadata.get("tool_name", "")
+
+        if tool_name == "browser" or action in ("act", "navigate", "screenshot"):
+            if action == "act":
+                kind = tool_input.get("kind", "")
+                text = tool_input.get("text", "")
+                if kind and text:
+                    return f'{kind} "{text[:60]}"'
+                elif kind:
+                    return f"browser {kind}"
+                return "browser action"
+            elif action == "navigate":
+                url = tool_input.get("url", "page")
+                return f"navigate to {url}"
+            elif action:
+                return f"browser {action}"
+
+        return action or tool_name or "tool call"
 
     @staticmethod
     def _extract_amounts(tool_input: dict, scan_text: str) -> list[str]:

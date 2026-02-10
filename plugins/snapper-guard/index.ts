@@ -118,6 +118,9 @@ export default function register(api: any) {
     headers["X-API-Key"] = apiKey;
   }
 
+  // Track last navigated URL so we can include it for non-navigate browser actions
+  let lastPageUrl: string | null = null;
+
   api.logger.info(
     `snapper-guard: registered (snapper=${snapperUrl}, agent=${agentId})`,
   );
@@ -208,6 +211,15 @@ export default function register(api: any) {
         return;
       }
 
+      // Track the last navigated URL for browser actions
+      if (
+        toolName === "browser" &&
+        params.action === "navigate" &&
+        typeof params.url === "string"
+      ) {
+        lastPageUrl = params.url;
+      }
+
       // Quick check: if no vault tokens/labels and not a browser tool, skip
       const hasTokens = containsVaultTokens(params);
       const hasLabels = containsVaultLabels(params);
@@ -215,10 +227,19 @@ export default function register(api: any) {
         return;
       }
 
+      // Inject last known page URL for non-navigate browser actions
+      const toolInput =
+        toolName === "browser" &&
+        params.action !== "navigate" &&
+        lastPageUrl &&
+        !params.page_url
+          ? { ...params, page_url: lastPageUrl }
+          : params;
+
       // Call Snapper evaluate endpoint
       let evalResult: EvaluateResponse;
       try {
-        evalResult = await evaluate(toolName, params);
+        evalResult = await evaluate(toolName, toolInput);
       } catch (err) {
         // Fail-open: if Snapper is unreachable, allow the call
         api.logger.warn(
