@@ -1009,6 +1009,14 @@ assert_not_eq "$PH_TOKEN" "" "4.6 Vault entry has token"
 
 # 4.7 PII gate detects placeholder credit card in tool_input
 log "4.7 PII gate detects placeholder credit card"
+RULE_ID=$(create_rule '{
+    "name":"e2e-pii-placeholder",
+    "rule_type":"pii_gate",
+    "action":"require_approval",
+    "parameters":{"detect_vault_tokens":true,"detect_raw_pii":true,"pii_mode":"protected"},
+    "priority":500,
+    "is_active":true
+}')
 if [[ -n "$PH_TOKEN" ]]; then
     PH_EVAL=$(evaluate "{
         \"agent_id\":\"${AGENT_EID}\",
@@ -1033,6 +1041,7 @@ else
     TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
     echo -e "  ${RED}FAIL${NC} 4.7 No vault entry for placeholder test"
 fi
+delete_rule "$RULE_ID"
 
 # 4.8 Delete placeholder vault entry
 log "4.8 Delete placeholder vault entry"

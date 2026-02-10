@@ -345,7 +345,7 @@ elif [[ -n "$SERVER_HOST" ]]; then
     SERVER_LABEL="$SERVER_HOST"
     log "Using provided host: $SERVER_HOST"
 else
-    SERVER_LABEL=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+    SERVER_LABEL=$(curl -4 -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -1)
     if [[ -z "$SERVER_LABEL" ]]; then
         err "Could not detect server IP automatically."
         err "Re-run with: ./deploy.sh --host YOUR_IP"
