@@ -631,6 +631,7 @@ class RuleEngine:
         params = rule.parameters
         enabled = params.get("enabled", True)
         allowed_ips = params.get("allowed_ips", ["127.0.0.1", "::1"])
+        trust_private_ips = params.get("trust_private_ips", True)
 
         if not enabled:
             return False, rule.action
@@ -640,6 +641,17 @@ class RuleEngine:
 
         if context.ip_address in allowed_ips:
             return True, RuleAction.ALLOW
+
+        # In Docker deployments, the client IP is the Docker gateway (e.g. 172.19.0.1)
+        # rather than 127.0.0.1.  Trust RFC 1918 private IPs as local by default.
+        if trust_private_ips:
+            import ipaddress
+            try:
+                addr = ipaddress.ip_address(context.ip_address)
+                if addr.is_private or addr.is_loopback:
+                    return True, RuleAction.ALLOW
+            except ValueError:
+                pass
 
         return True, RuleAction.DENY
 
