@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import yaml
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,7 +50,7 @@ RULE_TEMPLATES = {
         "default_action": RuleAction.DENY,
         "default_parameters": {
             "allowed_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
-            "strict_mode": True,
+            "strict_mode": False,  # False: allow requests without Origin (hooks/CLI); deny invalid origins
         },
         "tags": ["cve", "websocket", "critical"],
         "is_recommended": True,
@@ -1111,6 +1111,7 @@ class EvaluateResponse(BaseModel):
 @router.post("/evaluate", response_model=EvaluateResponse)
 async def evaluate_request(
     request: EvaluateRequest,
+    fastapi_request: Request,
     db: DbSessionDep,
     redis: RedisDep,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -1219,6 +1220,7 @@ async def evaluate_request(
                 )
 
     # Build evaluation context
+    client_ip = fastapi_request.client.host if fastapi_request.client else None
     context = EvaluationContext(
         agent_id=agent.id,
         request_type=request.request_type,
@@ -1228,6 +1230,7 @@ async def evaluate_request(
         file_operation=request.file_operation,
         target_host=target_host,
         origin=request.origin,
+        ip_address=client_ip,
         metadata={"tool_name": request.tool_name, "tool_input": request.tool_input} if request.tool_name else {},
     )
 
