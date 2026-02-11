@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.models.rules import Rule, RuleAction, RuleType
 from app.models.agents import Agent, AgentStatus
 from app.redis_client import RedisClient
+from app.services.rate_limiter import AdaptiveRateLimiter, RateLimiterService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -92,6 +93,8 @@ class RuleEngine:
     def __init__(self, db: AsyncSession, redis: RedisClient):
         self.db = db
         self.redis = redis
+        base_limiter = RateLimiterService(redis)
+        self.adaptive_limiter = AdaptiveRateLimiter(redis, base_limiter)
         self._evaluators = {
             RuleType.COMMAND_ALLOWLIST: self._evaluate_command_allowlist,
             RuleType.COMMAND_DENYLIST: self._evaluate_command_denylist,
@@ -241,6 +244,17 @@ class RuleEngine:
         finally:
             end_time = datetime.utcnow()
             result.evaluation_time_ms = (end_time - start_time).total_seconds() * 1000
+
+            # Update adaptive trust score based on decision
+            trust_key = f"rate:{context.agent_id}"
+            try:
+                if result.decision == EvaluationDecision.DENY:
+                    new_trust = await self.adaptive_limiter.record_violation(trust_key)
+                    logger.debug(f"Trust reduced for {context.agent_id}: {new_trust:.3f}")
+                elif result.decision == EvaluationDecision.ALLOW and not result.learning_mode:
+                    await self.adaptive_limiter.record_good_behavior(trust_key)
+            except Exception:
+                pass  # Trust updates are best-effort, don't fail evaluations
 
         return result
 
@@ -394,7 +408,13 @@ class RuleEngine:
     async def _evaluate_rate_limit(
         self, rule: Rule, context: EvaluationContext
     ) -> tuple[bool, RuleAction]:
-        """Evaluate rate limit rule."""
+        """Evaluate rate limit rule with adaptive trust scoring.
+
+        The effective rate limit is: base_max_requests * trust_score.
+        Trust starts at 1.0 and decreases on violations, increases on
+        good behavior. A trust of 0.5 means the agent gets half the
+        configured rate limit.
+        """
         params = rule.parameters
         max_requests = params.get("max_requests", 100)
         window_seconds = params.get("window_seconds", 60)
@@ -408,13 +428,14 @@ class RuleEngine:
         else:
             key = f"rate:{context.agent_id}:{context.ip_address or 'unknown'}"
 
-        allowed, remaining, retry_after = await self.redis.check_rate_limit(
-            key=key,
-            max_requests=max_requests,
+        # Use adaptive rate limiter — adjusts max_requests by trust score
+        info = await self.adaptive_limiter.check_rate_limit(
+            identifier=key,
+            base_max_requests=max_requests,
             window_seconds=window_seconds,
         )
 
-        if not allowed:
+        if not info.allowed:
             return True, RuleAction.DENY
 
         return False, rule.action

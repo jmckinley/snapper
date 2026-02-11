@@ -181,6 +181,8 @@ class AdaptiveRateLimiter:
         """Record a rate limit violation and reduce trust."""
         current = await self.get_trust_score(identifier)
         new_score = current * (1 - self.VIOLATION_PENALTY)
+        # Clamp before storing and returning
+        new_score = max(self.MIN_TRUST, min(self.MAX_TRUST, new_score))
         await self.set_trust_score(identifier, new_score)
         return new_score
 
@@ -188,6 +190,8 @@ class AdaptiveRateLimiter:
         """Record good behavior and increase trust."""
         current = await self.get_trust_score(identifier)
         new_score = current * (1 + self.GOOD_BEHAVIOR_BONUS)
+        # Clamp before storing and returning
+        new_score = max(self.MIN_TRUST, min(self.MAX_TRUST, new_score))
         await self.set_trust_score(identifier, new_score)
         return new_score
 

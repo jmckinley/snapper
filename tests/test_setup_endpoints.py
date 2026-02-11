@@ -176,14 +176,14 @@ class TestSecurityProfileRuleCounts:
         assert response.json()["rules_applied"] == 4
 
     @pytest.mark.asyncio
-    async def test_recommended_profile_applies_three_rules(self, client: AsyncClient):
-        """Recommended profile creates 3 rules."""
+    async def test_recommended_profile_applies_rules(self, client: AsyncClient):
+        """Recommended profile creates rules (3 base + 4 OpenClaw templates)."""
         response = await client.post(
             "/api/v1/setup/quick-register",
             json={"agent_type": "openclaw", "security_profile": "recommended"},
         )
         assert response.status_code == 200
-        assert response.json()["rules_applied"] == 3
+        assert response.json()["rules_applied"] == 7
 
     @pytest.mark.asyncio
     async def test_permissive_profile_applies_two_rules(self, client: AsyncClient):
