@@ -382,8 +382,9 @@ Each agent has adaptive trust metrics:
 - `trust_score` (0.5-2.0) — Tracked continuously, reduced on rate-limit breaches, increased on good behavior
 - `violation_count` — Cumulative rule violations
 - `auto_adjust_trust` — Per-agent opt-in: when enabled, the trust score actively scales rate limits; when disabled (default), the score is tracked for informational display only
-- **Reset:** Trust can be reset to 1.0 via API (`POST /agents/{id}/reset-trust`), Telegram (`/trust reset`), or dashboard button
-- **Toggle:** Enforcement can be toggled via API (`POST /agents/{id}/toggle-trust`), Telegram (`/trust enable`/`/trust disable`), or dashboard
+- **Reset:** Trust can be reset to 1.0 via API (`POST /agents/{id}/reset-trust`), Telegram (`/trust reset [name]`), or dashboard button
+- **Toggle:** Enforcement can be toggled via API (`POST /agents/{id}/toggle-trust`), Telegram (`/trust enable [name]`/`/trust disable [name]`), or dashboard
+- **Scoping:** Telegram `/trust` operates on all agents owned by your chat ID; append an agent name to target one specifically
 
 ### Security Summary
 

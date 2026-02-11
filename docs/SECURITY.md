@@ -635,7 +635,7 @@ Trust enforcement is per-agent:
 
 Management commands:
 - **API:** `POST /agents/{id}/reset-trust` (reset to 1.0), `POST /agents/{id}/toggle-trust` (enable/disable enforcement)
-- **Telegram:** `/trust` (view), `/trust reset`, `/trust enable`, `/trust disable`
+- **Telegram:** `/trust` (view all your agents), `/trust reset [name]`, `/trust enable [name]`, `/trust disable [name]` — operates on all agents owned by your chat ID, or target one by name
 - **Dashboard:** "Reset Trust" button and "Trust: On/Off" toggle on each agent card
 
 Trust levels: `untrusted` → `limited` → `standard` → `elevated`
