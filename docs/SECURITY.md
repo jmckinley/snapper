@@ -101,7 +101,7 @@ Each agent receives a unique API key (`snp_xxx`) on registration. When `REQUIRE_
 
 ### Rate Limiting & Brute Force
 
-Sliding window rate limiting on all endpoints prevents abuse, with adaptive scoring that throttles misbehaving agents down to 10% of their base rate. The vault has dedicated brute force protection (5 failed lookups = 15-minute lockout).
+Sliding window rate limiting on all endpoints prevents abuse. Adaptive trust scoring optionally throttles misbehaving agents down to 50% of their base rate (only rate-limit breaches penalize trust — normal denials like denylist blocks do not). Trust enforcement is off by default (info-only) and can be enabled per-agent. The vault has dedicated brute force protection (5 failed lookups = 15-minute lockout).
 
 See [Rate Limiting & Brute Force Protection](#rate-limiting--brute-force-protection) for full details.
 
@@ -614,21 +614,33 @@ Serious events generate `PolicyViolation` and `Alert` records with resolution tr
 
 ## Trust Scoring
 
-Each agent has an adaptive trust score that affects its effective rate limits.
+Each agent has an adaptive trust score that can optionally affect its effective rate limits.
 
 | Property | Details |
 |----------|---------|
-| **Range** | 0.0 to 1.0 (default: 1.0) |
-| **Violation penalty** | -10% per violation |
+| **Range** | 0.5 to 2.0 (default: 1.0) |
+| **Violation penalty** | -10% per rate-limit breach |
 | **Good behavior bonus** | +1% per successful request |
 | **Trust decay** | -0.1% over time |
-| **Rate limit effect** | Score of 0.5 = 50% of base rate limit |
-| **Minimum multiplier** | 0.1 (10% of base limit) |
+| **Rate limit effect** | Score of 0.5 = 50% of base rate limit (only when enforced) |
+| **Minimum multiplier** | 0.5 (50% of base limit) |
 | **Maximum multiplier** | 2.0 (200% of base limit) |
+| **Default enforcement** | Off (info-only) — score is tracked but does not affect limits |
+
+**Important:** Only rate-limit breaches reduce trust. Normal rule denials (denylist blocks, credential protection, etc.) do not penalize the score — those are the system working correctly.
+
+Trust enforcement is per-agent:
+- **Off (default):** Score is tracked for display in the dashboard and Telegram but does not affect rate limits
+- **On:** Score actively scales the agent's configured rate limit
+
+Management commands:
+- **API:** `POST /agents/{id}/reset-trust` (reset to 1.0), `POST /agents/{id}/toggle-trust` (enable/disable enforcement)
+- **Telegram:** `/trust` (view), `/trust reset`, `/trust enable`, `/trust disable`
+- **Dashboard:** "Reset Trust" button and "Trust: On/Off" toggle on each agent card
 
 Trust levels: `untrusted` → `limited` → `standard` → `elevated`
 
-New agents start at `untrusted` trust level. Agents that consistently follow rules can be promoted. Agents that violate rules have their trust score automatically reduced if `auto_adjust_trust` is enabled.
+New agents start at `untrusted` trust level. Agents that consistently follow rules can be promoted.
 
 ---
 

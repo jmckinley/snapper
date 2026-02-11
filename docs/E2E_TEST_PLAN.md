@@ -269,7 +269,10 @@ Operations that need human approval:
 |---|------|-------------------|
 | F1 | Send 10 commands rapidly | First N allowed, then rate limited |
 | F2 | Wait for window reset | Commands allowed again |
-| F3 | Trigger adaptive limit | Trust score reduced after violations |
+| F3 | Trigger adaptive limit (trust enforced) | Trust score reduced after rate-limit breaches (not regular denials) |
+| F4 | Reset trust via API | `POST /agents/{id}/reset-trust` returns score 1.0 |
+| F5 | Toggle trust enforcement | `POST /agents/{id}/toggle-trust` toggles `auto_adjust_trust` |
+| F6 | Trust off: score doesn't affect limits | With enforcement off, low trust score doesn't reduce rate limit |
 
 ### Test Group G: Audit & Logging
 

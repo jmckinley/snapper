@@ -119,6 +119,10 @@ The Telegram bot is your primary interface to Snapper. It sends you real-time no
 | `/pii protected` | Require approval before PII is sent |
 | `/pii auto` | Auto-resolve vault tokens (no approval) |
 | `/purge` | Purge PII data from agent storage |
+| `/trust` | View agent trust score and enforcement status |
+| `/trust reset` | Reset trust score to 1.0 |
+| `/trust enable` | Enable trust enforcement (score scales rate limits) |
+| `/trust disable` | Disable trust enforcement (score is info-only) |
 | `/block` | Emergency block ALL agent actions |
 | `/unblock` | Resume normal operation |
 

@@ -164,6 +164,7 @@ async def protected_endpoint():
 - **Compatibility**: Currently supports OpenClaw (running in Docker); design rule schema to adapt to future agent frameworks
 - **Security Research**: Implement background job for weekly security research updates since 1/28/26
 - **Rate Limiting**: Use sliding window algorithm with Redis for accurate rate limiting
+- **Trust Scoring**: Adaptive trust score (0.5–2.0) tracked per agent. Only rate-limit breaches penalize trust (not rule denials). Enforcement is per-agent opt-in via `auto_adjust_trust` (default off = info-only). Manage via `/trust` Telegram command, `POST /agents/{id}/reset-trust`, or dashboard buttons.
 - **Audit Trail**: Log all rule changes and enforcement actions
 - **API Design**: Follow REST conventions and provide OpenAPI documentation
 - **Testing**: Focus on rule engine logic and security boundary testing

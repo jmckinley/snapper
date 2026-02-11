@@ -54,6 +54,8 @@ curl http://localhost:8000/health/ready
 | POST | `/api/v1/agents/{id}/suspend` | Suspend agent |
 | POST | `/api/v1/agents/{id}/quarantine` | Quarantine agent |
 | POST | `/api/v1/agents/{id}/regenerate-key` | Generate new API key |
+| POST | `/api/v1/agents/{id}/reset-trust` | Reset trust score to 1.0 |
+| POST | `/api/v1/agents/{id}/toggle-trust` | Toggle trust enforcement on/off |
 | POST | `/api/v1/agents/{id}/purge-pii` | Remove PII data |
 | POST | `/api/v1/agents/{id}/whitelist-ip` | Add IP to whitelist |
 | GET | `/api/v1/agents/{id}/whitelist-ip` | List whitelisted IPs |
