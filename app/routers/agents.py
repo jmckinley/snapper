@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -744,4 +744,43 @@ async def list_whitelisted_ips(
         "agent_id": str(agent_id),
         "whitelisted_ips": list(ips) if ips else [],
         "expires_in_seconds": ttl if ttl > 0 else None,
+    }
+
+
+@router.post("/verify-key")
+async def verify_api_key(
+    db: DbSessionDep,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+):
+    """
+    Verify an agent's API key is valid.
+
+    Returns agent info if the key matches, or 401 if invalid.
+    Use this to detect key mismatches (e.g. after deploy.sh re-runs
+    or key rotations) before they cause silent auth failures.
+    """
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-API-Key header required",
+        )
+
+    stmt = select(Agent).where(
+        Agent.api_key == x_api_key,
+        Agent.is_deleted == False,
+    )
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+
+    return {
+        "valid": True,
+        "agent_id": str(agent.id),
+        "agent_name": agent.name,
+        "external_id": agent.external_id,
+        "status": agent.status,
     }

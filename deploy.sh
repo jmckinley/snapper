@@ -654,6 +654,37 @@ if [[ "$SKIP_OPENCLAW" == "false" ]]; then
         elif [[ "$HTTP_CODE" == "409" ]]; then
             OC_CONFIGURED=true
             ok "OpenClaw agent already registered (re-run detected)"
+
+            # Verify existing API key still works
+            if [[ -n "$OPENCLAW_DIR" && -f "$OPENCLAW_DIR/.env" ]]; then
+                EXISTING_KEY=$(grep '^SNAPPER_API_KEY=' "$OPENCLAW_DIR/.env" 2>/dev/null | cut -d= -f2)
+                if [[ -n "$EXISTING_KEY" ]]; then
+                    VERIFY_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                        http://127.0.0.1:8000/api/v1/agents/verify-key \
+                        -H "Content-Type: application/json" \
+                        -H "X-API-Key: $EXISTING_KEY" 2>/dev/null)
+                    if [[ "$VERIFY_CODE" == "200" ]]; then
+                        ok "API key in OpenClaw .env is valid"
+                    else
+                        warn "API key in OpenClaw .env is invalid — regenerating..."
+                        # Find the agent UUID by external_id
+                        AGENT_UUID=$(curl -sL "http://127.0.0.1:8000/api/v1/agents?search=openclaw" | \
+                            grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+                        if [[ -n "$AGENT_UUID" ]]; then
+                            REGEN_RESP=$(curl -sf -X POST \
+                                "http://127.0.0.1:8000/api/v1/agents/$AGENT_UUID/regenerate-key" 2>/dev/null)
+                            OC_API_KEY=$(echo "$REGEN_RESP" | grep -o '"api_key":"[^"]*"' | cut -d'"' -f4)
+                            if [[ -n "$OC_API_KEY" ]]; then
+                                ok "New API key generated — will update OpenClaw .env"
+                            else
+                                warn "Key regeneration failed — update manually via dashboard"
+                            fi
+                        fi
+                    fi
+                else
+                    warn "No SNAPPER_API_KEY found in OpenClaw .env — will need manual setup"
+                fi
+            fi
         else
             warn "Agent registration failed (HTTP $HTTP_CODE) — configure manually at ${EXTERNAL_URL}/wizard"
         fi
@@ -860,6 +891,23 @@ fi
 if [[ "$SKIP_OPENCLAW" == "false" ]]; then
     if [[ "${OC_CONFIGURED:-}" == "true" ]]; then
         sec_pass "OpenClaw agent registered and rules applied"
+        # Verify API key sync
+        if [[ -n "${OPENCLAW_DIR:-}" && -f "${OPENCLAW_DIR}/.env" ]]; then
+            OC_KEY=$(grep '^SNAPPER_API_KEY=' "${OPENCLAW_DIR}/.env" 2>/dev/null | cut -d= -f2)
+            if [[ -n "$OC_KEY" ]]; then
+                VERIFY=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                    http://127.0.0.1:8000/api/v1/agents/verify-key \
+                    -H "Content-Type: application/json" \
+                    -H "X-API-Key: $OC_KEY" 2>/dev/null)
+                if [[ "$VERIFY" == "200" ]]; then
+                    sec_pass "OpenClaw API key verified"
+                else
+                    sec_warn "OpenClaw API key is invalid — run deploy.sh again to resync"
+                fi
+            else
+                sec_warn "No SNAPPER_API_KEY in OpenClaw .env"
+            fi
+        fi
     elif docker ps --filter "name=openclaw" --format '{{.Names}}' 2>/dev/null | grep -q openclaw; then
         sec_warn "OpenClaw detected but integration not configured"
     fi
