@@ -627,6 +627,10 @@ class RuleEngine:
         """
         Evaluate localhost restriction rule.
         Mitigates authentication bypass vulnerabilities.
+
+        Only fires (returns True) to DENY non-local IPs. When the IP is
+        allowed, returns (False, ...) so this rule doesn't override the
+        deny-by-default behavior of other rule types.
         """
         params = rule.parameters
         enabled = params.get("enabled", True)
@@ -639,8 +643,9 @@ class RuleEngine:
         if not context.ip_address:
             return True, RuleAction.DENY
 
+        # Check explicit allowed IPs
         if context.ip_address in allowed_ips:
-            return True, RuleAction.ALLOW
+            return False, rule.action  # IP is fine, no opinion on the request
 
         # In Docker deployments, the client IP is the Docker gateway (e.g. 172.19.0.1)
         # rather than 127.0.0.1.  Trust RFC 1918 private IPs as local by default.
@@ -649,7 +654,7 @@ class RuleEngine:
             try:
                 addr = ipaddress.ip_address(context.ip_address)
                 if addr.is_private or addr.is_loopback:
-                    return True, RuleAction.ALLOW
+                    return False, rule.action  # IP is fine, no opinion
             except ValueError:
                 pass
 

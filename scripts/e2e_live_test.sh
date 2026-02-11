@@ -588,21 +588,20 @@ DECISION=$(echo "$RESULT" | jq -r '.decision')
 assert_eq "$DECISION" "require_approval" "1.13 human_in_loop requires approval for 'deploy production'"
 delete_rule "$RULE_ID"
 
-# --- 1.14 localhost_restriction (deny when ip unknown) ---
-log "1.14 localhost_restriction (deny when ip_address not in context)"
+# --- 1.14 localhost_restriction (deny non-local IP) ---
+log "1.14 localhost_restriction (deny when IP not in allowed list)"
 RULE_ID=$(create_rule '{
     "name":"e2e-localhost",
     "rule_type":"localhost_restriction",
     "action":"allow",
-    "parameters":{"enabled":true,"allowed_ips":["127.0.0.1","::1"]},
+    "parameters":{"enabled":true,"allowed_ips":["192.168.99.99"],"trust_private_ips":false},
     "priority":100,
     "is_active":true
 }')
-# Note: The evaluate API doesn't populate context.ip_address, so the
-# localhost_restriction evaluator returns deny (no IP = deny). This tests
-# the fail-safe behavior. Full localhost testing requires a real hook call.
+# With trust_private_ips=false and allowed_ips excluding the Docker gateway IP,
+# the localhost_restriction rule denies because the client IP doesn't match.
 RESULT=$(evaluate "{\"agent_id\":\"${AGENT_EID}\",\"request_type\":\"command\",\"command\":\"echo hello\"}")
-assert_deny "$RESULT" "1.14 localhost_restriction denies when ip_address unknown"
+assert_deny "$RESULT" "1.14 localhost_restriction denies non-local IP"
 delete_rule "$RULE_ID"
 
 # --- 1.15 file_access (denied path) ---
