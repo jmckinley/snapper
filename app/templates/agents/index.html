@@ -509,6 +509,8 @@
                             ${a.label}
                         </span>`; })()}
                         <div class="flex space-x-2">
+                            <button onclick="resetTrust('${agent.id}')" class="text-sm text-blue-600 hover:text-blue-700">Reset Trust</button>
+                            <button onclick="toggleTrust('${agent.id}', ${agent.auto_adjust_trust})" class="text-sm ${agent.auto_adjust_trust ? 'text-orange-600 hover:text-orange-700' : 'text-gray-500 hover:text-gray-700'}">${agent.auto_adjust_trust ? 'Trust: On' : 'Trust: Off'}</button>
                             ${agent.status === 'active' ?
                                 `<button onclick="suspendAgent('${agent.id}')" class="text-sm text-yellow-600 hover:text-yellow-700">Pause</button>` :
                                 `<button onclick="activateAgent('${agent.id}')" class="text-sm text-green-600 hover:text-green-700">Activate</button>`
@@ -648,6 +650,40 @@
             }
         } catch (error) {
             showToast('Failed to add AI service', 'error');
+        }
+    }
+
+    async function resetTrust(id) {
+        if (!confirm('Reset this agent\'s trust score to 1.0?')) return;
+        try {
+            const resp = await fetch(`/api/v1/agents/${id}/reset-trust`, { method: 'POST' });
+            if (resp.ok) {
+                showToast('Trust score reset to 1.0', 'success');
+                loadAgents();
+            } else {
+                showToast('Failed to reset trust', 'error');
+            }
+        } catch (error) {
+            showToast('Failed to reset trust', 'error');
+        }
+    }
+
+    async function toggleTrust(id, currentValue) {
+        const action = currentValue ? 'disable' : 'enable';
+        const desc = currentValue
+            ? 'Disable trust enforcement? Score will be tracked but won\'t affect rate limits.'
+            : 'Enable trust enforcement? Score will actively scale rate limits.';
+        if (!confirm(desc)) return;
+        try {
+            const resp = await fetch(`/api/v1/agents/${id}/toggle-trust`, { method: 'POST' });
+            if (resp.ok) {
+                showToast(`Trust enforcement ${action}d`, 'success');
+                loadAgents();
+            } else {
+                showToast(`Failed to ${action} trust`, 'error');
+            }
+        } catch (error) {
+            showToast(`Failed to ${action} trust`, 'error');
         }
     }
 

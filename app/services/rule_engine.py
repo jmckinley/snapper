@@ -246,12 +246,13 @@ class RuleEngine:
             result.evaluation_time_ms = (end_time - start_time).total_seconds() * 1000
 
             # Update adaptive trust score based on decision
+            # Only ALLOW bumps trust here; violations are penalised inside
+            # AdaptiveRateLimiter.check_rate_limit() when the rate limit is
+            # actually breached (not on every DENY, which would punish normal
+            # denylist/credential-protection behaviour).
             trust_key = f"rate:{context.agent_id}"
             try:
-                if result.decision == EvaluationDecision.DENY:
-                    new_trust = await self.adaptive_limiter.record_violation(trust_key)
-                    logger.debug(f"Trust reduced for {context.agent_id}: {new_trust:.3f}")
-                elif result.decision == EvaluationDecision.ALLOW and not result.learning_mode:
+                if result.decision == EvaluationDecision.ALLOW and not result.learning_mode:
                     await self.adaptive_limiter.record_good_behavior(trust_key)
             except Exception:
                 pass  # Trust updates are best-effort, don't fail evaluations
@@ -408,12 +409,15 @@ class RuleEngine:
     async def _evaluate_rate_limit(
         self, rule: Rule, context: EvaluationContext
     ) -> tuple[bool, RuleAction]:
-        """Evaluate rate limit rule with adaptive trust scoring.
+        """Evaluate rate limit rule with optional adaptive trust scoring.
 
-        The effective rate limit is: base_max_requests * trust_score.
-        Trust starts at 1.0 and decreases on violations, increases on
-        good behavior. A trust of 0.5 means the agent gets half the
-        configured rate limit.
+        When the agent has auto_adjust_trust enabled, the effective rate
+        limit is: base_max_requests * trust_score (trust starts at 1.0,
+        decreases on violations, increases on good behavior).
+
+        When auto_adjust_trust is disabled (the default), the base rate
+        limit is used as-is and the trust score is tracked for
+        informational purposes only.
         """
         params = rule.parameters
         max_requests = params.get("max_requests", 100)
@@ -428,12 +432,31 @@ class RuleEngine:
         else:
             key = f"rate:{context.agent_id}:{context.ip_address or 'unknown'}"
 
-        # Use adaptive rate limiter — adjusts max_requests by trust score
-        info = await self.adaptive_limiter.check_rate_limit(
-            identifier=key,
-            base_max_requests=max_requests,
-            window_seconds=window_seconds,
-        )
+        # Check per-agent opt-in for adaptive trust enforcement
+        use_adaptive = False
+        try:
+            stmt = select(Agent).where(Agent.id == context.agent_id)
+            result = await self.db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent and agent.auto_adjust_trust:
+                use_adaptive = True
+        except Exception:
+            pass
+
+        if use_adaptive:
+            # Adaptive: adjusts max_requests by trust score
+            info = await self.adaptive_limiter.check_rate_limit(
+                identifier=key,
+                base_max_requests=max_requests,
+                window_seconds=window_seconds,
+            )
+        else:
+            # Fixed: use base limit, but still track trust for display
+            info = await self.adaptive_limiter.base_limiter.check_rate_limit(
+                key=key,
+                max_requests=max_requests,
+                window_seconds=window_seconds,
+            )
 
         if not info.allowed:
             return True, RuleAction.DENY

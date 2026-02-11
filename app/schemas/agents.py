@@ -62,6 +62,8 @@ class AgentResponse(AgentBase):
     last_seen_at: Optional[datetime] = None
     last_rule_evaluation_at: Optional[datetime] = None
     is_deleted: bool = False
+    trust_score: float = 1.0
+    auto_adjust_trust: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -90,6 +92,8 @@ class AgentResponse(AgentBase):
                 "last_seen_at": data.last_seen_at,
                 "last_rule_evaluation_at": data.last_rule_evaluation_at,
                 "is_deleted": data.is_deleted,
+                "trust_score": data.trust_score,
+                "auto_adjust_trust": data.auto_adjust_trust,
             }
         return data
 

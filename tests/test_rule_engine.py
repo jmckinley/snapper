@@ -311,13 +311,14 @@ class TestAdaptiveTrustScoring:
 
     Verifies that:
     - RuleEngine wires up AdaptiveRateLimiter correctly
-    - DENY decisions reduce trust score
+    - Rule-based DENY decisions do NOT reduce trust (only rate-limit breaches do)
     - ALLOW decisions increase trust score
-    - Trust score affects effective rate limits
-    - Repeated violations progressively tighten rate limits
+    - Trust score affects effective rate limits (when auto_adjust_trust is on)
+    - Rate-limit breaches compound trust reductions
     - Good behavior restores trust toward baseline
-    - Trust is clamped to valid range (0.1 - 2.0)
+    - Trust is clamped to valid range (0.5 - 2.0)
     - Learning mode ALLOW doesn't increase trust
+    - Trust can be reset to 1.0 via API
     """
 
     @pytest.mark.asyncio
@@ -328,8 +329,12 @@ class TestAdaptiveTrustScoring:
         assert isinstance(engine.adaptive_limiter, AdaptiveRateLimiter)
 
     @pytest.mark.asyncio
-    async def test_deny_reduces_trust(self, db_session, redis, sample_agent):
-        """A denied request should reduce the agent's trust score."""
+    async def test_deny_does_not_reduce_trust(self, db_session, redis, sample_agent):
+        """A command-denylist DENY should NOT reduce the agent's trust score.
+
+        Trust penalties only apply when the rate limit itself is breached
+        (inside AdaptiveRateLimiter.check_rate_limit), not on every DENY.
+        """
         engine = RuleEngine(db_session, redis)
         trust_key = f"rate:{sample_agent.id}"
 
@@ -346,10 +351,9 @@ class TestAdaptiveTrustScoring:
         result = await engine.evaluate(context)
         assert result.decision == EvaluationDecision.DENY
 
-        # Trust should have decreased
+        # Trust should NOT have changed
         new_trust = await engine.adaptive_limiter.get_trust_score(trust_key)
-        assert new_trust < initial_trust
-        assert new_trust == pytest.approx(0.9, rel=0.01)
+        assert new_trust == initial_trust
 
     @pytest.mark.asyncio
     async def test_allow_increases_trust(self, db_session, redis, sample_agent):
@@ -388,14 +392,18 @@ class TestAdaptiveTrustScoring:
         assert new_trust > initial_trust
 
     @pytest.mark.asyncio
-    async def test_repeated_violations_compound(self, db_session, redis, sample_agent):
-        """Multiple denials should progressively reduce trust."""
+    async def test_repeated_denials_dont_compound(self, db_session, redis, sample_agent):
+        """Repeated command denials should NOT reduce trust.
+
+        Only rate-limit breaches reduce trust (tested via the
+        AdaptiveRateLimiter directly, not via evaluate()).
+        """
         engine = RuleEngine(db_session, redis)
         trust_key = f"rate:{sample_agent.id}"
 
-        # Make several denied requests (no rules = deny by default)
-        trust_scores = [await engine.adaptive_limiter.get_trust_score(trust_key)]
+        initial_trust = await engine.adaptive_limiter.get_trust_score(trust_key)
 
+        # Make several denied requests (no rules = deny by default)
         for _ in range(5):
             context = EvaluationContext(
                 agent_id=sample_agent.id,
@@ -405,10 +413,23 @@ class TestAdaptiveTrustScoring:
             result = await engine.evaluate(context)
             assert result.decision == EvaluationDecision.DENY
 
-            trust = await engine.adaptive_limiter.get_trust_score(trust_key)
-            trust_scores.append(trust)
+        # Trust should be unchanged after command denials
+        final_trust = await engine.adaptive_limiter.get_trust_score(trust_key)
+        assert final_trust == initial_trust
 
-        # Each trust score should be strictly less than the previous
+    @pytest.mark.asyncio
+    async def test_rate_limit_breach_compounds_trust(self, db_session, redis, sample_agent):
+        """Rate-limit breaches (via AdaptiveRateLimiter) DO compound trust."""
+        engine = RuleEngine(db_session, redis)
+        trust_key = f"rate:{sample_agent.id}"
+
+        # Record several violations directly on the adaptive limiter
+        trust_scores = [await engine.adaptive_limiter.get_trust_score(trust_key)]
+        for _ in range(5):
+            new_score = await engine.adaptive_limiter.record_violation(trust_key)
+            trust_scores.append(new_score)
+
+        # Each score should be strictly less than the previous
         for i in range(1, len(trust_scores)):
             assert trust_scores[i] < trust_scores[i - 1]
 
@@ -417,7 +438,11 @@ class TestAdaptiveTrustScoring:
 
     @pytest.mark.asyncio
     async def test_trust_affects_rate_limit(self, db_session, redis, sample_agent):
-        """Reduced trust should lower the effective rate limit."""
+        """Reduced trust should lower the effective rate limit (when enforced)."""
+        # Enable trust enforcement for this agent
+        sample_agent.auto_adjust_trust = True
+        await db_session.commit()
+
         engine = RuleEngine(db_session, redis)
         trust_key = f"rate:{sample_agent.id}"
 
@@ -503,21 +528,22 @@ class TestAdaptiveTrustScoring:
 
     @pytest.mark.asyncio
     async def test_trust_clamped_to_min(self, db_session, redis, sample_agent):
-        """Trust score should never go below MIN_TRUST (0.1)."""
+        """Trust score should never go below MIN_TRUST (0.5)."""
         engine = RuleEngine(db_session, redis)
         trust_key = f"rate:{sample_agent.id}"
 
-        # Force a very low trust score
-        await engine.adaptive_limiter.set_trust_score(trust_key, 0.1)
+        # Force trust to the minimum
+        await engine.adaptive_limiter.set_trust_score(trust_key, 0.5)
 
-        # Record another violation — should stay at 0.1, not go below
+        # Record another violation — should stay at 0.5, not go below
         new_score = await engine.adaptive_limiter.record_violation(trust_key)
         assert new_score >= engine.adaptive_limiter.MIN_TRUST
+        assert engine.adaptive_limiter.MIN_TRUST == 0.5
 
         # Even after many violations
         for _ in range(10):
             new_score = await engine.adaptive_limiter.record_violation(trust_key)
-        assert new_score >= engine.adaptive_limiter.MIN_TRUST
+        assert new_score >= 0.5
 
     @pytest.mark.asyncio
     async def test_trust_clamped_to_max(self, db_session, redis, sample_agent):
@@ -583,6 +609,10 @@ class TestAdaptiveTrustScoring:
     @pytest.mark.asyncio
     async def test_full_pipeline_violations_then_recovery(self, db_session, redis, sample_agent):
         """Full pipeline: violations tighten rate limit, good behavior loosens it."""
+        # Enable trust enforcement for this agent
+        sample_agent.auto_adjust_trust = True
+        await db_session.commit()
+
         engine = RuleEngine(db_session, redis)
 
         # Phase 1: Create rules — rate limit of 6 + allow all
@@ -626,3 +656,71 @@ class TestAdaptiveTrustScoring:
 
         trust_after_good = await engine.adaptive_limiter.get_trust_score(trust_key)
         assert trust_after_good >= 1.0  # Should be slightly above baseline
+
+    @pytest.mark.asyncio
+    async def test_reset_trust_via_redis(self, db_session, redis, sample_agent):
+        """Trust score can be reset to 1.0 by deleting the Redis key."""
+        engine = RuleEngine(db_session, redis)
+        trust_key = f"rate:{sample_agent.id}"
+
+        # Lower trust via direct violations
+        await engine.adaptive_limiter.set_trust_score(trust_key, 0.6)
+        assert await engine.adaptive_limiter.get_trust_score(trust_key) == pytest.approx(0.6, rel=0.01)
+
+        # Reset by deleting the Redis key (mirrors the reset-trust endpoint)
+        await redis.delete(f"trust:{trust_key}")
+
+        # Should return default 1.0
+        reset_trust = await engine.adaptive_limiter.get_trust_score(trust_key)
+        assert reset_trust == 1.0
+
+    @pytest.mark.asyncio
+    async def test_trust_enforcement_off_uses_base_limit(self, db_session, redis, sample_agent):
+        """When auto_adjust_trust is False, rate limit uses base limit regardless of trust score."""
+        # Ensure trust enforcement is OFF (default)
+        assert sample_agent.auto_adjust_trust is False
+
+        engine = RuleEngine(db_session, redis)
+        trust_key = f"rate:{sample_agent.id}"
+
+        # Set a low trust score
+        await engine.adaptive_limiter.set_trust_score(trust_key, 0.5)
+
+        # Create rate limit rule with max_requests=10
+        rate_rule = Rule(
+            id=uuid4(),
+            name="Rate limit",
+            agent_id=sample_agent.id,
+            rule_type=RuleType.RATE_LIMIT,
+            action=RuleAction.DENY,
+            priority=20,
+            parameters={"max_requests": 10, "window_seconds": 60, "scope": "agent"},
+            is_active=True,
+        )
+        allow_rule = Rule(
+            id=uuid4(),
+            name="Allow all",
+            agent_id=sample_agent.id,
+            rule_type=RuleType.COMMAND_ALLOWLIST,
+            action=RuleAction.ALLOW,
+            priority=5,
+            parameters={"patterns": [".*"]},
+            is_active=True,
+        )
+        db_session.add_all([rate_rule, allow_rule])
+        await db_session.commit()
+
+        # With trust enforcement OFF, all 10 requests should be allowed
+        # (trust score of 0.5 is ignored)
+        allowed_count = 0
+        for i in range(10):
+            context = EvaluationContext(
+                agent_id=sample_agent.id,
+                request_type="command",
+                command="ls",
+            )
+            result = await engine.evaluate(context)
+            if result.decision == EvaluationDecision.ALLOW:
+                allowed_count += 1
+
+        assert allowed_count == 10

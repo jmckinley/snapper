@@ -179,7 +179,7 @@ class Agent(Base):
         Boolean,
         default=False,
         nullable=False,
-        comment="Whether to auto-reduce trust score on denials",
+        comment="When True, trust score actively scales rate limits; when False, score is info-only",
     )
     violation_count: Mapped[int] = mapped_column(
         default=0,

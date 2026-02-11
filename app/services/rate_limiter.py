@@ -153,7 +153,7 @@ class AdaptiveRateLimiter:
         self.base_limiter = base_limiter
 
         # Trust score ranges
-        self.MIN_TRUST = 0.1  # 10% of base limit
+        self.MIN_TRUST = 0.5  # 50% of base limit
         self.MAX_TRUST = 2.0  # 200% of base limit
         self.DEFAULT_TRUST = 1.0
 

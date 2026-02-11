@@ -784,3 +784,101 @@ async def verify_api_key(
         "external_id": agent.external_id,
         "status": agent.status,
     }
+
+
+@router.post("/{agent_id}/reset-trust")
+async def reset_agent_trust(
+    agent_id: UUID,
+    db: DbSessionDep,
+    redis: RedisDep,
+):
+    """
+    Reset an agent's adaptive trust score to 1.0.
+
+    Clears the Redis trust key and updates the database trust_score field.
+    Use this when trust has degraded and you want a fresh start.
+    """
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    old_trust = agent.trust_score
+
+    # Clear Redis trust key
+    trust_key = f"trust:rate:{agent_id}"
+    await redis.delete(trust_key)
+
+    # Update database
+    agent.trust_score = 1.0
+
+    # Audit log
+    audit_log = AuditLog(
+        action=AuditAction.AGENT_UPDATED,
+        severity=AuditSeverity.INFO,
+        agent_id=agent.id,
+        message=f"Trust score reset for agent '{agent.name}'",
+        old_value={"trust_score": old_trust},
+        new_value={"trust_score": 1.0},
+    )
+    db.add(audit_log)
+
+    await db.commit()
+    await db.refresh(agent)
+
+    logger.info(f"Trust score reset for agent {agent_id}: {old_trust} -> 1.0")
+
+    return {
+        "trust_score": 1.0,
+        "agent_id": str(agent.id),
+        "agent_name": agent.name,
+    }
+
+
+@router.post("/{agent_id}/toggle-trust")
+async def toggle_agent_trust(
+    agent_id: UUID,
+    db: DbSessionDep,
+):
+    """
+    Toggle adaptive trust enforcement for an agent.
+
+    When enabled (auto_adjust_trust=True), the trust score actively
+    scales the agent's rate limit. When disabled, the trust score is
+    still tracked for informational display but doesn't affect limits.
+    """
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    old_value = agent.auto_adjust_trust
+    agent.auto_adjust_trust = not old_value
+
+    audit_log = AuditLog(
+        action=AuditAction.AGENT_UPDATED,
+        severity=AuditSeverity.INFO,
+        agent_id=agent.id,
+        message=f"Trust enforcement {'enabled' if agent.auto_adjust_trust else 'disabled'} for agent '{agent.name}'",
+        old_value={"auto_adjust_trust": old_value},
+        new_value={"auto_adjust_trust": agent.auto_adjust_trust},
+    )
+    db.add(audit_log)
+
+    await db.commit()
+    await db.refresh(agent)
+
+    return {
+        "agent_id": str(agent.id),
+        "agent_name": agent.name,
+        "auto_adjust_trust": agent.auto_adjust_trust,
+        "trust_score": agent.trust_score,
+    }

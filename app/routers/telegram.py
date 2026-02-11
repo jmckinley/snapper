@@ -36,6 +36,7 @@ BOT_COMMANDS = [
     {"command": "purge", "description": "Delete old bot messages from chat"},
     {"command": "vault", "description": "Manage PII vault entries"},
     {"command": "pii", "description": "Toggle PII protection mode"},
+    {"command": "trust", "description": "View/reset agent trust scores"},
     {"command": "block", "description": "Emergency block ALL actions"},
     {"command": "unblock", "description": "Resume normal operation"},
 ]
@@ -562,6 +563,8 @@ async def telegram_webhook(request: Request):
         await _handle_pii_command(chat_id, text, message)
     elif text.startswith("/purge"):
         await _handle_purge_chat_command(chat_id, text, message)
+    elif text.startswith("/trust"):
+        await _handle_trust_command(chat_id, text, message)
 
     return {"ok": True}
 
@@ -2520,3 +2523,85 @@ async def _handle_purge_chat_command(chat_id: int, text: str, message: dict):
         lines.append("No messages needed deletion.")
 
     await _send_message(chat_id=chat_id, text="\n".join(lines))
+
+
+async def _handle_trust_command(chat_id: int, text: str, message: dict):
+    """
+    Handle /trust command — view/reset/toggle adaptive trust scoring.
+
+    Usage:
+        /trust          — show current trust score and enforcement status
+        /trust reset    — reset trust score to 1.0
+        /trust enable   — enable trust enforcement (score affects rate limits)
+        /trust disable  — disable trust enforcement (score is info-only)
+    """
+    from app.models.agents import Agent
+    from app.redis_client import redis_client
+
+    agent_id = await _get_or_create_test_agent(chat_id)
+
+    parts = text.split(maxsplit=1)
+    subcommand = parts[1].strip().lower() if len(parts) > 1 else ""
+
+    async with async_session_factory() as db:
+        stmt = select(Agent).where(Agent.id == agent_id)
+        result = await db.execute(stmt)
+        agent = result.scalar_one_or_none()
+
+        if not agent:
+            await _send_message(chat_id=chat_id, text="Agent not found.")
+            return
+
+        trust_key = f"trust:rate:{agent_id}"
+
+        if subcommand == "reset":
+            await redis_client.delete(trust_key)
+            agent.trust_score = 1.0
+            await db.commit()
+            await _send_message(
+                chat_id=chat_id,
+                text="🔄 Trust score reset to *1.0* for this agent.",
+            )
+
+        elif subcommand == "enable":
+            agent.auto_adjust_trust = True
+            await db.commit()
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    "✅ Trust enforcement *enabled*.\n\n"
+                    "The trust score will now actively scale rate limits."
+                ),
+            )
+
+        elif subcommand == "disable":
+            agent.auto_adjust_trust = False
+            await db.commit()
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    "ℹ️ Trust enforcement *disabled*.\n\n"
+                    "The trust score is still tracked but does not affect rate limits."
+                ),
+            )
+
+        else:
+            score_raw = await redis_client.get(trust_key)
+            score = float(score_raw) if score_raw else 1.0
+            enforced = agent.auto_adjust_trust
+            status_label = "Enforced" if enforced else "Info-only"
+            status_icon = "🟢" if enforced else "⚪"
+
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"📊 *Trust Score*\n\n"
+                    f"Agent: `{agent.name}`\n"
+                    f"Score: *{score:.3f}*\n"
+                    f"Status: {status_icon} {status_label}\n\n"
+                    f"Commands:\n"
+                    f"`/trust reset` — reset to 1.0\n"
+                    f"`/trust enable` — enforce (score scales rate limits)\n"
+                    f"`/trust disable` — info-only (no rate limit effect)"
+                ),
+            )
