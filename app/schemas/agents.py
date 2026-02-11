@@ -43,6 +43,7 @@ class AgentUpdate(BaseModel):
     tags: Optional[List[str]] = None
     rate_limit_max_requests: Optional[int] = Field(None, ge=1)
     rate_limit_window_seconds: Optional[int] = Field(None, ge=1)
+    owner_chat_id: Optional[str] = None
 
 
 class AgentResponse(AgentBase):

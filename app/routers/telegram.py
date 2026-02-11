@@ -2529,79 +2529,114 @@ async def _handle_trust_command(chat_id: int, text: str, message: dict):
     """
     Handle /trust command — view/reset/toggle adaptive trust scoring.
 
+    Operates on all agents owned by this Telegram user (owner_chat_id).
+    Optionally target a specific agent by name.
+
     Usage:
-        /trust          — show current trust score and enforcement status
-        /trust reset    — reset trust score to 1.0
-        /trust enable   — enable trust enforcement (score affects rate limits)
-        /trust disable  — disable trust enforcement (score is info-only)
+        /trust                    — show all your agents' trust scores
+        /trust reset [name]       — reset trust to 1.0 (all or named agent)
+        /trust enable [name]      — enable enforcement (all or named agent)
+        /trust disable [name]     — disable enforcement (all or named agent)
     """
     from app.models.agents import Agent
     from app.redis_client import redis_client
 
-    agent_id = await _get_or_create_test_agent(chat_id)
-
-    parts = text.split(maxsplit=1)
-    subcommand = parts[1].strip().lower() if len(parts) > 1 else ""
+    parts = text.split()
+    # parts[0] = "/trust", parts[1] = subcommand (optional), parts[2] = agent name (optional)
+    subcommand = parts[1].lower() if len(parts) > 1 else ""
+    target_name = " ".join(parts[2:]) if len(parts) > 2 else None
 
     async with async_session_factory() as db:
-        stmt = select(Agent).where(Agent.id == agent_id)
+        # Find all agents owned by this chat
+        stmt = select(Agent).where(
+            Agent.owner_chat_id == str(chat_id),
+            Agent.is_deleted == False,
+        )
         result = await db.execute(stmt)
-        agent = result.scalar_one_or_none()
+        agents = list(result.scalars().all())
 
-        if not agent:
-            await _send_message(chat_id=chat_id, text="Agent not found.")
-            return
-
-        trust_key = f"trust:rate:{agent_id}"
-
-        if subcommand == "reset":
-            await redis_client.delete(trust_key)
-            agent.trust_score = 1.0
-            await db.commit()
-            await _send_message(
-                chat_id=chat_id,
-                text="🔄 Trust score reset to *1.0* for this agent.",
-            )
-
-        elif subcommand == "enable":
-            agent.auto_adjust_trust = True
-            await db.commit()
+        if not agents:
             await _send_message(
                 chat_id=chat_id,
                 text=(
-                    "✅ Trust enforcement *enabled*.\n\n"
-                    "The trust score will now actively scale rate limits."
+                    "No agents found for your account.\n\n"
+                    "Make sure your agents have `owner_chat_id` set to your Telegram chat ID."
+                ),
+            )
+            return
+
+        # Filter to named agent if specified
+        if target_name:
+            matched = [a for a in agents if a.name.lower() == target_name.lower()
+                       or a.external_id.lower() == target_name.lower()]
+            if not matched:
+                names = ", ".join(f"`{a.name}`" for a in agents)
+                await _send_message(
+                    chat_id=chat_id,
+                    text=f"Agent `{target_name}` not found. Your agents: {names}",
+                )
+                return
+            agents = matched
+
+        if subcommand == "reset":
+            names = []
+            for agent in agents:
+                trust_key = f"trust:rate:{agent.id}"
+                await redis_client.delete(trust_key)
+                agent.trust_score = 1.0
+                names.append(agent.name)
+            await db.commit()
+            label = ", ".join(f"`{n}`" for n in names)
+            await _send_message(
+                chat_id=chat_id,
+                text=f"🔄 Trust score reset to *1.0* for: {label}",
+            )
+
+        elif subcommand == "enable":
+            names = []
+            for agent in agents:
+                agent.auto_adjust_trust = True
+                names.append(agent.name)
+            await db.commit()
+            label = ", ".join(f"`{n}`" for n in names)
+            await _send_message(
+                chat_id=chat_id,
+                text=(
+                    f"✅ Trust enforcement *enabled* for: {label}\n\n"
+                    "Trust score will now actively scale rate limits."
                 ),
             )
 
         elif subcommand == "disable":
-            agent.auto_adjust_trust = False
+            names = []
+            for agent in agents:
+                agent.auto_adjust_trust = False
+                names.append(agent.name)
             await db.commit()
+            label = ", ".join(f"`{n}`" for n in names)
             await _send_message(
                 chat_id=chat_id,
                 text=(
-                    "ℹ️ Trust enforcement *disabled*.\n\n"
-                    "The trust score is still tracked but does not affect rate limits."
+                    f"ℹ️ Trust enforcement *disabled* for: {label}\n\n"
+                    "Trust score is still tracked but does not affect rate limits."
                 ),
             )
 
         else:
-            score_raw = await redis_client.get(trust_key)
-            score = float(score_raw) if score_raw else 1.0
-            enforced = agent.auto_adjust_trust
-            status_label = "Enforced" if enforced else "Info-only"
-            status_icon = "🟢" if enforced else "⚪"
+            # Show trust scores for all owned agents
+            lines = ["📊 *Trust Scores*\n"]
+            for agent in agents:
+                trust_key = f"trust:rate:{agent.id}"
+                score_raw = await redis_client.get(trust_key)
+                score = float(score_raw) if score_raw else 1.0
+                icon = "🟢" if agent.auto_adjust_trust else "⚪"
+                mode = "Enforced" if agent.auto_adjust_trust else "Info-only"
+                lines.append(f"{icon} `{agent.name}` — *{score:.3f}* ({mode})")
 
-            await _send_message(
-                chat_id=chat_id,
-                text=(
-                    f"📊 *Trust Score*\n\n"
-                    f"Agent: `{agent.name}`\n"
-                    f"Score: *{score:.3f}*\n"
-                    f"Status: {status_icon} {status_label}\n\n"
-                    f"Commands:\n"
-                    f"`/trust reset` — reset to 1.0\n"
-                    f"`/trust enable` — enforce (score scales rate limits)\n"
-                    f"`/trust disable` — info-only (no rate limit effect)"
-                ),
+            lines.append(
+                "\nCommands:\n"
+                "`/trust reset [name]` — reset to 1.0\n"
+                "`/trust enable [name]` — enforce\n"
+                "`/trust disable [name]` — info-only"
             )
+            await _send_message(chat_id=chat_id, text="\n".join(lines))
