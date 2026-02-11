@@ -371,10 +371,19 @@
             });
 
             if (response.ok) {
-                // Find and update the button that triggered this
+                const data = await response.json();
                 const buttons = document.querySelectorAll(`button[onclick="mitigateVuln('${id}')"]`);
+                const rulesCreated = data.rules_created?.length || 0;
+                let label = 'Mitigated';
+                if (data.method === 'template_rule' || data.method === 'inferred_rule') {
+                    label = `Mitigated (${rulesCreated} rule${rulesCreated > 1 ? 's' : ''} created)`;
+                } else if (data.method === 'existing_rule') {
+                    label = 'Mitigated (linked to existing rule)';
+                } else {
+                    label = 'Reviewed';
+                }
                 buttons.forEach(btn => {
-                    btn.outerHTML = '<span class="text-green-600">Mitigated</span>';
+                    btn.outerHTML = `<span class="text-green-600">${label}</span>`;
                 });
                 loadSecurityScore();
             } else {
