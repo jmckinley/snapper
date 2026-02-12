@@ -343,7 +343,19 @@ bash scripts/e2e_live_test.sh
 E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_live_test.sh
 ```
 
-The script covers: all 15 rule type evaluators, approval workflow, PII vault lifecycle, emergency block/unblock, and audit trail verification. It creates temporary test agents and rules, validates results, and cleans up on exit. See `tests/TEST_PLAN.md` section 11 for the full test ID mapping (LIVE-001 through LIVE-604).
+The script covers: all 15 rule type evaluators, approval workflow, PII vault lifecycle, adaptive trust scoring, emergency block/unblock, and audit trail verification. It creates temporary test agents and rules, validates results, and cleans up on exit. See `tests/TEST_PLAN.md` section 11 for the full test ID mapping (LIVE-001 through LIVE-604).
+
+**Phase 4c: Adaptive Trust Scoring** tests (12 assertions):
+
+| Test ID | What It Tests |
+|---------|---------------|
+| 4c.1a-b | Default trust_score=1.0, auto_adjust_trust=false |
+| 4c.2 | Toggle trust enforcement ON via API |
+| 4c.3 | Toggle trust enforcement OFF via API |
+| 4c.4a-b | Reset trust via POST /agents/{id}/reset-trust |
+| 4c.5 | Rule denials do NOT reduce trust score |
+| 4c.6a-b | Rate-limit breach DOES reduce trust score |
+| 4c.7 | Cleanup: reset trust and disable enforcement |
 
 ### OpenClaw Integration Tests (`scripts/e2e_openclaw_test.sh`)
 

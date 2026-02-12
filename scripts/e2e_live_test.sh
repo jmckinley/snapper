@@ -1149,6 +1149,135 @@ fi
 
 
 # ============================================================
+# Phase 4c: Adaptive Trust Scoring
+# ============================================================
+echo ""
+echo -e "${BOLD}=== Phase 4c: Adaptive Trust Scoring ===${NC}"
+
+# 4c.1 Default trust score is 1.0 and enforcement is off
+log "4c.1 Default trust score and enforcement"
+AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
+TRUST_SCORE=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
+AUTO_ADJUST=$(echo "$AGENT_DATA" | jq -r '.auto_adjust_trust // empty')
+assert_eq "$TRUST_SCORE" "1" "4c.1a Default trust_score is 1.0"
+assert_eq "$AUTO_ADJUST" "false" "4c.1b Default auto_adjust_trust is false"
+
+# 4c.2 Toggle trust enforcement ON
+log "4c.2 Toggle trust enforcement ON"
+TOGGLE_RESP=$(api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust")
+TOGGLE_AUTO=$(echo "$TOGGLE_RESP" | jq -r '.auto_adjust_trust // empty')
+assert_eq "$TOGGLE_AUTO" "true" "4c.2 Toggle trust ON returns auto_adjust_trust=true"
+
+# Verify the agent now has enforcement on
+AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
+assert_eq "$(echo "$AGENT_DATA" | jq -r '.auto_adjust_trust')" "true" "4c.2b Agent reflects trust enforcement ON"
+
+# 4c.3 Toggle trust enforcement OFF
+log "4c.3 Toggle trust enforcement OFF"
+TOGGLE_RESP=$(api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust")
+TOGGLE_AUTO=$(echo "$TOGGLE_RESP" | jq -r '.auto_adjust_trust // empty')
+assert_eq "$TOGGLE_AUTO" "false" "4c.3 Toggle trust OFF returns auto_adjust_trust=false"
+
+# 4c.4 Reset trust via API
+log "4c.4 Reset trust via API"
+# First, manually set trust low via Redis
+docker exec "$REDIS_CONTAINER" redis-cli set "trust:rate:${AGENT_UUID}" '{"score":0.5,"violations":10,"good_behaviors":0}' >/dev/null 2>&1
+# Update DB trust_score low too (via agent update)
+api_curl -X PUT "${API}/agents/${AGENT_UUID}" \
+    -H "Content-Type: application/json" \
+    -d '{"trust_level":"standard"}' >/dev/null 2>&1
+# Now reset
+RESET_RESP=$(api_curl -X POST "${API}/agents/${AGENT_UUID}/reset-trust")
+RESET_TRUST=$(echo "$RESET_RESP" | jq -r '.trust_score // empty')
+assert_eq "$RESET_TRUST" "1" "4c.4a Reset trust returns trust_score=1.0"
+
+# Verify the agent DB also reflects 1.0
+AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
+TRUST_AFTER_RESET=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
+assert_eq "$TRUST_AFTER_RESET" "1" "4c.4b Agent trust_score is 1.0 after reset"
+
+# 4c.5 Rule denial does NOT reduce trust score
+log "4c.5 Rule denial does not reduce trust"
+flush_rate_keys
+# Reset trust to clean state
+api_curl -X POST "${API}/agents/${AGENT_UUID}/reset-trust" >/dev/null 2>&1
+# Enable trust enforcement so we can observe if it changes
+api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust" >/dev/null 2>&1  # ON
+
+# Create a deny rule
+DENY_RULE=$(create_rule '{
+    "name":"e2e-trust-deny-test",
+    "rule_type":"command_denylist",
+    "action":"deny",
+    "parameters":{"patterns":["^trust-deny-probe$"]},
+    "priority":500,
+    "is_active":true
+}')
+
+# Trigger several denials
+for i in 1 2 3 4 5; do
+    evaluate "{\"agent_id\":\"${AGENT_EID}\",\"request_type\":\"command\",\"command\":\"trust-deny-probe\"}" >/dev/null
+    sleep 0.3
+done
+
+# Check trust score — should still be 1.0 (denials don't reduce trust)
+AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
+TRUST_AFTER_DENIALS=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
+assert_eq "$TRUST_AFTER_DENIALS" "1" "4c.5 Trust score unchanged after 5 rule denials"
+delete_rule "$DENY_RULE"
+
+# 4c.6 Rate-limit breach reduces trust (with enforcement ON)
+log "4c.6 Rate-limit breach reduces trust"
+flush_rate_keys
+api_curl -X POST "${API}/agents/${AGENT_UUID}/reset-trust" >/dev/null 2>&1
+# Agent already has trust enforcement ON from 4c.5
+
+RATE_RULE=$(create_rule "{
+    \"name\":\"e2e-trust-rate-test\",
+    \"rule_type\":\"rate_limit\",
+    \"action\":\"deny\",
+    \"parameters\":{\"max_requests\":2,\"window_seconds\":60,\"scope\":\"agent\"},
+    \"priority\":100,
+    \"is_active\":true
+}")
+
+# Send 3 requests — 3rd should breach the rate limit
+for i in 1 2; do
+    evaluate "{\"agent_id\":\"${AGENT_EID}\",\"request_type\":\"command\",\"command\":\"echo trust-rate-$i\"}" >/dev/null
+    sleep 0.3
+done
+# This one should be rate-limited (breach)
+RESULT=$(evaluate "{\"agent_id\":\"${AGENT_EID}\",\"request_type\":\"command\",\"command\":\"echo trust-rate-3\"}")
+RATE_DECISION=$(echo "$RESULT" | jq -r '.decision // empty')
+# Verify it was actually rate limited
+assert_deny "$RESULT" "4c.6a 3rd request rate-limited"
+
+# Check trust score — should be < 1.0 after rate-limit breach
+sleep 1  # Give Redis time to update
+AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
+TRUST_AFTER_RATE=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
+TOTAL=$((TOTAL + 1))
+# Trust score should be less than 1.0 (bc is used for float comparison)
+if echo "$TRUST_AFTER_RATE < 1.0" | bc -l 2>/dev/null | grep -q 1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.6b Trust score reduced after rate breach (score=$TRUST_AFTER_RATE)"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.6b Expected trust < 1.0 after rate breach (got $TRUST_AFTER_RATE)"
+fi
+
+delete_rule "$RATE_RULE"
+flush_rate_keys
+
+# 4c.7 Reset trust back and toggle enforcement OFF for subsequent tests
+log "4c.7 Cleanup: reset trust and disable enforcement"
+api_curl -X POST "${API}/agents/${AGENT_UUID}/reset-trust" >/dev/null 2>&1
+api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust" >/dev/null 2>&1  # OFF
+AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
+assert_eq "$(echo "$AGENT_DATA" | jq -r '.auto_adjust_trust')" "false" "4c.7 Trust enforcement back to OFF"
+
+
+# ============================================================
 # Phase 5: Emergency Block / Unblock
 # ============================================================
 echo ""
