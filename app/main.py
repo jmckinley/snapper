@@ -19,7 +19,7 @@ from app.database import check_db_health, close_db, init_db
 from app.redis_client import redis_client
 
 # Import routers
-from app.routers import agents, approvals, audit, integrations, rules, security, setup, telegram, vault
+from app.routers import agents, approvals, audit, integrations, rules, security, setup, slack, telegram, vault
 
 settings = get_settings()
 
@@ -51,12 +51,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.routers.telegram import register_bot_commands
         await register_bot_commands()
 
+    # Start Slack bot (Socket Mode)
+    if settings.SLACK_BOT_TOKEN and settings.SLACK_APP_TOKEN:
+        logger.info("Starting Slack bot (Socket Mode)...")
+        from app.routers.slack import start_slack_bot
+        await start_slack_bot()
+
     logger.info("Snapper started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down Snapper...")
+
+    # Stop Slack bot
+    if settings.SLACK_BOT_TOKEN and settings.SLACK_APP_TOKEN:
+        from app.routers.slack import stop_slack_bot
+        await stop_slack_bot()
 
     # Close Redis
     await redis_client.close()
@@ -114,6 +125,7 @@ app.include_router(security.router, prefix=settings.API_V1_PREFIX, tags=["securi
 app.include_router(audit.router, prefix=settings.API_V1_PREFIX, tags=["audit"])
 app.include_router(setup.router, tags=["setup"])
 app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
+app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["slack"])
 app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["approvals"])
 app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["vault"])
 

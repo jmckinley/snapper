@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = "alerts@snapper.local"
 
     SLACK_WEBHOOK_URL: Optional[str] = None
+    SLACK_BOT_TOKEN: Optional[str] = None      # xoxb-... for Snapper's Slack app
+    SLACK_APP_TOKEN: Optional[str] = None      # xapp-... for Socket Mode
+    SLACK_ALERT_CHANNEL: Optional[str] = None  # Default channel ID for alerts (fallback)
     PAGERDUTY_API_KEY: Optional[str] = None
     GENERIC_WEBHOOK_URL: Optional[str] = None
 

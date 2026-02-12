@@ -101,7 +101,7 @@ def send_alert(
             if channel == "email":
                 _send_email_alert(title, message, severity)
             elif channel == "slack":
-                _send_slack_alert(title, message, severity)
+                _send_slack_alert(title, message, severity, metadata)
             elif channel == "telegram":
                 _send_telegram_alert(title, message, severity, metadata)
             elif channel == "pagerduty":
@@ -191,13 +191,43 @@ This is an automated alert from Snapper Rules Manager.
         raise
 
 
-def _send_slack_alert(title: str, message: str, severity: str):
-    """Send alert via Slack webhook."""
+def _send_slack_alert(title: str, message: str, severity: str, metadata: Optional[dict] = None):
+    """Send alert via Slack Bot API (interactive buttons) or webhook fallback.
+
+    Routes to the appropriate Slack target:
+    - If owner_chat_id starts with 'U' → DM that Slack user via Bot API
+    - Else fallback to SLACK_ALERT_CHANNEL or SLACK_WEBHOOK_URL
+    """
+    # Try Bot API first (supports interactive buttons)
+    if settings.SLACK_BOT_TOKEN:
+        # Determine target Slack user/channel
+        target = None
+        if metadata:
+            pii_ctx = metadata.get("pii_context")
+            if pii_ctx and isinstance(pii_ctx, dict):
+                owner = pii_ctx.get("owner_chat_id", "")
+                if isinstance(owner, str) and owner.startswith("U"):
+                    target = owner
+            if not target:
+                owner = metadata.get("agent_owner_chat_id", "")
+                if isinstance(owner, str) and owner.startswith("U"):
+                    target = owner
+
+        if not target and settings.SLACK_ALERT_CHANNEL:
+            target = settings.SLACK_ALERT_CHANNEL
+
+        if target:
+            try:
+                _run_async(_send_slack_bot_alert(target, title, message, severity, metadata))
+                return
+            except Exception as e:
+                logger.warning(f"Slack Bot API alert failed, falling back to webhook: {e}")
+
+    # Fallback: webhook-only (no interactivity)
     if not settings.SLACK_WEBHOOK_URL:
-        logger.warning("Slack webhook not configured, skipping Slack alert")
+        logger.warning("Slack not configured (no bot token or webhook), skipping Slack alert")
         return
 
-    # Severity colors for Slack
     severity_colors = {
         "critical": "#dc2626",
         "error": "#ea580c",
@@ -206,7 +236,6 @@ def _send_slack_alert(title: str, message: str, severity: str):
     }
     color = severity_colors.get(severity, "#6b7280")
 
-    # Build Slack message
     payload = {
         "attachments": [
             {
@@ -223,7 +252,7 @@ def _send_slack_alert(title: str, message: str, severity: str):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": message[:3000],  # Slack limit
+                            "text": message[:3000],
                         },
                     },
                     {
@@ -248,10 +277,22 @@ def _send_slack_alert(title: str, message: str, severity: str):
                 timeout=30.0,
             )
             response.raise_for_status()
-        logger.info(f"Slack alert sent: {title}")
+        logger.info(f"Slack webhook alert sent: {title}")
     except Exception as e:
         logger.exception(f"Failed to send Slack alert: {e}")
         raise
+
+
+async def _send_slack_bot_alert(target: str, title: str, message: str, severity: str, metadata: Optional[dict] = None):
+    """Send alert via Slack Bot API with interactive buttons."""
+    from app.routers.slack import send_slack_approval
+    await send_slack_approval(
+        target_user_id=target,
+        title=title,
+        message=message,
+        severity=severity,
+        metadata=metadata,
+    )
 
 
 def _send_telegram_alert(
@@ -282,6 +323,11 @@ def _send_telegram_alert(
         effective_chat_id = settings.TELEGRAM_CHAT_ID
     if not effective_chat_id:
         logger.warning("No target chat ID for Telegram alert, skipping")
+        return
+
+    # Skip if the resolved target is a Slack user (U... prefix) — Slack handler owns this
+    if isinstance(effective_chat_id, str) and effective_chat_id.startswith("U"):
+        logger.debug(f"Skipping Telegram alert for Slack user {effective_chat_id}")
         return
 
     # Severity emojis for Telegram

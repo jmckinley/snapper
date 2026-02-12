@@ -25,6 +25,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - SLACK_ALERT_CHANNEL=${SLACK_ALERT_CHANNEL:-}
     volumes:
       - .:/app
       - ./static:/app/static
@@ -88,6 +91,9 @@ services:
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - SLACK_ALERT_CHANNEL=${SLACK_ALERT_CHANNEL:-}
       - NOTIFY_ON_BLOCK=${NOTIFY_ON_BLOCK:-true}
     volumes:
       - .:/app

@@ -20,6 +20,9 @@ pydantic-settings>=2.1.0
 # HTTP Client
 httpx>=0.26.0
 
+# Slack Bot
+slack-bolt[async]>=1.18.0
+
 # Task Queue
 celery>=5.3.6
 flower>=2.0.1  # Celery monitoring

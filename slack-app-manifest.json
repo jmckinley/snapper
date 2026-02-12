@@ -1,0 +1,110 @@
+{
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
+  "display_information": {
+    "name": "Snapper Approval Bot",
+    "description": "Agent Application Firewall - approvals, rule management, PII vault, trust scoring",
+    "background_color": "#1a1a2e",
+    "long_description": "Snapper is an Agent Application Firewall (AAF) that inspects and enforces security policy on traffic between AI agents and the outside world. This bot provides interactive approval workflows, rule testing, PII vault management, trust scoring, and emergency controls directly from Slack."
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": false,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "bot_user": {
+      "display_name": "Snapper",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/snapper-rules",
+        "description": "View active security rules",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-test",
+        "description": "Test rule enforcement",
+        "usage_hint": "run ls -la",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-vault",
+        "description": "Manage PII vault entries",
+        "usage_hint": "list | add MyVisa cc | delete token",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-trust",
+        "description": "View/manage agent trust scores",
+        "usage_hint": "reset | enable | disable",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-block",
+        "description": "Emergency block ALL agent actions",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-unblock",
+        "description": "Resume normal operations",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-status",
+        "description": "Check system health",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-pending",
+        "description": "List pending approval requests",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-pii",
+        "description": "Toggle PII gate mode",
+        "usage_hint": "protected | auto",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-purge",
+        "description": "Clean up bot messages",
+        "usage_hint": "7d | 2h | all",
+        "should_escape": false
+      },
+      {
+        "command": "/snapper-help",
+        "description": "Show all available commands",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "commands",
+        "im:history",
+        "im:write",
+        "users:read",
+        "app_mentions:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}
