@@ -419,11 +419,12 @@ async def telegram_webhook(request: Request):
                 "/pending - List pending approvals\n"
                 "/vault - Manage encrypted PII storage\n"
                 "/pii - PII protection mode\n"
+                "/trust - View/manage agent trust scores\n"
                 "/purge - Delete old bot messages from chat\n"
                 "/block - Emergency block all actions\n"
                 "/unblock - Resume normal operation\n\n"
                 f"Your Chat ID: `{chat_id}`\n"
-                "_Add this to your Snapper settings._"
+                "_Enter this when connecting agents in the dashboard to enable Telegram features._"
             ),
         )
     elif text.startswith("/help"):
@@ -454,6 +455,11 @@ async def telegram_webhook(request: Request):
                 "/purge - Delete old bot messages\n"
                 "/purge all - Delete all tracked messages\n"
                 "/purge 7d - Delete messages older than 7 days\n\n"
+                "*Trust:*\n"
+                "/trust - View agent trust scores\n"
+                "/trust reset `[name]` - Reset trust to 1.0\n"
+                "/trust enable `[name]` - Enable enforcement\n"
+                "/trust disable `[name]` - Disable enforcement\n\n"
                 "*Emergency:*\n"
                 "/block - Block ALL agent actions\n"
                 "/unblock - Resume normal operation\n\n"
