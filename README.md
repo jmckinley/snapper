@@ -53,7 +53,7 @@ cd snapper
 ./setup.sh
 ```
 
-The setup script validates prerequisites, starts containers, runs migrations, and opens the dashboard in your browser. The setup wizard walks you through agent registration, security profile selection, and Telegram setup.
+The setup script validates prerequisites, starts containers, runs migrations, and opens the dashboard in your browser. The setup wizard walks you through agent registration, security profile selection, and notification setup (Telegram/Slack).
 
 **Quick setup with the CLI** (if Snapper is already running):
 
@@ -238,6 +238,28 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 
 See [Telegram Setup Guide](docs/TELEGRAM_SETUP.md) for configuration.
 
+### Slack Bot
+
+Control Snapper from Slack with slash commands and interactive Block Kit buttons (Socket Mode — no public URL required):
+
+| Command | Description |
+|---------|-------------|
+| `/snapper-help` | Show available commands |
+| `/snapper-status` | Check Snapper connection |
+| `/snapper-rules` | View active security rules |
+| `/snapper-pending` | List pending approvals |
+| `/snapper-test run <cmd>` | Test if a shell command is allowed |
+| `/snapper-vault` | Manage encrypted PII vault |
+| `/snapper-trust` | View/manage agent trust scores |
+| `/snapper-pii` | Toggle PII gate mode |
+| `/snapper-block` | Emergency block ALL agent actions |
+| `/snapper-unblock` | Resume normal operation |
+| `/snapper-purge` | Clean up old bot messages |
+
+**Quick actions:** Blocked actions and approval requests show interactive Block Kit buttons for one-tap approve/deny.
+
+See [Slack Setup Guide](docs/SLACK_SETUP.md) for configuration.
+
 ### PII Vault & Data Loss Prevention
 
 Snapper includes a built-in PII detection and encryption system that works two ways:
@@ -248,10 +270,10 @@ Snapper includes a built-in PII detection and encryption system that works two w
 
 | Mode | Behavior |
 |------|----------|
-| **Protected** (default) | PII submissions require human approval via Telegram |
+| **Protected** (default) | PII submissions require human approval via Telegram or Slack |
 | **Auto** | Vault tokens auto-resolve without approval (raw PII still blocked) |
 
-Toggle via Telegram: `/pii protected` or `/pii auto`
+Toggle via Telegram (`/pii protected` or `/pii auto`) or Slack (`/snapper-pii protected` or `/snapper-pii auto`).
 
 See the [Security Guide](docs/SECURITY.md) for full details on encryption, key management, and all security mechanisms.
 
@@ -382,9 +404,9 @@ Each agent has adaptive trust metrics:
 - `trust_score` (0.5-2.0) — Tracked continuously, reduced on rate-limit breaches, increased on good behavior
 - `violation_count` — Cumulative rule violations
 - `auto_adjust_trust` — Per-agent opt-in: when enabled, the trust score actively scales rate limits; when disabled (default), the score is tracked for informational display only
-- **Reset:** Trust can be reset to 1.0 via API (`POST /agents/{id}/reset-trust`), Telegram (`/trust reset [name]`), or dashboard button
-- **Toggle:** Enforcement can be toggled via API (`POST /agents/{id}/toggle-trust`), Telegram (`/trust enable [name]`/`/trust disable [name]`), or dashboard
-- **Scoping:** Telegram `/trust` operates on all agents owned by your chat ID; append an agent name to target one specifically
+- **Reset:** Trust can be reset to 1.0 via API (`POST /agents/{id}/reset-trust`), Telegram (`/trust reset [name]`), Slack (`/snapper-trust reset [name]`), or dashboard button
+- **Toggle:** Enforcement can be toggled via API (`POST /agents/{id}/toggle-trust`), Telegram (`/trust enable [name]`/`/trust disable [name]`), Slack (`/snapper-trust enable [name]`), or dashboard
+- **Scoping:** Telegram `/trust` and Slack `/snapper-trust` operate on all agents owned by your user ID; append an agent name to target one specifically
 
 ### Security Summary
 
@@ -521,12 +543,12 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
                                   ▼                       ▼               ▼
                           ┌──────────────┐   ┌──────────────────┐  ┌──────────┐
                           │    Allow     │   │ Require Approval │  │   Deny   │
-                          │ + resolve   │   │ (Telegram vote)  │  │          │
+                          │ + resolve   │   │(Telegram / Slack)│  │          │
                           │ vault tokens │   │ then resolve     │  │          │
                           └──────────────┘   └──────────────────┘  └──────────┘
 ```
 
-**Stack:** FastAPI, PostgreSQL, Redis, Celery, Gunicorn, Docker Compose.
+**Stack:** FastAPI, PostgreSQL, Redis, Celery, Gunicorn, Docker Compose, slack-bolt.
 
 **Containers (5):** app, postgres, redis, celery-worker, celery-beat.
 
@@ -606,10 +628,10 @@ Prerequisites: Snapper running (app + postgres + redis), `jq` installed. OpenCla
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 406 | API, rule engine, middleware, Telegram, PII vault/gate, security monitor, integrations |
+| Unit tests | 506 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations |
 | E2E tests (Playwright) | 120 | Browser-based UI testing (skipped without browser) |
 | Live E2E integration | 39 | API-level rule engine, approvals, PII vault, emergency block, audit (skips OpenClaw if unavailable) |
-| **Total** | **565** | Full coverage across unit, UI, and live integration layers |
+| **Total** | **665** | Full coverage across unit, UI, and live integration layers |
 
 ## Common Commands
 

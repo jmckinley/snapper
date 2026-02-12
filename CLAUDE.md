@@ -38,6 +38,7 @@ snapper/
 │   │   ├── vault.py           # PII vault CRUD API
 │   │   ├── approvals.py       # Approval workflow + token resolution
 │   │   ├── telegram.py        # Telegram bot (/vault, /pii, /test, etc.)
+│   │   ├── slack.py           # Slack bot (slash commands, approvals, vault)
 │   │   └── security.py        # Security research endpoints
 │   ├── services/              # Business logic
 │   │   ├── __init__.py
@@ -175,3 +176,4 @@ async def protected_endpoint():
 - **PII Gate**: Rule evaluator that scans tool_input and commands for vault tokens + raw PII patterns. Two modes: protected (require approval) and auto (inline resolution).
 - **snapper-guard Plugin**: OpenClaw plugin (`plugins/snapper-guard/`) that intercepts browser tool calls, calls evaluate endpoint, and replaces vault tokens with real values in tool params via `before_tool_call` hook.
 - **Shell Hooks**: Use `$SNAPPER_URL` and `$SNAPPER_API_KEY` env vars (not hardcoded URLs/keys). Scripts in `scripts/openclaw-hooks/`.
+- **Slack Bot**: Full Telegram parity via Socket Mode (`app/routers/slack.py`). Uses slack-bolt[async]. Commands prefixed with `/snapper-` to avoid conflicts. PII vault uses DM-based multi-step flow. Alert routing: numeric `owner_chat_id` → Telegram, `U`-prefix → Slack DM.

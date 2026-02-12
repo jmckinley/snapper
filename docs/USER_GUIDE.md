@@ -13,6 +13,7 @@ This guide walks through everything you need as a Snapper user, from first setup
 1. [Getting Started](#getting-started)
 2. [Quick Setup with `snapper init`](#quick-setup-with-snapper-init)
 3. [Telegram Bot](#telegram-bot)
+3b. [Slack Bot](#slack-bot)
 4. [Rules](#rules)
 5. [Approval Workflow](#approval-workflow)
 6. [PII Vault](#pii-vault)
@@ -42,14 +43,14 @@ AI Agent wants to run: rm -rf /important-data
         |
         +-- ALLOW    --> agent proceeds
         +-- DENY     --> agent is blocked, you get notified
-        +-- APPROVAL --> you get a Telegram notification with [Approve] [Deny] buttons
+        +-- APPROVAL --> you get a Telegram or Slack notification with [Approve] [Deny] buttons
 ```
 
 ### First Steps
 
 1. **Install Snapper** — See [Getting Started](GETTING_STARTED.md) for Docker setup
 2. **Connect your agent** — For production with OpenClaw, `deploy.sh` handles this automatically. Otherwise, run `python scripts/snapper-cli.py init` (auto-detects and configures your agent)
-3. **Set up Telegram** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for bot creation
+3. **Set up notifications** — See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) or [SLACK_SETUP.md](SLACK_SETUP.md)
 4. **Configure rules** — Use templates or create custom rules (this guide covers both)
 
 Once set up, Snapper runs silently in the background. You'll only hear from it when something needs your attention.
@@ -169,6 +170,75 @@ Data being sent:
 
 ---
 
+## Slack Bot
+
+The Slack bot provides the same functionality as the Telegram bot, using slash commands and Block Kit interactive buttons. It uses **Socket Mode**, so no public URL or webhook setup is needed.
+
+### Command Reference
+
+| Command | What it does |
+|---------|-------------|
+| `/snapper-help` | Show all commands |
+| `/snapper-status` | Check Snapper connection |
+| `/snapper-rules` | View active security rules |
+| `/snapper-test run <cmd>` | Test whether a command would be allowed |
+| `/snapper-pending` | List pending approvals |
+| `/snapper-vault` | Show vault help |
+| `/snapper-vault list` | List your encrypted PII entries |
+| `/snapper-vault add <label> <type>` | Add a new PII entry (multi-step DM flow) |
+| `/snapper-vault delete <token>` | Delete a specific entry |
+| `/snapper-pii` | Show current PII protection mode |
+| `/snapper-pii protected` | Require approval before PII is sent |
+| `/snapper-pii auto` | Auto-resolve vault tokens (no approval) |
+| `/snapper-trust` | View trust scores for all your agents |
+| `/snapper-trust reset [name]` | Reset trust score to 1.0 |
+| `/snapper-trust enable [name]` | Enable trust enforcement |
+| `/snapper-trust disable [name]` | Disable trust enforcement |
+| `/snapper-block` | Emergency block ALL agent actions |
+| `/snapper-unblock` | Resume normal operation |
+| `/snapper-purge` | Clean up old bot messages |
+
+### Notification Examples
+
+**Blocked command:**
+```
+⚠️ WARNING: Action Blocked
+
+Agent openclaw-main attempted: rm -rf /tmp/test
+Blocked by: Block Dangerous Commands
+
+[✅ Allow Once] [📝 Allow Always]
+```
+
+**Approval request:**
+```
+⚠️ APPROVAL REQUIRED: Browser form submission
+
+Agent: openclaw-main
+Action: browser fill
+Site: https://expedia.com/checkout
+
+[Approve]  [Deny]
+```
+
+**PII detection:**
+```
+🔒 PII Submission Detected
+
+Agent: OpenClaw
+Action: browser fill
+Site: https://expedia.com/checkout
+
+Data being sent:
+  - Credit Card: ****-****-****-1234 exp 12/27 (My Visa)
+
+[Approve]  [Deny]
+```
+
+See [Slack Setup Guide](SLACK_SETUP.md) for full configuration details.
+
+---
+
 ## Rules
 
 Rules define what your AI agents can and cannot do. They are evaluated in priority order (highest first), and the first matching rule wins.
@@ -255,7 +325,7 @@ curl -X PUT https://your-snapper:8443/api/v1/agents/{id} \
 When a rule evaluates to `require_approval`, here's what happens:
 
 1. The agent's action is paused
-2. Snapper sends you a Telegram notification with context and **[Approve] / [Deny]** buttons
+2. Snapper sends you a Telegram or Slack notification with context and **[Approve] / [Deny]** buttons
 3. You review and tap a button
 4. The agent receives the decision and either proceeds or stops
 
@@ -284,7 +354,7 @@ The PII Vault lets you give AI agents access to your personal data (credit cards
 ### How It Works
 
 ```
-1. You store your credit card via Telegram
+1. You store your credit card via Telegram or Slack
    → Encrypted with AES-128, stored in PostgreSQL
    → You get a token: {{SNAPPER_VAULT:a7f3b2c1}}
 
@@ -292,7 +362,7 @@ The PII Vault lets you give AI agents access to your personal data (credit cards
 
 3. When the agent fills the payment form, Snapper intercepts:
    → Detects the vault token
-   → Sends you a Telegram notification showing what's being sent and where
+   → Sends you a Telegram or Slack notification showing what's being sent and where
    → Waits for your approval
 
 4. You approve → Snapper decrypts the value and passes it to the agent
@@ -384,6 +454,8 @@ Bot:  Vault entry created!
 
 At any point during multi-step entry, type `/cancel` to abort.
 
+**Adding entries via Slack** works the same way — use `/snapper-vault add "label" type` to start the flow, then reply with values in DMs. Type `cancel` at any step to abort.
+
 ### Managing Entries
 
 ```
@@ -407,7 +479,7 @@ With domain restrictions, Snapper will deny any attempt to use that token on a s
 ### Security Design
 
 - **Encryption:** Values are encrypted with Fernet (AES-128-CBC + HMAC-SHA256) using a key derived from your Snapper SECRET_KEY via HKDF
-- **Multi-tenant:** Each user's entries are isolated by their Telegram chat ID. You can only see and manage your own data.
+- **Multi-tenant:** Each user's entries are isolated by their Telegram chat ID or Slack user ID. You can only see and manage your own data.
 - **Auto-delete messages:** Every message containing raw PII is deleted from Telegram immediately after processing
 - **Masked display:** Raw values are never shown — only masked versions (e.g., `****-****-****-1234`)
 - **Usage tracking:** Each token tracks use count, last used timestamp, and last used domain
@@ -449,8 +521,16 @@ In **auto** mode, vault tokens are resolved immediately. The action is logged bu
 
 If something goes wrong, block every agent action instantly:
 
+**Via Telegram:**
 ```
 /block
+→ Are you sure? This will block ALL agent actions.
+  [CONFIRM BLOCK ALL] [Cancel]
+```
+
+**Via Slack:**
+```
+/snapper-block
 → Are you sure? This will block ALL agent actions.
   [CONFIRM BLOCK ALL] [Cancel]
 ```
@@ -459,8 +539,9 @@ Once blocked, all agent requests are denied until you unblock. A red alert appea
 
 ### Unblock
 
+**Via Telegram:** `/unblock`
+**Via Slack:** `/snapper-unblock`
 ```
-/unblock
 → Normal operation resumed.
 ```
 
@@ -629,3 +710,18 @@ Default timeout is 5 minutes. If you miss the notification, the request is autom
 - Token may be expired (check `max_uses` or `expires_at`)
 - Domain restriction may be blocking (check `/vault domains`)
 - Token may belong to a different user (multi-tenant isolation)
+
+### Slack bot not responding to slash commands
+
+1. Verify `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set in `.env`
+2. Check that Socket Mode is enabled in the Slack app settings
+3. Restart containers: `docker compose up -d --force-recreate`
+4. Check logs: `docker compose logs app | grep -i slack`
+5. Verify slash commands are defined in your Slack app configuration
+
+### Slack notifications going to wrong channel
+
+Check the agent's `owner_chat_id`:
+- Must start with `U` (e.g., `U0ACYA78DSR`) for Slack DM routing
+- Numeric values route to Telegram instead
+- Update via dashboard (edit agent) or API

@@ -419,9 +419,14 @@ DEBUG=false
 LOG_LEVEL=INFO
 ENVIRONMENT=production
 
-# Notifications (configure after deploy — see docs/TELEGRAM_SETUP.md)
+# Notifications (configure after deploy)
+# Telegram: see docs/TELEGRAM_SETUP.md
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
+# Slack: see docs/SLACK_SETUP.md
+SLACK_BOT_TOKEN=
+SLACK_APP_TOKEN=
+SLACK_ALERT_CHANNEL=
 ENVEOF
 
     chmod 600 "$INSTALL_DIR/.env"
@@ -868,8 +873,19 @@ if [[ -f "$INSTALL_DIR/.env" ]]; then
     if [[ -n "$TG_TOKEN" ]]; then
         sec_pass "Telegram bot configured for approval alerts"
     else
-        sec_warn "Telegram not configured — no approval notifications"
-        echo -e "         Action: Add TELEGRAM_BOT_TOKEN to .env"
+        sec_warn "Telegram not configured — no Telegram notifications"
+        echo -e "         Action: Add TELEGRAM_BOT_TOKEN to .env (see docs/TELEGRAM_SETUP.md)"
+    fi
+
+    # Slack
+    SLACK_TOKEN=$(grep "^SLACK_BOT_TOKEN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [[ -n "$SLACK_TOKEN" ]]; then
+        sec_pass "Slack bot configured for approval alerts"
+    else
+        if [[ -z "$TG_TOKEN" ]]; then
+            sec_warn "No notification channel configured (Telegram or Slack)"
+            echo -e "         Action: See docs/TELEGRAM_SETUP.md or docs/SLACK_SETUP.md"
+        fi
     fi
 
     # ALLOWED_HOSTS / ALLOWED_ORIGINS
@@ -956,11 +972,11 @@ echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
 if [[ "${OC_CONFIGURED:-}" == "true" ]]; then
     echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/${NC} to see the dashboard"
-    echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
+    echo -e "    2. Set up notifications: docs/TELEGRAM_SETUP.md or docs/SLACK_SETUP.md"
     echo -e "    3. Test: Tell your OpenClaw agent to 'run rm -rf /' (should be blocked)"
 else
     echo -e "    1. Open ${BLUE}${EXTERNAL_URL}/wizard${NC} to register your first agent"
-    echo -e "    2. Set up Telegram alerts: see docs/TELEGRAM_SETUP.md"
+    echo -e "    2. Set up notifications: docs/TELEGRAM_SETUP.md or docs/SLACK_SETUP.md"
     echo -e "    3. Run security check anytime: python3 scripts/snapper-cli.py security-check"
 fi
 echo ""

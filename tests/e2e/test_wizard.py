@@ -91,6 +91,57 @@ class TestWizardStep2AgentType:
         assert "border-primary-500" in class_attr
 
 
+class TestWizardStep4Notifications:
+    """Step 4: Notification options show both Telegram and Slack."""
+
+    @pytest.fixture
+    def step4_page(self, wizard_page: Page) -> Page:
+        """Navigate to step 4 (notifications) via a quick registration flow."""
+        page = wizard_page
+        page.click("text=Continue")
+        page.wait_for_selector("#step2", state="visible")
+        page.click('[data-type="openclaw"]')
+        page.click("#register-btn")
+        page.wait_for_selector("#register-success", state="visible", timeout=10000)
+        page.wait_for_selector("#step3", state="visible", timeout=5000)
+        page.click("#apply-btn")
+        page.wait_for_selector("#step4", state="visible", timeout=5000)
+        return page
+
+    def test_telegram_option_visible(self, step4_page: Page):
+        """Telegram notification option is visible in step 4."""
+        telegram_option = step4_page.locator('[data-channel="telegram"]')
+        expect(telegram_option).to_be_visible()
+        expect(step4_page.locator("#notify-telegram")).to_be_visible()
+        step4_page.screenshot(
+            path=str(SCREENSHOT_DIR / "wizard_step4_notifications.png")
+        )
+
+    def test_slack_option_visible(self, step4_page: Page):
+        """Slack notification option is visible in step 4."""
+        slack_option = step4_page.locator('[data-channel="slack"]')
+        expect(slack_option).to_be_visible()
+        expect(step4_page.locator("#notify-slack")).to_be_visible()
+
+    def test_telegram_fields_toggle(self, step4_page: Page):
+        """Checking Telegram shows token/chat fields."""
+        step4_page.click('[data-channel="telegram"]')
+        expect(step4_page.locator("#telegram-fields")).to_be_visible()
+        expect(step4_page.locator("#wizard-telegram-token")).to_be_visible()
+        expect(step4_page.locator("#wizard-telegram-chat")).to_be_visible()
+
+    def test_slack_fields_toggle(self, step4_page: Page):
+        """Checking Slack shows webhook field."""
+        step4_page.click('[data-channel="slack"]')
+        expect(step4_page.locator("#slack-fields")).to_be_visible()
+        expect(step4_page.locator("#wizard-slack-webhook")).to_be_visible()
+
+    def test_skip_notifications_advances(self, step4_page: Page):
+        """Skip for now advances to step 5."""
+        step4_page.click("text=Skip for now")
+        expect(step4_page.locator("#step5")).to_be_visible(timeout=10000)
+
+
 class TestWizardOpenClawFlow:
     """Full wizard flow selecting OpenClaw."""
 

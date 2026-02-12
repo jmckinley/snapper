@@ -323,3 +323,7 @@ After approval, vault tokens are decrypted and the real values are passed to the
 - **Webhook verification** — Snapper validates webhook calls come from Telegram
 - **Chat ID restriction** — Optionally set `TELEGRAM_CHAT_ID` to only respond to specific chats
 - **Emergency block** — Creates a priority-10000 deny rule that overrides all others
+
+## Prefer Slack?
+
+Snapper also supports a full-featured Slack bot with slash commands and interactive Block Kit buttons. Socket Mode means no public URL or webhook setup is needed. See [Slack Setup Guide](SLACK_SETUP.md).

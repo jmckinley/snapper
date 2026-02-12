@@ -158,7 +158,7 @@ On first visit to the dashboard, Snapper automatically redirects you to the **se
    - **Strict** — Deny by default, explicit allowlist only
    - **Permissive** — Learning mode, logs everything but blocks nothing (good for initial setup)
 
-3. **Set up Telegram notifications** (optional) — Enter your bot token and chat ID.
+3. **Set up notifications** (optional) — Telegram and/or Slack. Enter your bot token and chat ID.
 
 4. **Get your config snippet** — For known agents (OpenClaw, Claude Code, Cursor, Windsurf, Cline), Snapper auto-installs hook config. For custom agents, copy the config snippet manually.
 
@@ -172,6 +172,15 @@ After setup, your agent is protected and rules are applied.
 → ALLOWED
 
 /test run rm -rf /
+→ DENIED by rule "Block dangerous commands"
+```
+
+**Via Slack** (if configured):
+```
+/snapper-test run ls
+→ ALLOWED
+
+/snapper-test run rm -rf /
 → DENIED by rule "Block dangerous commands"
 ```
 
@@ -224,6 +233,16 @@ Open http://localhost:8000 and check the Rules page to see your active rules.
 | `TELEGRAM_CHAT_ID` | Your chat ID (optional, restricts access) |
 
 See [Telegram Setup Guide](TELEGRAM_SETUP.md) for details.
+
+### Slack Integration
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_BOT_TOKEN` | Bot token (`xoxb-...`) from your Slack app |
+| `SLACK_APP_TOKEN` | App-level token (`xapp-...`) for Socket Mode |
+| `SLACK_ALERT_CHANNEL` | Default channel ID for alerts (optional fallback) |
+
+See [Slack Setup Guide](SLACK_SETUP.md) for details.
 
 See `.env.example` for the full list including database, Redis, Celery, alerting, and notification settings.
 
@@ -370,6 +389,7 @@ rm -rf /opt/snapper
 ## What's Next
 
 - [Telegram Setup](TELEGRAM_SETUP.md) — Approval notifications on your phone
+- [Slack Setup](SLACK_SETUP.md) — Approval notifications in Slack
 - [User Guide](USER_GUIDE.md) — Rules, PII vault, approval workflows, agent setup for all types
 - [Security Guide](SECURITY.md) — Encryption, PII detection, rate limiting, infrastructure hardening
 - [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) — Plugin vs shell hook details (OpenClaw-specific)
