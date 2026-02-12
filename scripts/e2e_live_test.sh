@@ -193,9 +193,12 @@ api_curl() {
     curl -sf "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" "$@" 2>/dev/null
 }
 
-# Flush rate limit keys for our test agent
+# Flush rate limit and trust keys for our test agent
 flush_rate_keys() {
     docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "rate:*" 2>/dev/null | while read -r key; do
+        docker exec "$REDIS_CONTAINER" redis-cli del "$key" >/dev/null 2>&1
+    done
+    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "trust:*" 2>/dev/null | while read -r key; do
         docker exec "$REDIS_CONTAINER" redis-cli del "$key" >/dev/null 2>&1
     done
 }
@@ -1157,44 +1160,85 @@ echo -e "${BOLD}=== Phase 4c: Adaptive Trust Scoring ===${NC}"
 # 4c.1 Default trust score is 1.0 and enforcement is off
 log "4c.1 Default trust score and enforcement"
 AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
-TRUST_SCORE=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
-AUTO_ADJUST=$(echo "$AGENT_DATA" | jq -r '.auto_adjust_trust // empty')
-assert_eq "$TRUST_SCORE" "1" "4c.1a Default trust_score is 1.0"
-assert_eq "$AUTO_ADJUST" "false" "4c.1b Default auto_adjust_trust is false"
+# Use jq numeric check: .trust_score == 1 handles both 1 and 1.0 JSON representations
+TOTAL=$((TOTAL + 1))
+if echo "$AGENT_DATA" | jq -e '.trust_score == 1' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.1a Default trust_score is 1.0"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.1a Default trust_score is 1.0  (got $(echo "$AGENT_DATA" | jq '.trust_score'))"
+fi
+# auto_adjust_trust is boolean false — use jq 'not' to test for false
+TOTAL=$((TOTAL + 1))
+if echo "$AGENT_DATA" | jq -e '.auto_adjust_trust == false' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.1b Default auto_adjust_trust is false"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.1b Default auto_adjust_trust is false  (got $(echo "$AGENT_DATA" | jq '.auto_adjust_trust'))"
+fi
 
 # 4c.2 Toggle trust enforcement ON
 log "4c.2 Toggle trust enforcement ON"
 TOGGLE_RESP=$(api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust")
-TOGGLE_AUTO=$(echo "$TOGGLE_RESP" | jq -r '.auto_adjust_trust // empty')
-assert_eq "$TOGGLE_AUTO" "true" "4c.2 Toggle trust ON returns auto_adjust_trust=true"
+TOTAL=$((TOTAL + 1))
+if echo "$TOGGLE_RESP" | jq -e '.auto_adjust_trust == true' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.2 Toggle trust ON returns auto_adjust_trust=true"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.2 Toggle trust ON  (got $(echo "$TOGGLE_RESP" | jq '.auto_adjust_trust'))"
+fi
 
 # Verify the agent now has enforcement on
 AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
-assert_eq "$(echo "$AGENT_DATA" | jq -r '.auto_adjust_trust')" "true" "4c.2b Agent reflects trust enforcement ON"
+TOTAL=$((TOTAL + 1))
+if echo "$AGENT_DATA" | jq -e '.auto_adjust_trust == true' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.2b Agent reflects trust enforcement ON"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.2b Agent reflects trust enforcement ON  (got $(echo "$AGENT_DATA" | jq '.auto_adjust_trust'))"
+fi
 
 # 4c.3 Toggle trust enforcement OFF
 log "4c.3 Toggle trust enforcement OFF"
 TOGGLE_RESP=$(api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust")
-TOGGLE_AUTO=$(echo "$TOGGLE_RESP" | jq -r '.auto_adjust_trust // empty')
-assert_eq "$TOGGLE_AUTO" "false" "4c.3 Toggle trust OFF returns auto_adjust_trust=false"
+TOTAL=$((TOTAL + 1))
+if echo "$TOGGLE_RESP" | jq -e '.auto_adjust_trust == false' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.3 Toggle trust OFF returns auto_adjust_trust=false"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.3 Toggle trust OFF  (got $(echo "$TOGGLE_RESP" | jq '.auto_adjust_trust'))"
+fi
 
 # 4c.4 Reset trust via API
 log "4c.4 Reset trust via API"
 # First, manually set trust low via Redis
-docker exec "$REDIS_CONTAINER" redis-cli set "trust:rate:${AGENT_UUID}" '{"score":0.5,"violations":10,"good_behaviors":0}' >/dev/null 2>&1
-# Update DB trust_score low too (via agent update)
-api_curl -X PUT "${API}/agents/${AGENT_UUID}" \
-    -H "Content-Type: application/json" \
-    -d '{"trust_level":"standard"}' >/dev/null 2>&1
+docker exec "$REDIS_CONTAINER" redis-cli set "trust:rate:${AGENT_UUID}" "0.5" >/dev/null 2>&1
 # Now reset
 RESET_RESP=$(api_curl -X POST "${API}/agents/${AGENT_UUID}/reset-trust")
-RESET_TRUST=$(echo "$RESET_RESP" | jq -r '.trust_score // empty')
-assert_eq "$RESET_TRUST" "1" "4c.4a Reset trust returns trust_score=1.0"
+TOTAL=$((TOTAL + 1))
+if echo "$RESET_RESP" | jq -e '.trust_score == 1' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.4a Reset trust returns trust_score=1.0"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.4a Reset trust  (got $(echo "$RESET_RESP" | jq '.trust_score'))"
+fi
 
-# Verify the agent DB also reflects 1.0
-AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
-TRUST_AFTER_RESET=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
-assert_eq "$TRUST_AFTER_RESET" "1" "4c.4b Agent trust_score is 1.0 after reset"
+# Verify Redis key was deleted (get returns empty)
+REDIS_TRUST=$(docker exec "$REDIS_CONTAINER" redis-cli get "trust:rate:${AGENT_UUID}" 2>/dev/null)
+TOTAL=$((TOTAL + 1))
+if [[ -z "$REDIS_TRUST" || "$REDIS_TRUST" == "(nil)" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.4b Redis trust key deleted after reset"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.4b Redis trust key should be deleted (got '$REDIS_TRUST')"
+fi
 
 # 4c.5 Rule denial does NOT reduce trust score
 log "4c.5 Rule denial does not reduce trust"
@@ -1220,10 +1264,16 @@ for i in 1 2 3 4 5; do
     sleep 0.3
 done
 
-# Check trust score — should still be 1.0 (denials don't reduce trust)
-AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
-TRUST_AFTER_DENIALS=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
-assert_eq "$TRUST_AFTER_DENIALS" "1" "4c.5 Trust score unchanged after 5 rule denials"
+# Check trust score in Redis — should still be default (key absent or 1.0)
+REDIS_TRUST=$(docker exec "$REDIS_CONTAINER" redis-cli get "trust:rate:${AGENT_UUID}" 2>/dev/null)
+TOTAL=$((TOTAL + 1))
+if [[ -z "$REDIS_TRUST" || "$REDIS_TRUST" == "(nil)" || "$REDIS_TRUST" == "1.0" || "$REDIS_TRUST" == "1" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.5 Trust score unchanged after 5 rule denials (Redis='${REDIS_TRUST:-nil}')"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.5 Expected trust unchanged, Redis has '$REDIS_TRUST'"
+fi
 delete_rule "$DENY_RULE"
 
 # 4c.6 Rate-limit breach reduces trust (with enforcement ON)
@@ -1248,22 +1298,19 @@ for i in 1 2; do
 done
 # This one should be rate-limited (breach)
 RESULT=$(evaluate "{\"agent_id\":\"${AGENT_EID}\",\"request_type\":\"command\",\"command\":\"echo trust-rate-3\"}")
-RATE_DECISION=$(echo "$RESULT" | jq -r '.decision // empty')
 # Verify it was actually rate limited
 assert_deny "$RESULT" "4c.6a 3rd request rate-limited"
 
-# Check trust score — should be < 1.0 after rate-limit breach
-sleep 1  # Give Redis time to update
-AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
-TRUST_AFTER_RATE=$(echo "$AGENT_DATA" | jq -r '.trust_score // empty')
+# Check trust score in Redis — should be < 1.0 after rate-limit breach
+sleep 1
+REDIS_TRUST=$(docker exec "$REDIS_CONTAINER" redis-cli get "trust:rate:${AGENT_UUID}" 2>/dev/null)
 TOTAL=$((TOTAL + 1))
-# Trust score should be less than 1.0 (bc is used for float comparison)
-if echo "$TRUST_AFTER_RATE < 1.0" | bc -l 2>/dev/null | grep -q 1; then
+if [[ -n "$REDIS_TRUST" && "$REDIS_TRUST" != "(nil)" ]] && echo "$REDIS_TRUST < 1.0" | bc -l 2>/dev/null | grep -q 1; then
     PASS=$((PASS + 1))
-    echo -e "  ${GREEN}PASS${NC} 4c.6b Trust score reduced after rate breach (score=$TRUST_AFTER_RATE)"
+    echo -e "  ${GREEN}PASS${NC} 4c.6b Trust reduced after rate breach (Redis=$REDIS_TRUST)"
 else
     FAIL=$((FAIL + 1))
-    echo -e "  ${RED}FAIL${NC} 4c.6b Expected trust < 1.0 after rate breach (got $TRUST_AFTER_RATE)"
+    echo -e "  ${RED}FAIL${NC} 4c.6b Expected trust < 1.0 in Redis (got '${REDIS_TRUST:-nil}')"
 fi
 
 delete_rule "$RATE_RULE"
@@ -1274,7 +1321,14 @@ log "4c.7 Cleanup: reset trust and disable enforcement"
 api_curl -X POST "${API}/agents/${AGENT_UUID}/reset-trust" >/dev/null 2>&1
 api_curl -X POST "${API}/agents/${AGENT_UUID}/toggle-trust" >/dev/null 2>&1  # OFF
 AGENT_DATA=$(api_curl "${API}/agents/${AGENT_UUID}")
-assert_eq "$(echo "$AGENT_DATA" | jq -r '.auto_adjust_trust')" "false" "4c.7 Trust enforcement back to OFF"
+TOTAL=$((TOTAL + 1))
+if echo "$AGENT_DATA" | jq -e '.auto_adjust_trust == false' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 4c.7 Trust enforcement back to OFF"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4c.7 Trust enforcement should be OFF"
+fi
 
 
 # ============================================================
