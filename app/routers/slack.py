@@ -1250,9 +1250,10 @@ async def _action_approval(body, respond, action: str):
         return
 
     emoji = ":white_check_mark:" if action == "approve" else ":x:"
+    action_past = "APPROVED" if action == "approve" else "DENIED"
     await respond(
         replace_original=True,
-        text=f"{emoji} Request *{action.upper()}D* by @{username}\nRequest ID: `{approval_id}`",
+        text=f"{emoji} Request *{action_past}* by @{username}\nRequest ID: `{approval_id}`",
     )
 
 

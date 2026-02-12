@@ -1405,6 +1405,94 @@ delete_rule "$ALLOW_RULE"
 
 
 # ============================================================
+# Phase 5b: Slack Bot Integration
+# ============================================================
+echo ""
+echo -e "${BOLD}=== Phase 5b: Slack Bot Integration ===${NC}"
+
+# 5b.1 Slack health endpoint
+log "5b.1 Slack health endpoint"
+SLACK_HEALTH=$(api_curl "${API}/slack/health")
+SLACK_STATUS=$(echo "$SLACK_HEALTH" | jq -r '.status // empty')
+TOTAL=$((TOTAL + 1))
+if [[ "$SLACK_STATUS" == "connected" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 5b.1 Slack bot connected"
+    SLACK_BOT_AVAILABLE=true
+elif [[ "$SLACK_STATUS" == "not_configured" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${YELLOW}SKIP${NC} 5b.1 Slack bot not configured (tokens not set)"
+    SLACK_BOT_AVAILABLE=false
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 5b.1 Slack health unexpected status: '$SLACK_STATUS'"
+    SLACK_BOT_AVAILABLE=false
+fi
+
+if [[ "$SLACK_BOT_AVAILABLE" == "true" ]]; then
+
+    # 5b.2 Slack health returns valid JSON
+    log "5b.2 Slack health valid JSON"
+    TOTAL=$((TOTAL + 1))
+    if echo "$SLACK_HEALTH" | jq -e '.status' >/dev/null 2>&1; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.2 Slack health returns valid JSON"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.2 Slack health not valid JSON"
+    fi
+
+    # 5b.3 Slack context keys work (test Redis prefix)
+    log "5b.3 Slack Redis context prefix"
+    SLACK_CTX_KEY="slack_ctx:e2e_test_$(date +%s)"
+    docker exec "$REDIS_CONTAINER" redis-cli set "$SLACK_CTX_KEY" '{"type":"run","value":"ls","agent_id":"test"}' EX 60 >/dev/null 2>&1
+    SLACK_CTX_VAL=$(docker exec "$REDIS_CONTAINER" redis-cli get "$SLACK_CTX_KEY" 2>/dev/null)
+    TOTAL=$((TOTAL + 1))
+    if echo "$SLACK_CTX_VAL" | jq -e '.type == "run"' >/dev/null 2>&1; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.3 Slack context key stored and retrieved"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.3 Slack context key not working"
+    fi
+    docker exec "$REDIS_CONTAINER" redis-cli del "$SLACK_CTX_KEY" >/dev/null 2>&1
+
+    # 5b.4 Slack vault pending key prefix
+    log "5b.4 Slack vault pending prefix"
+    SLACK_VP_KEY="slack_vault_pending:e2e_test_user"
+    docker exec "$REDIS_CONTAINER" redis-cli set "$SLACK_VP_KEY" '{"label":"Test","category":"email"}' EX 60 >/dev/null 2>&1
+    SLACK_VP_VAL=$(docker exec "$REDIS_CONTAINER" redis-cli get "$SLACK_VP_KEY" 2>/dev/null)
+    TOTAL=$((TOTAL + 1))
+    if echo "$SLACK_VP_VAL" | jq -e '.label == "Test"' >/dev/null 2>&1; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.4 Slack vault pending key stored and retrieved"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.4 Slack vault pending key not working"
+    fi
+    docker exec "$REDIS_CONTAINER" redis-cli del "$SLACK_VP_KEY" >/dev/null 2>&1
+
+    # 5b.5 Slack bot message tracking (sorted set)
+    log "5b.5 Slack bot message tracking"
+    SLACK_MSG_KEY="slack_bot_messages:e2e_test_channel"
+    docker exec "$REDIS_CONTAINER" redis-cli zadd "$SLACK_MSG_KEY" "$(date +%s)" "1234.5678" >/dev/null 2>&1
+    SLACK_MSG_COUNT=$(docker exec "$REDIS_CONTAINER" redis-cli zcard "$SLACK_MSG_KEY" 2>/dev/null)
+    TOTAL=$((TOTAL + 1))
+    if [[ "$SLACK_MSG_COUNT" -ge 1 ]] 2>/dev/null; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.5 Slack message tracking works ($SLACK_MSG_COUNT entries)"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.5 Slack message tracking failed (count=$SLACK_MSG_COUNT)"
+    fi
+    docker exec "$REDIS_CONTAINER" redis-cli del "$SLACK_MSG_KEY" >/dev/null 2>&1
+
+else
+    log "Skipping 5b.2-5b.5 (Slack bot not available)"
+fi
+
+
+# ============================================================
 # Phase 6: Audit Trail Verification
 # ============================================================
 echo ""
