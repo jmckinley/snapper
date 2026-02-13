@@ -14,7 +14,7 @@ Thank you for your interest in contributing to Snapper. This document covers the
 
 ## Developer Certificate of Origin (DCO)
 
-All contributions to Snapper must include a `Signed-off-by` line in the commit message, certifying that you have the right to submit the contribution under the project's MIT license.
+All contributions to Snapper must include a `Signed-off-by` line in the commit message, certifying that you have the right to submit the contribution under the project's PolyForm Noncommercial License.
 
 ### What is the DCO?
 
@@ -124,4 +124,4 @@ Open an issue at https://github.com/jmckinley/snapper/issues with:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the PolyForm Noncommercial License 1.0.0.

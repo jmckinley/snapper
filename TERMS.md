@@ -34,7 +34,7 @@ Snapper is currently in **beta**. By using the Software, you acknowledge and agr
 
 ## 5. License
 
-Snapper is open-source software licensed under the MIT License. See [LICENSE](LICENSE) for the full license text. The MIT License governs your right to use, copy, modify, and distribute the Software. These Terms govern additional conditions of use.
+Snapper is source-available software licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0). See [LICENSE](LICENSE) for the full license text. The PolyForm Noncommercial License governs your right to use, copy, modify, and distribute the Software for noncommercial purposes. Commercial use requires a separate license from McKinley Labs LLC. These Terms govern additional conditions of use.
 
 ## 6. Assumption of Risk
 
@@ -223,7 +223,7 @@ If any provision of these Terms is held to be invalid, illegal, or unenforceable
 
 ## 24. Entire Agreement
 
-These Terms, together with the MIT License, constitute the entire agreement between you and us regarding the Software and supersede all prior or contemporaneous agreements, representations, warranties, and understandings, whether written, oral, or implied.
+These Terms, together with the PolyForm Noncommercial License 1.0.0, constitute the entire agreement between you and us regarding the Software and supersede all prior or contemporaneous agreements, representations, warranties, and understandings, whether written, oral, or implied.
 
 ## 25. Waiver
 

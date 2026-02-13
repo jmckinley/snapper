@@ -2,7 +2,7 @@
 
 **Agent Application Firewall (AAF)** — Fine-grained control over what AI assistants can do.
 
-![Snapper Dashboard](https://img.shields.io/badge/status-beta-yellow) ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+![Snapper Dashboard](https://img.shields.io/badge/status-beta-yellow) ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-PolyForm--NonCommercial-blue)
 
 ## What is Snapper?
 
@@ -672,13 +672,13 @@ For production, prefix with `-f docker-compose.yml -f docker-compose.prod.yml`.
 
 ## Security
 
-> **Snapper is a security tool provided as-is under the MIT License.** It is designed to reduce risk, not eliminate it. Snapper does not guarantee complete protection against all threats. Users are responsible for their own security posture, configuration, and risk assessment. See [TERMS.md](TERMS.md) for full details.
+> **Snapper is a security tool provided as-is under the PolyForm Noncommercial License 1.0.0.** It is designed to reduce risk, not eliminate it. Snapper does not guarantee complete protection against all threats. Users are responsible for their own security posture, configuration, and risk assessment. See [TERMS.md](TERMS.md) for full details.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md). Do not open a public issue for security vulnerabilities.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details. Additional terms in [TERMS.md](TERMS.md).
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — see [LICENSE](LICENSE) for details. Free for personal use, research, education, and noncommercial organizations. Commercial use requires a separate license. Additional terms in [TERMS.md](TERMS.md).
 
 ## Contributing
 

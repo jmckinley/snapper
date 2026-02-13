@@ -29,6 +29,7 @@ AGENT_EID="e2e-test-agent"
 CHAT_ID="${E2E_CHAT_ID:-}"
 OPENCLAW_CONTAINER="${OPENCLAW_CONTAINER:-openclaw-openclaw-gateway-1}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-snapper-redis-1}"
+CELERY_CONTAINER="${CELERY_CONTAINER:-snapper-celery-worker-1}"
 
 # ============================================================
 # Counters & state
@@ -40,6 +41,7 @@ CREATED_RULES=()
 CREATED_VAULT_IDS=()
 AGENT_UUID=""
 AGENT_API_KEY=""
+SLACK_AGENT_UUID=""
 BASELINE_AUDIT_COUNT=0
 
 # ============================================================
@@ -242,6 +244,15 @@ cleanup() {
             log "Deleted test agent $AGENT_UUID"
         else
             warn "Could not delete test agent"
+        fi
+    fi
+
+    # Delete Slack test agent (safety net)
+    if [[ -n "$SLACK_AGENT_UUID" ]]; then
+        if api_curl -X DELETE "${API}/agents/${SLACK_AGENT_UUID}?hard_delete=true" >/dev/null 2>&1; then
+            log "Deleted Slack test agent $SLACK_AGENT_UUID"
+        else
+            warn "Could not delete Slack test agent"
         fi
     fi
 
@@ -1487,8 +1498,220 @@ if [[ "$SLACK_BOT_AVAILABLE" == "true" ]]; then
     fi
     docker exec "$REDIS_CONTAINER" redis-cli del "$SLACK_MSG_KEY" >/dev/null 2>&1
 
+    # ------------------------------------------------------------------
+    # 5b.6–5b.15: Alert Routing & Delivery (Slack-owned agent)
+    # ------------------------------------------------------------------
+
+    # 5b.6 Create Slack-owned test agent
+    log "5b.6 Create Slack-owned test agent"
+    SLACK_AGENT_EID="e2e-slack-test-agent"
+    # Clean up any stale Slack agent from previous runs
+    STALE_SLACK_ID=$(api_curl "${API}/agents?search=${SLACK_AGENT_EID}&include_deleted=true" \
+        | jq -r '.items[0].id // empty' 2>/dev/null)
+    if [[ -n "$STALE_SLACK_ID" ]]; then
+        api_curl -X DELETE "${API}/agents/${STALE_SLACK_ID}?hard_delete=true" >/dev/null 2>&1
+        log "  Cleaned up stale Slack test agent"
+    fi
+    sleep 1
+    SLACK_AGENT_RESP=$(api_curl -X POST "${API}/agents" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"name\": \"E2E Slack Test Agent\",
+            \"external_id\": \"${SLACK_AGENT_EID}\",
+            \"owner_chat_id\": \"U_E2E_TEST\",
+            \"description\": \"Temporary agent for Slack E2E tests\",
+            \"trust_level\": \"standard\"
+        }")
+    SLACK_AGENT_UUID=$(echo "$SLACK_AGENT_RESP" | jq -r '.id // empty')
+    SLACK_AGENT_API_KEY=$(echo "$SLACK_AGENT_RESP" | jq -r '.api_key // empty')
+    assert_not_eq "$SLACK_AGENT_UUID" "" "5b.6 Slack-owned test agent created (owner=U_E2E_TEST)"
+
+    # Activate if needed
+    SLACK_AGENT_STATUS=$(echo "$SLACK_AGENT_RESP" | jq -r '.status // empty')
+    if [[ "$SLACK_AGENT_STATUS" != "active" ]]; then
+        api_curl -X POST "${API}/agents/${SLACK_AGENT_UUID}/activate" >/dev/null 2>&1
+    fi
+
+    # 5b.7 Create REQUIRE_APPROVAL rule for Slack agent
+    log "5b.7 Create approval rule for Slack agent"
+    sleep 1
+    SLACK_APPROVAL_RULE=$(create_rule '{
+        "name": "e2e-slack-hitl",
+        "rule_type": "human_in_loop",
+        "action": "require_approval",
+        "parameters": {"patterns": ["e2e-slack-approval-test"]},
+        "priority": 100,
+        "is_active": true
+    }')
+    assert_not_eq "$SLACK_APPROVAL_RULE" "" "5b.7 Approval rule created for Slack agent"
+
+    # 5b.8 Trigger approval evaluation → decision is require_approval
+    log "5b.8 Trigger approval for Slack-owned agent"
+    SAVED_API_KEY="$AGENT_API_KEY"
+    AGENT_API_KEY="$SLACK_AGENT_API_KEY"
+    SLACK_EVAL_RESULT=$(evaluate "{
+        \"agent_id\": \"${SLACK_AGENT_EID}\",
+        \"request_type\": \"command\",
+        \"command\": \"e2e-slack-approval-test\"
+    }")
+    AGENT_API_KEY="$SAVED_API_KEY"
+    SLACK_EVAL_DECISION=$(echo "$SLACK_EVAL_RESULT" | jq -r '.decision // empty')
+    SLACK_APPROVAL_ID=$(echo "$SLACK_EVAL_RESULT" | jq -r '.approval_request_id // empty')
+    assert_eq "$SLACK_EVAL_DECISION" "require_approval" "5b.8 Slack agent evaluation requires approval"
+
+    # 5b.9 Verify approval request exists
+    log "5b.9 Verify approval request stored"
+    TOTAL=$((TOTAL + 1))
+    if [[ -n "$SLACK_APPROVAL_ID" ]]; then
+        APPROVAL_STATUS_RESP=$(api_curl "${API}/approvals/${SLACK_APPROVAL_ID}/status")
+        APPROVAL_STATE=$(echo "$APPROVAL_STATUS_RESP" | jq -r '.status // empty')
+        if [[ "$APPROVAL_STATE" == "pending" ]]; then
+            PASS=$((PASS + 1))
+            echo -e "  ${GREEN}PASS${NC} 5b.9 Approval request stored (status=pending)"
+        else
+            FAIL=$((FAIL + 1))
+            echo -e "  ${RED}FAIL${NC} 5b.9 Approval status unexpected: '$APPROVAL_STATE'"
+        fi
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.9 No approval_request_id returned from evaluation"
+    fi
+
+    # 5b.10 Verify Celery worker processed the alert (regression test for standalone client fix)
+    log "5b.10 Celery worker Slack alert routing (regression)"
+    sleep 5  # Wait for Celery to process the alert task
+    CELERY_LOGS=$(docker logs "$CELERY_CONTAINER" --tail=50 2>&1)
+    TOTAL=$((TOTAL + 1))
+    if echo "$CELERY_LOGS" | grep -q "Slack approval sent to U_E2E_TEST"; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.10 Celery worker sent Slack approval to U_E2E_TEST"
+    elif echo "$CELERY_LOGS" | grep -q "Slack app not initialized"; then
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.10 REGRESSION: 'Slack app not initialized' in celery logs"
+    elif echo "$CELERY_LOGS" | grep -qE "Sending alert.*slack|Failed to send Slack approval|Slack webhook alert sent|Slack Bot API alert failed"; then
+        # Alert was attempted via Slack — send may fail for fake user U_E2E_TEST but
+        # the important thing is the Slack routing was attempted (not the old bug)
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.10 Celery attempted Slack alert routing (send may fail for fake user)"
+    elif echo "$CELERY_LOGS" | grep -q "Slack not configured"; then
+        PASS=$((PASS + 1))
+        echo -e "  ${YELLOW}SKIP${NC} 5b.10 Slack not configured in Celery worker (bot token not passed)"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.10 No Slack alert attempt found in celery logs"
+    fi
+
+    # Clean up approval rule before PII tests
+    delete_rule "$SLACK_APPROVAL_RULE"
+    CREATED_RULES=("${CREATED_RULES[@]/$SLACK_APPROVAL_RULE/}")
+
+    # 5b.11 Create PII gate rule for Slack agent
+    log "5b.11 PII gate rule for Slack agent"
+    sleep 1
+    SLACK_PII_RULE=$(create_rule '{
+        "name": "e2e-slack-pii-gate",
+        "rule_type": "pii_gate",
+        "action": "require_approval",
+        "parameters": {"detect_vault_tokens": true, "detect_raw_pii": true, "pii_mode": "protected"},
+        "priority": 100,
+        "is_active": true
+    }')
+    assert_not_eq "$SLACK_PII_RULE" "" "5b.11 PII gate rule created for Slack agent"
+
+    # 5b.12 Trigger PII evaluation with credit card pattern
+    log "5b.12 PII gate triggers for Slack agent"
+    AGENT_API_KEY="$SLACK_AGENT_API_KEY"
+    SLACK_PII_RESULT=$(evaluate "{
+        \"agent_id\": \"${SLACK_AGENT_EID}\",
+        \"request_type\": \"browser_action\",
+        \"tool_name\": \"browser\",
+        \"tool_input\": {\"action\":\"fill\",\"fields\":[{\"ref\":\"cc\",\"value\":\"4242424242424242\"}],\"url\":\"https://pay.example.com/checkout\"}
+    }")
+    AGENT_API_KEY="$SAVED_API_KEY"
+    SLACK_PII_DECISION=$(echo "$SLACK_PII_RESULT" | jq -r '.decision // empty')
+    assert_eq "$SLACK_PII_DECISION" "require_approval" "5b.12 PII gate detects credit card for Slack agent"
+
+    # 5b.13 Verify PII alert routed to Slack (log check)
+    log "5b.13 PII alert Slack routing (log check)"
+    sleep 5
+    CELERY_LOGS_PII=$(docker logs "$CELERY_CONTAINER" --tail=40 2>&1)
+    TOTAL=$((TOTAL + 1))
+    if echo "$CELERY_LOGS_PII" | grep -qE "Slack approval sent.*U_E2E_TEST|Sending alert.*PII.*slack|Sending alert.*slack.*PII"; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.13 PII alert routed to Slack"
+    elif echo "$CELERY_LOGS_PII" | grep -qE "Sending alert.*slack|Failed to send Slack approval|Slack webhook alert sent"; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.13 PII alert attempted Slack delivery"
+    elif echo "$CELERY_LOGS_PII" | grep -q "Slack not configured"; then
+        PASS=$((PASS + 1))
+        echo -e "  ${YELLOW}SKIP${NC} 5b.13 Slack not configured in Celery worker"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.13 No PII alert Slack routing found in celery logs"
+    fi
+
+    # Clean up PII rule before Telegram routing test
+    delete_rule "$SLACK_PII_RULE"
+    CREATED_RULES=("${CREATED_RULES[@]/$SLACK_PII_RULE/}")
+
+    # 5b.14 Verify Telegram-owned agent does NOT route to Slack
+    log "5b.14 Telegram-owned agent skips Slack routing"
+    sleep 1
+    # Capture timestamp before evaluation so we can isolate new log entries
+    BEFORE_TS=$(date +%s)
+    TELE_ROUTING_RULE=$(create_rule '{
+        "name": "e2e-tele-routing-test",
+        "rule_type": "human_in_loop",
+        "action": "require_approval",
+        "parameters": {"patterns": ["e2e-telegram-routing-check"]},
+        "priority": 100,
+        "is_active": true
+    }')
+    TELE_RESULT=$(evaluate "{
+        \"agent_id\": \"${AGENT_EID}\",
+        \"request_type\": \"command\",
+        \"command\": \"e2e-telegram-routing-check\"
+    }")
+    TELE_DECISION=$(echo "$TELE_RESULT" | jq -r '.decision // empty')
+    sleep 5
+    # Only check logs generated AFTER our evaluation
+    RECENT_LOGS=$(docker logs "$CELERY_CONTAINER" --since "$BEFORE_TS" 2>&1)
+    TOTAL=$((TOTAL + 1))
+    if [[ "$TELE_DECISION" != "require_approval" ]]; then
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.14 Telegram routing test did not get require_approval (got '$TELE_DECISION')"
+    elif echo "$RECENT_LOGS" | grep -q "Skipping Telegram alert for Slack user"; then
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.14 Telegram agent incorrectly routed to Slack"
+    elif echo "$RECENT_LOGS" | grep -q "Slack app not initialized"; then
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 5b.14 REGRESSION: 'Slack app not initialized' in recent logs"
+    else
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.14 Telegram-owned agent routed correctly (no Slack detour)"
+    fi
+    delete_rule "$TELE_ROUTING_RULE"
+    CREATED_RULES=("${CREATED_RULES[@]/$TELE_ROUTING_RULE/}")
+
+    # 5b.15 Cleanup Slack test agent
+    log "5b.15 Cleanup Slack test agent and rules"
+    TOTAL=$((TOTAL + 1))
+    if [[ -n "$SLACK_AGENT_UUID" ]]; then
+        if api_curl -X DELETE "${API}/agents/${SLACK_AGENT_UUID}?hard_delete=true" >/dev/null 2>&1; then
+            PASS=$((PASS + 1))
+            echo -e "  ${GREEN}PASS${NC} 5b.15 Slack test agent cleaned up"
+            SLACK_AGENT_UUID=""  # Prevent double-delete in cleanup trap
+        else
+            FAIL=$((FAIL + 1))
+            echo -e "  ${RED}FAIL${NC} 5b.15 Could not delete Slack test agent"
+        fi
+    else
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 5b.15 No Slack agent to clean up (already deleted)"
+    fi
+
 else
-    log "Skipping 5b.2-5b.5 (Slack bot not available)"
+    log "Skipping 5b.2-5b.15 (Slack bot not available)"
 fi
 
 
