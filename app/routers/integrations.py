@@ -191,8 +191,8 @@ async def create_rule_from_traffic(
     return {
         "id": str(rule.id),
         "name": rule.name,
-        "rule_type": rule.rule_type.value,
-        "action": rule.action.value,
+        "rule_type": rule.rule_type.value if hasattr(rule.rule_type, "value") else rule.rule_type,
+        "action": rule.action.value if hasattr(rule.action, "value") else rule.action,
         "priority": rule.priority,
         "parameters": rule.parameters,
     }
