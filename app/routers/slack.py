@@ -1976,9 +1976,16 @@ async def send_slack_approval(
 
     Called from alerts.py when the target is a Slack user (U... prefix in owner_chat_id).
     """
+    # If slack_app is not available (e.g., in Celery worker), create a
+    # standalone async web client using the bot token.
     if not slack_app:
-        logger.warning("Slack app not initialized, cannot send approval")
-        return
+        if not settings.SLACK_BOT_TOKEN:
+            logger.warning("Slack bot token not configured, cannot send approval")
+            return
+        from slack_sdk.web.async_client import AsyncWebClient
+        _standalone_client = AsyncWebClient(token=settings.SLACK_BOT_TOKEN)
+    else:
+        _standalone_client = None
 
     severity_emojis = {
         "critical": ":rotating_light:",
@@ -2080,15 +2087,18 @@ async def send_slack_approval(
         except Exception as e:
             logger.exception(f"Failed to store Slack context for buttons: {e}")
 
+    # Pick the API client: prefer slack_app.client, fall back to standalone
+    client = slack_app.client if slack_app else _standalone_client
+
     # Determine target channel: DM to user, or fallback to alert channel
     try:
         if target_user_id.startswith("U"):
-            dm = await slack_app.client.conversations_open(users=target_user_id)
+            dm = await client.conversations_open(users=target_user_id)
             channel = dm["channel"]["id"]
         else:
             channel = target_user_id
 
-        await slack_app.client.chat_postMessage(
+        await client.chat_postMessage(
             channel=channel,
             blocks=blocks,
             text=title,
@@ -2099,7 +2109,7 @@ async def send_slack_approval(
         # Fallback to alert channel
         if settings.SLACK_ALERT_CHANNEL:
             try:
-                await slack_app.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=settings.SLACK_ALERT_CHANNEL,
                     blocks=blocks,
                     text=title,
