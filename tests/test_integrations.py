@@ -83,7 +83,7 @@ class TestListIntegrations:
         """Integration with legacy name-prefix rules shows enabled=True."""
         rule = Rule(
             id=uuid4(),
-            name="Gmail - Allow Read Operations",
+            name="Gmail / Email - Allow Read Operations",
             rule_type="command_allowlist",
             action="allow",
             priority=100,
@@ -142,7 +142,7 @@ class TestGetIntegration:
 
         data = response.json()
         assert data["id"] == "gmail"
-        assert data["name"] == "Gmail"
+        assert data["name"] == "Gmail / Email"
         assert "rules" in data
         assert len(data["rules"]) > 0
         assert data["enabled"] is False

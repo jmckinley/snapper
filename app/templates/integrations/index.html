@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}Integrations - Snapper{% endblock %}
+{% block title %}Rules & Traffic - Snapper{% endblock %}
 
 {% block header %}
 <header class="bg-white shadow">
     <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center">
             <div>
-                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Integrations & Rules</h1>
-                <p class="mt-1 text-sm text-gray-500">Click any integration to view and manage its security rules</p>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Rules & Traffic</h1>
+                <p class="mt-1 text-sm text-gray-500">Discover what your agents are doing and create rules from live traffic</p>
             </div>
             <div class="flex items-center space-x-4">
-                <span id="enabled-count" class="text-sm text-gray-500">0 integrations active</span>
+                <span id="enabled-count" class="text-sm text-gray-500">0 templates active</span>
                 <span class="text-gray-300">|</span>
                 <span id="rules-count" class="text-sm text-gray-500">0 rules active</span>
             </div>
@@ -22,36 +22,119 @@
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Quick Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="text-sm font-medium text-gray-500">Available</div>
-            <div id="stat-available" class="text-2xl font-bold text-gray-900">--</div>
+
+    <!-- ================================================================== -->
+    <!-- SECTION 1: Discovered Activity                                     -->
+    <!-- ================================================================== -->
+    <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">📡</span>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">Discovered Activity</h2>
+                    <p class="text-sm text-gray-500">MCP servers and tools detected from live agent traffic</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <!-- Period selector -->
+                <select id="period-select" onchange="loadTrafficInsights()"
+                        class="text-sm border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500">
+                    <option value="24">Last 24 hours</option>
+                    <option value="168" selected>Last 7 days</option>
+                    <option value="720">Last 30 days</option>
+                </select>
+                <button onclick="loadTrafficInsights()" class="text-sm text-primary-600 hover:text-primary-700">
+                    <svg class="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    Refresh
+                </button>
+            </div>
         </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="text-sm font-medium text-gray-500">Enabled</div>
-            <div id="stat-enabled" class="text-2xl font-bold text-green-600">--</div>
+
+        <!-- Traffic summary bar -->
+        <div id="traffic-summary" class="px-6 py-3 bg-gray-50 border-b border-gray-200 hidden">
+            <div class="flex items-center space-x-6 text-sm">
+                <span><strong id="ts-evals">0</strong> evaluations</span>
+                <span><strong id="ts-commands">0</strong> unique commands</span>
+                <span class="text-green-600"><strong id="ts-covered">0</strong> covered</span>
+                <span class="text-red-600"><strong id="ts-uncovered">0</strong> uncovered</span>
+            </div>
         </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="text-sm font-medium text-gray-500">Rules Active</div>
-            <div id="stat-rules" class="text-2xl font-bold text-primary-600">--</div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="text-sm font-medium text-gray-500">Categories</div>
-            <div id="stat-categories" class="text-2xl font-bold text-gray-900">--</div>
+
+        <div id="traffic-container" class="divide-y divide-gray-100">
+            <div class="px-6 py-12 text-center text-gray-400">
+                <div class="text-4xl mb-3">📡</div>
+                <p>Loading traffic data...</p>
+            </div>
         </div>
     </div>
 
-    <!-- Integration Categories -->
-    <div id="integrations-container" class="space-y-6">
-        <!-- Loading state -->
-        <div class="animate-pulse space-y-4">
-            <div class="h-8 bg-gray-200 rounded w-1/4"></div>
-            <div class="space-y-3">
+    <!-- ================================================================== -->
+    <!-- SECTION 2: Add MCP Server (manual)                                 -->
+    <!-- ================================================================== -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">🔧</span>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">Add MCP Server</h2>
+                    <p class="text-sm text-gray-500">Create smart default rules for any MCP server — known or custom</p>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4">
+            <div class="flex items-end gap-3">
+                <div class="flex-1 max-w-sm">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Server name</label>
+                    <input type="text" id="add-server-name" placeholder="e.g. notion, linear, google-calendar"
+                           list="known-servers-list"
+                           class="w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 text-sm">
+                    <datalist id="known-servers-list"></datalist>
+                </div>
+                <button onclick="addMCPServer()" id="add-server-btn"
+                        class="px-4 py-2 bg-primary-600 text-white text-sm rounded-md hover:bg-primary-700 transition-colors">
+                    Create Rules
+                </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">Creates 3 rules: allow reads, approve writes, block destructive ops. Patterns match both <code>mcp__server__tool</code> and <code>server_tool</code> formats.</p>
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- SECTION 3: Rule Templates                                          -->
+    <!-- ================================================================== -->
+    <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">📋</span>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">Rule Templates</h2>
+                    <p class="text-sm text-gray-500">Pre-built security rules with patterns matching real MCP tool names</p>
+                </div>
+            </div>
+        </div>
+        <div id="integrations-container" class="divide-y divide-gray-100">
+            <div class="animate-pulse space-y-4 p-6">
+                <div class="h-8 bg-gray-200 rounded w-1/4"></div>
                 <div class="h-20 bg-gray-200 rounded"></div>
                 <div class="h-20 bg-gray-200 rounded"></div>
             </div>
         </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- SECTION 4: Legacy Rules (if any)                                   -->
+    <!-- ================================================================== -->
+    <div id="legacy-section" class="hidden bg-yellow-50 rounded-lg shadow overflow-hidden border border-yellow-200">
+        <div class="px-6 py-4 border-b border-yellow-200">
+            <div class="flex items-center space-x-3">
+                <span class="text-xl">⚠️</span>
+                <div>
+                    <h2 class="text-md font-semibold text-yellow-800">Legacy Rules</h2>
+                    <p class="text-sm text-yellow-600">Created from templates that have been simplified. Still active.</p>
+                </div>
+            </div>
+        </div>
+        <div id="legacy-rules-list" class="divide-y divide-yellow-100"></div>
     </div>
 </div>
 {% endblock %}
@@ -59,11 +142,219 @@
 {% block scripts %}
 <script>
     let integrationData = [];
-    let integrationDetails = {};  // Cache for detailed integration data
+    let integrationDetails = {};
     let expandedIntegration = null;
     let selectedRules = new Set();
+    let trafficData = null;
 
-    document.addEventListener('DOMContentLoaded', loadIntegrations);
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTrafficInsights();
+        loadIntegrations();
+        loadLegacyRules();
+        loadKnownServers();
+    });
+
+    // =====================================================================
+    // Traffic Insights
+    // =====================================================================
+
+    async function loadTrafficInsights() {
+        const hours = document.getElementById('period-select').value;
+        const container = document.getElementById('traffic-container');
+
+        try {
+            const response = await fetch(`/api/v1/integrations/traffic/insights?hours=${hours}`);
+            trafficData = await response.json();
+            renderTrafficInsights(trafficData);
+        } catch (error) {
+            console.error('Failed to load traffic:', error);
+            container.innerHTML = `<div class="px-6 py-8 text-center text-red-500 text-sm">Failed to load traffic data.</div>`;
+        }
+    }
+
+    function renderTrafficInsights(data) {
+        const container = document.getElementById('traffic-container');
+        const summary = document.getElementById('traffic-summary');
+
+        // Update summary bar
+        document.getElementById('ts-evals').textContent = data.total_evaluations;
+        document.getElementById('ts-commands').textContent = data.total_unique_commands;
+        document.getElementById('ts-covered').textContent = data.total_unique_commands - data.total_uncovered;
+        document.getElementById('ts-uncovered').textContent = data.total_uncovered;
+        summary.classList.remove('hidden');
+
+        if (!data.service_groups || data.service_groups.length === 0) {
+            container.innerHTML = `
+                <div class="px-6 py-12 text-center">
+                    <div class="text-4xl mb-3">📡</div>
+                    <p class="text-gray-500 font-medium">No agent traffic recorded yet</p>
+                    <p class="text-sm text-gray-400 mt-1">Activity will appear here once agents start sending requests through Snapper</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = data.service_groups.map(group => {
+            const coverageBadge = group.uncovered_count > 0
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">${group.uncovered_count} uncovered</span>`
+                : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">fully covered</span>`;
+
+            const templateBtn = group.has_template && group.template_id
+                ? `<button onclick="event.stopPropagation(); toggleIntegrationExpand('${group.template_id}')"
+                          class="text-xs px-2 py-1 bg-primary-100 text-primary-700 rounded hover:bg-primary-200">Enable Template</button>`
+                : group.source_type === 'mcp' || group.source_type === 'unknown'
+                    ? `<button onclick="event.stopPropagation(); addServerFromGroup('${group.server_key}')"
+                              class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">Add Rules</button>`
+                    : '';
+
+            const commandRows = group.commands.map(cmd => {
+                const covered = cmd.has_matching_rule;
+                const decisionBadges = Object.entries(cmd.decisions).map(([k, v]) => {
+                    const color = k === 'allow' ? 'green' : k === 'deny' ? 'red' : 'yellow';
+                    return `<span class="text-xs text-${color}-600">${v} ${k}</span>`;
+                }).join(' · ');
+
+                return `
+                    <div class="pl-12 pr-6 py-2 flex items-center justify-between text-sm ${covered ? '' : 'bg-red-50/50'}">
+                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                            <span class="w-1.5 h-1.5 rounded-full ${covered ? 'bg-green-400' : 'bg-red-400'}"></span>
+                            <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-md">${escapeHtml(cmd.command)}</code>
+                            <span class="text-xs text-gray-400">${cmd.count}x</span>
+                            <span class="text-xs text-gray-400">${decisionBadges}</span>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            ${covered
+                                ? `<span class="text-xs text-green-600" title="${escapeHtml(cmd.matching_rule_names.join(', '))}">✓ covered</span>`
+                                : `<button onclick="event.stopPropagation(); openCreateRuleModal('${escapeHtml(cmd.command)}')"
+                                          class="text-xs px-2 py-1 bg-primary-600 text-white rounded hover:bg-primary-700">Create Rule</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="traffic-group">
+                    <div class="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                         onclick="toggleTrafficGroup(this)">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl">${group.icon}</span>
+                                <div>
+                                    <span class="font-medium text-gray-900">${escapeHtml(group.display_name)}</span>
+                                    <span class="text-xs text-gray-400 ml-2">${group.total_count} calls · ${group.commands.length} tools</span>
+                                </div>
+                                ${coverageBadge}
+                            </div>
+                            <div class="flex items-center gap-3">
+                                ${templateBtn}
+                                <svg class="w-4 h-4 text-gray-400 transition-transform traffic-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="traffic-commands hidden border-t border-gray-100">
+                        ${commandRows}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function toggleTrafficGroup(header) {
+        const commands = header.nextElementSibling;
+        const chevron = header.querySelector('.traffic-chevron');
+        commands.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+
+    function addServerFromGroup(serverKey) {
+        document.getElementById('add-server-name').value = serverKey;
+        document.getElementById('add-server-name').scrollIntoView({ behavior: 'smooth' });
+        document.getElementById('add-server-name').focus();
+    }
+
+    // =====================================================================
+    // Create Rule Modal (inline)
+    // =====================================================================
+
+    function openCreateRuleModal(command) {
+        const action = prompt(
+            `Create rule for: ${command}\n\nChoose action:\n1 = allow\n2 = require_approval\n3 = deny\n\nEnter 1, 2, or 3:`,
+            '1'
+        );
+        if (!action) return;
+
+        const actionMap = { '1': 'allow', '2': 'require_approval', '3': 'deny' };
+        const selectedAction = actionMap[action] || 'allow';
+
+        createRuleFromTraffic(command, selectedAction);
+    }
+
+    async function createRuleFromTraffic(command, action) {
+        try {
+            const response = await fetch('/api/v1/integrations/traffic/create-rule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command, action, pattern_mode: 'prefix' }),
+            });
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
+            const result = await response.json();
+            showToast(`Created rule: ${result.name}`, 'success');
+            loadTrafficInsights();
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    // =====================================================================
+    // Add MCP Server
+    // =====================================================================
+
+    async function addMCPServer() {
+        const name = document.getElementById('add-server-name').value.trim();
+        if (!name) { showToast('Enter a server name', 'error'); return; }
+
+        const btn = document.getElementById('add-server-btn');
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+
+        try {
+            const response = await fetch('/api/v1/integrations/traffic/create-server-rules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ server_name: name }),
+            });
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
+            const result = await response.json();
+            showToast(`Created ${result.rules_created} rules for ${name}`, 'success');
+            document.getElementById('add-server-name').value = '';
+            loadTrafficInsights();
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Rules';
+        }
+    }
+
+    async function loadKnownServers() {
+        try {
+            const response = await fetch('/api/v1/integrations/traffic/known-servers');
+            const servers = await response.json();
+            const datalist = document.getElementById('known-servers-list');
+            datalist.innerHTML = servers.flatMap(s =>
+                s.keys.map(k => `<option value="${k}">${s.icon} ${s.display}</option>`)
+            ).join('');
+        } catch (e) {
+            console.warn('Could not load known servers');
+        }
+    }
+
+    // =====================================================================
+    // Integration Templates (same as before, simplified)
+    // =====================================================================
 
     async function loadIntegrations() {
         try {
@@ -74,34 +365,29 @@
         } catch (error) {
             console.error('Failed to load integrations:', error);
             document.getElementById('integrations-container').innerHTML = `
-                <div class="text-center py-12 text-red-500">
-                    Failed to load integrations. Please refresh the page.
-                </div>
+                <div class="text-center py-12 text-red-500">Failed to load templates.</div>
             `;
         }
     }
 
     function renderIntegrations(categories) {
         const container = document.getElementById('integrations-container');
-
         if (!categories.length) {
-            container.innerHTML = '<div class="text-center py-12 text-gray-500">No integrations available.</div>';
+            container.innerHTML = '<div class="text-center py-12 text-gray-500">No templates available.</div>';
             return;
         }
 
         container.innerHTML = categories.map(category => `
-            <div class="bg-white rounded-lg shadow overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <div>
+                <div class="px-6 py-3 border-b border-gray-200 bg-gray-50">
                     <div class="flex items-center">
-                        <span class="text-2xl mr-3">${category.icon}</span>
-                        <div>
-                            <h2 class="text-lg font-semibold text-gray-900">${category.name}</h2>
-                            <p class="text-sm text-gray-500">${category.description}</p>
-                        </div>
+                        <span class="text-xl mr-2">${category.icon}</span>
+                        <span class="font-semibold text-gray-700">${category.name}</span>
+                        <span class="text-xs text-gray-400 ml-2">${category.description}</span>
                     </div>
                 </div>
                 <div class="divide-y divide-gray-100">
-                    ${category.integrations.map(integration => renderIntegrationRow(integration)).join('')}
+                    ${category.integrations.map(i => renderIntegrationRow(i)).join('')}
                 </div>
             </div>
         `).join('');
@@ -110,60 +396,37 @@
     function renderIntegrationRow(integration) {
         const isExpanded = expandedIntegration === integration.id;
         const statusBadge = integration.enabled
-            ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                 <span class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
-                 ${integration.rule_count} rules active
-               </span>`
-            : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                 Disabled
-               </span>`;
+            ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">${integration.rule_count} active</span>`
+            : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Disabled</span>`;
 
         return `
-            <div class="integration-row ${isExpanded ? 'bg-gray-50' : ''}" id="integration-${integration.id}">
-                <!-- Clickable Header -->
-                <div class="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
+            <div id="integration-${integration.id}" class="${isExpanded ? 'bg-gray-50' : ''}">
+                <div class="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
                      onclick="toggleIntegrationExpand('${integration.id}')">
                     <div class="flex items-center justify-between">
-                        <div class="flex items-center flex-1 min-w-0">
-                            <span class="text-2xl mr-4">${integration.icon}</span>
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center">
-                                    <h3 class="font-semibold text-gray-900">${integration.name}</h3>
-                                    <span class="ml-3">${statusBadge}</span>
-                                </div>
-                                <p class="text-sm text-gray-500 truncate">${integration.description}</p>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">${integration.icon}</span>
+                            <div>
+                                <span class="font-medium text-gray-900">${integration.name}</span>
+                                <span class="ml-2">${statusBadge}</span>
                             </div>
                         </div>
-                        <div class="flex items-center space-x-4 ml-4">
-                            <svg class="w-5 h-5 text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}"
-                                 fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </div>
+                        <svg class="w-4 h-4 text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
                     </div>
+                    <p class="text-xs text-gray-500 mt-0.5 ml-9">${integration.description}</p>
                 </div>
-
-                <!-- Expandable Rules Section -->
                 <div id="rules-${integration.id}" class="${isExpanded ? '' : 'hidden'}">
                     <div class="px-6 pb-4">
                         <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                            <!-- Rules Header -->
-                            <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                                <div class="flex items-center space-x-4">
-                                    <span class="text-sm font-medium text-gray-700">Security Rules</span>
-                                    <span class="text-xs text-gray-500">Tool pattern (reference only):</span>
-                                    <code class="text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-600">${integration.mcp_matcher}</code>
-                                </div>
-                                <div id="actions-${integration.id}" class="flex items-center space-x-2">
-                                    <!-- Actions will be populated -->
-                                </div>
+                            <div class="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                                <code class="text-xs text-gray-500">${integration.mcp_matcher}</code>
+                                <div id="actions-${integration.id}" class="flex items-center space-x-2"></div>
                             </div>
-
-                            <!-- Rules List -->
                             <div id="rules-list-${integration.id}" class="divide-y divide-gray-100">
-                                <div class="px-4 py-8 text-center text-gray-500 text-sm">
-                                    Loading rules...
-                                </div>
+                                <div class="px-4 py-4 text-center text-gray-500 text-sm">Loading...</div>
                             </div>
                         </div>
                     </div>
@@ -174,29 +437,18 @@
 
     async function toggleIntegrationExpand(integrationId) {
         const wasExpanded = expandedIntegration === integrationId;
-
-        // Collapse current
         if (expandedIntegration) {
             document.getElementById(`rules-${expandedIntegration}`)?.classList.add('hidden');
-            const oldRow = document.getElementById(`integration-${expandedIntegration}`);
-            if (oldRow) oldRow.classList.remove('bg-gray-50');
+            document.getElementById(`integration-${expandedIntegration}`)?.classList.remove('bg-gray-50');
         }
+        if (wasExpanded) { expandedIntegration = null; return; }
 
-        if (wasExpanded) {
-            expandedIntegration = null;
-            return;
-        }
-
-        // Expand new
         expandedIntegration = integrationId;
         const rulesSection = document.getElementById(`rules-${integrationId}`);
         const row = document.getElementById(`integration-${integrationId}`);
-
         if (rulesSection) {
             rulesSection.classList.remove('hidden');
             row?.classList.add('bg-gray-50');
-
-            // Load details if not cached
             if (!integrationDetails[integrationId]) {
                 await loadIntegrationDetails(integrationId);
             } else {
@@ -210,388 +462,221 @@
             const response = await fetch(`/api/v1/integrations/${integrationId}`);
             const details = await response.json();
             integrationDetails[integrationId] = details;
-
-            // Initialize selected rules
             selectedRules = new Set();
             details.rules.forEach(rule => {
-                if (details.enabled && rule.enabled) {
-                    selectedRules.add(rule.id);
-                } else if (!details.enabled && rule.default_enabled !== false) {
-                    selectedRules.add(rule.id);
-                }
+                if (details.enabled && rule.enabled) selectedRules.add(rule.id);
+                else if (!details.enabled && rule.default_enabled !== false) selectedRules.add(rule.id);
             });
-
             renderRulesForIntegration(integrationId);
         } catch (error) {
-            console.error('Failed to load integration details:', error);
-            document.getElementById(`rules-list-${integrationId}`).innerHTML = `
-                <div class="px-4 py-8 text-center text-red-500 text-sm">
-                    Failed to load rules. Please try again.
-                </div>
-            `;
+            document.getElementById(`rules-list-${integrationId}`).innerHTML =
+                `<div class="px-4 py-4 text-center text-red-500 text-sm">Failed to load rules.</div>`;
         }
     }
 
     function renderRulesForIntegration(integrationId) {
         const details = integrationDetails[integrationId];
         if (!details) return;
-
         const rulesList = document.getElementById(`rules-list-${integrationId}`);
         const actionsDiv = document.getElementById(`actions-${integrationId}`);
 
-        // Render action buttons
+        if (details.custom && !details.enabled) {
+            // Custom MCP — show server name input inline
+            actionsDiv.innerHTML = `
+                <input type="text" id="custom-server-${integrationId}" placeholder="server name"
+                       class="text-xs border-gray-300 rounded px-2 py-1 w-32">
+                <button onclick="enableCustomMCP('${integrationId}')"
+                        class="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Create</button>
+            `;
+            rulesList.innerHTML = `<div class="px-4 py-4 text-sm text-gray-500">Enter a server name to auto-generate rules.</div>`;
+            return;
+        }
+
         if (details.enabled) {
             actionsDiv.innerHTML = `
                 <button onclick="disableIntegration('${integrationId}')"
-                        class="text-xs px-3 py-1.5 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors">
-                    Disable All
-                </button>
+                        class="text-xs px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200">Disable All</button>
             `;
         } else {
-            const isSelectable = details.selectable_rules;
-            actionsDiv.innerHTML = isSelectable ? `
-                <button onclick="selectAllRules('${integrationId}')" class="text-xs text-primary-600 hover:text-primary-700">All</button>
-                <span class="text-gray-300">|</span>
-                <button onclick="selectDefaultRules('${integrationId}')" class="text-xs text-primary-600 hover:text-primary-700">Defaults</button>
-                <span class="text-gray-300">|</span>
-                <button onclick="clearAllRules('${integrationId}')" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+            actionsDiv.innerHTML = `
                 <button onclick="enableIntegration('${integrationId}')"
-                        class="ml-3 text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                    Enable ${selectedRules.size} Selected
-                </button>
-            ` : `
-                <button onclick="enableIntegration('${integrationId}')"
-                        class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                    Enable All Rules
-                </button>
+                        class="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Enable All</button>
             `;
         }
 
-        // For enabled integrations, use existing_rules from database
-        // For disabled integrations, use template rules
         if (details.enabled && details.existing_rules && details.existing_rules.length > 0) {
             rulesList.innerHTML = details.existing_rules.map(rule => renderActiveRuleRow(rule, details)).join('');
         } else if (!details.rules || details.rules.length === 0) {
-            rulesList.innerHTML = `
-                <div class="px-4 py-8 text-center text-gray-500 text-sm">
-                    No rules defined for this integration.
-                </div>
-            `;
+            rulesList.innerHTML = `<div class="px-4 py-4 text-center text-gray-500 text-sm">No rules defined.</div>`;
         } else {
             rulesList.innerHTML = details.rules.map(rule => renderRuleRow(rule, details)).join('');
         }
     }
 
-    // Render an active rule from the database (for enabled integrations)
     function renderActiveRuleRow(rule, integration) {
-        const actionColor = rule.action === 'allow' ? 'green' :
-                           rule.action === 'deny' ? 'red' : 'yellow';
-
-        // Clean rule name (remove integration prefix)
+        const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
         const ruleName = rule.name.replace(integration.name + ' - ', '');
-
-        return `
-            <div class="px-4 py-3 bg-green-50/50 hover:bg-gray-50 transition-colors">
-                <div class="flex items-start">
-                    <span class="w-2 h-2 bg-green-500 rounded-full mr-3 mt-1.5"></span>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between">
-                            <span class="font-medium text-sm text-gray-900">${ruleName}</span>
-                            <div class="relative inline-block" onclick="event.stopPropagation()">
-                                <button onclick="toggleActionDropdown('${rule.id}')"
-                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700 hover:bg-${actionColor}-200 transition-colors cursor-pointer">
-                                    ${rule.action.replace('_', ' ')}
-                                    <svg class="w-3 h-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                                <div id="dropdown-${rule.id}" class="hidden absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-gray-200 z-20">
-                                    <div class="py-1">
-                                        <button onclick="updateRuleAction('${rule.id}', 'allow', '${integration.id}')"
-                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center ${rule.action === 'allow' ? 'bg-green-50 text-green-700' : 'text-gray-700'}">
-                                            <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span> Allow
-                                        </button>
-                                        <button onclick="updateRuleAction('${rule.id}', 'deny', '${integration.id}')"
-                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center ${rule.action === 'deny' ? 'bg-red-50 text-red-700' : 'text-gray-700'}">
-                                            <span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span> Deny
-                                        </button>
-                                        <button onclick="updateRuleAction('${rule.id}', 'require_approval', '${integration.id}')"
-                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center ${rule.action === 'require_approval' ? 'bg-yellow-50 text-yellow-700' : 'text-gray-700'}">
-                                            <span class="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span> Require Approval
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-0.5">${rule.rule_type.replace('_', ' ')}</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    // Render a template rule (for disabled integrations - to preview before enabling)
-    function renderRuleRow(rule, integration) {
-        const isSelected = selectedRules.has(rule.id);
-        const isSelectable = integration.selectable_rules;
-
-        const actionColor = rule.action === 'allow' ? 'green' :
-                           rule.action === 'deny' ? 'red' : 'yellow';
-
-        // Extract patterns
         const patterns = rule.parameters?.patterns || [];
-        const patternsDisplay = patterns.slice(0, 4).map(p =>
-            `<code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">${p}</code>`
+        const patternsHtml = patterns.slice(0, 3).map(p =>
+            `<code class="text-xs bg-gray-100 px-1 rounded text-gray-500">${escapeHtml(p)}</code>`
         ).join(' ');
-        const morePatterns = patterns.length > 4 ? `<span class="text-xs text-gray-400">+${patterns.length - 4} more</span>` : '';
-
-        // Clean rule name (remove integration prefix)
-        const ruleName = rule.name.replace(integration.name + ' - ', '');
-
-        // Checkbox for selectable integrations
-        const checkbox = isSelectable ? `
-            <label class="flex items-center cursor-pointer mr-4" onclick="event.stopPropagation()">
-                <input type="checkbox"
-                       ${isSelected ? 'checked' : ''}
-                       onchange="toggleRuleSelection('${rule.id}', '${integration.id}')"
-                       class="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
-            </label>
-        ` : '';
-
-        // Status indicator
-        const statusIndicator = (isSelected && isSelectable)
-            ? `<span class="w-2 h-2 bg-primary-300 rounded-full mr-3 mt-1.5"></span>`
-            : `<span class="w-2 h-2 bg-gray-300 rounded-full mr-3 mt-1.5"></span>`;
-
-        const rowClass = (isSelected && isSelectable) ? 'bg-primary-50/30' : '';
 
         return `
-            <div class="px-4 py-3 ${rowClass} hover:bg-gray-50 transition-colors ${isSelectable ? 'cursor-pointer' : ''}"
-                 ${isSelectable ? `onclick="toggleRuleSelection('${rule.id}', '${integration.id}')"` : ''}>
-                <div class="flex items-start">
-                    ${checkbox}
-                    ${statusIndicator}
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between">
-                            <span class="font-medium text-sm text-gray-900">${ruleName}</span>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">
-                                ${rule.action.replace('_', ' ')}
-                            </span>
-                        </div>
-                        ${rule.description ? `<p class="text-xs text-gray-500 mt-0.5">${rule.description}</p>` : ''}
-                        ${patterns.length > 0 ? `
-                            <div class="mt-2 flex flex-wrap items-center gap-1">
-                                ${patternsDisplay}
-                                ${morePatterns}
-                            </div>
-                        ` : ''}
+            <div class="px-4 py-2 bg-green-50/50 hover:bg-gray-50 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                        <span class="font-medium text-sm text-gray-900">${escapeHtml(ruleName)}</span>
                     </div>
+                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
                 </div>
+                ${patterns.length > 0 ? `<div class="mt-1 ml-4 flex flex-wrap gap-1">${patternsHtml}</div>` : ''}
             </div>
         `;
     }
 
-    let openDropdown = null;
+    function renderRuleRow(rule, integration) {
+        const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
+        const patterns = rule.parameters?.patterns || [];
+        const patternsHtml = patterns.slice(0, 3).map(p =>
+            `<code class="text-xs bg-gray-100 px-1 rounded text-gray-500">${escapeHtml(p)}</code>`
+        ).join(' ');
+        const ruleName = rule.name.replace(integration.name + ' - ', '');
 
-    function toggleActionDropdown(ruleId) {
-        const dropdown = document.getElementById(`dropdown-${ruleId}`);
-
-        // Close any other open dropdown
-        if (openDropdown && openDropdown !== dropdown) {
-            openDropdown.classList.add('hidden');
-        }
-
-        dropdown.classList.toggle('hidden');
-        openDropdown = dropdown.classList.contains('hidden') ? null : dropdown;
+        return `
+            <div class="px-4 py-2 hover:bg-gray-50 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-gray-300 rounded-full"></span>
+                        <span class="font-medium text-sm text-gray-900">${escapeHtml(ruleName)}</span>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
+                </div>
+                ${rule.description ? `<p class="text-xs text-gray-500 mt-0.5 ml-4">${escapeHtml(rule.description)}</p>` : ''}
+                ${patterns.length > 0 ? `<div class="mt-1 ml-4 flex flex-wrap gap-1">${patternsHtml}</div>` : ''}
+            </div>
+        `;
     }
 
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-        if (openDropdown && !e.target.closest('.relative')) {
-            openDropdown.classList.add('hidden');
-            openDropdown = null;
-        }
-    });
+    async function enableCustomMCP(integrationId) {
+        const serverName = document.getElementById(`custom-server-${integrationId}`)?.value?.trim();
+        if (!serverName) { showToast('Enter a server name', 'error'); return; }
 
-    async function updateRuleAction(ruleId, newAction, integrationId) {
         try {
-            const response = await fetch(`/api/v1/rules/${ruleId}`, {
-                method: 'PUT',
+            const response = await fetch(`/api/v1/integrations/${integrationId}/enable`, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: newAction })
+                body: JSON.stringify({ custom_server_name: serverName }),
             });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Failed to update rule');
-            }
-
-            showToast(`Rule updated to "${newAction.replace('_', ' ')}"`, 'success');
-
-            // Close dropdown
-            if (openDropdown) {
-                openDropdown.classList.add('hidden');
-                openDropdown = null;
-            }
-
-            // Refresh the integration details
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
+            const result = await response.json();
+            showToast(result.message, 'success');
             delete integrationDetails[integrationId];
-            await loadIntegrationDetails(integrationId);
+            await loadIntegrations();
         } catch (error) {
-            console.error('Failed to update rule:', error);
             showToast(error.message, 'error');
         }
     }
 
-    function toggleRuleSelection(ruleId, integrationId) {
-        if (selectedRules.has(ruleId)) {
-            selectedRules.delete(ruleId);
-        } else {
-            selectedRules.add(ruleId);
-        }
-        renderRulesForIntegration(integrationId);
-    }
-
-    function selectAllRules(integrationId) {
-        const details = integrationDetails[integrationId];
-        if (!details) return;
-        details.rules.forEach(rule => selectedRules.add(rule.id));
-        renderRulesForIntegration(integrationId);
-    }
-
-    function selectDefaultRules(integrationId) {
-        const details = integrationDetails[integrationId];
-        if (!details) return;
-        selectedRules = new Set();
-        details.rules.forEach(rule => {
-            if (rule.default_enabled !== false) {
-                selectedRules.add(rule.id);
-            }
-        });
-        renderRulesForIntegration(integrationId);
-    }
-
-    function clearAllRules(integrationId) {
-        selectedRules = new Set();
-        renderRulesForIntegration(integrationId);
-    }
-
     async function enableIntegration(integrationId) {
-        const details = integrationDetails[integrationId];
-        const rulesToEnable = details?.selectable_rules ? Array.from(selectedRules) : null;
-
         try {
-            // Note: agent_id is intentionally omitted to create global rules
-            // that apply to all agents. To create agent-specific rules, pass
-            // agent_id in the request body.
             const response = await fetch(`/api/v1/integrations/${integrationId}/enable`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ selected_rules: rulesToEnable })
+                body: JSON.stringify({}),
             });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Failed to enable integration');
-            }
-
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
             const result = await response.json();
             showToast(result.message, 'success');
-
-            // Clear cache and reload
             delete integrationDetails[integrationId];
             await loadIntegrations();
-
-            // Re-expand the integration
             setTimeout(() => toggleIntegrationExpand(integrationId), 100);
         } catch (error) {
-            console.error('Failed to enable integration:', error);
             showToast(error.message, 'error');
         }
     }
 
     async function disableIntegration(integrationId) {
         if (!confirm('Disable this integration and deactivate all its rules?')) return;
-
         try {
-            // Note: agent_id is intentionally omitted — disables global rules.
-            // To disable agent-specific rules, pass agent_id as a query parameter.
             const response = await fetch(`/api/v1/integrations/${integrationId}/disable`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
             });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Failed to disable integration');
-            }
-
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
             const result = await response.json();
             showToast(result.message, 'success');
-
-            // Clear cache and reload
             delete integrationDetails[integrationId];
             await loadIntegrations();
-
-            // Re-expand the integration
             setTimeout(() => toggleIntegrationExpand(integrationId), 100);
         } catch (error) {
-            console.error('Failed to disable integration:', error);
             showToast(error.message, 'error');
         }
     }
 
-    async function updateStats() {
-        let totalIntegrations = 0;
-        let enabledIntegrations = 0;
-        let integrationRules = 0;
+    // =====================================================================
+    // Legacy Rules
+    // =====================================================================
 
-        integrationData.forEach(category => {
-            category.integrations.forEach(integration => {
-                totalIntegrations++;
-                if (integration.enabled) {
-                    enabledIntegrations++;
-                    integrationRules += integration.rule_count;
-                }
-            });
-        });
-
-        document.getElementById('stat-available').textContent = totalIntegrations;
-        document.getElementById('stat-enabled').textContent = enabledIntegrations;
-        document.getElementById('stat-categories').textContent = integrationData.length;
-        document.getElementById('enabled-count').textContent = `${enabledIntegrations} integrations active`;
-
-        // Fetch total system rules count for accurate display
-        let totalSystemRules = integrationRules;
+    async function loadLegacyRules() {
         try {
-            const rulesResponse = await fetch('/api/v1/rules?is_active=true');
-            if (rulesResponse.ok) {
-                const rulesData = await rulesResponse.json();
-                totalSystemRules = Array.isArray(rulesData) ? rulesData.length : integrationRules;
-            }
+            const response = await fetch('/api/v1/integrations/legacy-rules');
+            const data = await response.json();
+            if (data.count === 0) return;
+
+            document.getElementById('legacy-section').classList.remove('hidden');
+            document.getElementById('legacy-rules-list').innerHTML = data.rules.map(rule => {
+                const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
+                return `
+                    <div class="px-6 py-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="font-medium text-sm text-gray-900">${escapeHtml(rule.name)}</span>
+                                <span class="text-xs text-gray-400 ml-2">from: ${escapeHtml(rule.source_reference)}</span>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         } catch (e) {
-            // Fall back to integration rule count if rules API is unavailable
-            console.warn('Could not fetch total system rules:', e);
+            console.warn('Could not load legacy rules');
         }
+    }
 
-        const rulesStatEl = document.getElementById('stat-rules');
-        rulesStatEl.textContent = integrationRules;
-        rulesStatEl.title = `${integrationRules} integration rules (${totalSystemRules} total system rules)`;
+    // =====================================================================
+    // Stats & utilities
+    // =====================================================================
 
-        const rulesCountEl = document.getElementById('rules-count');
-        rulesCountEl.textContent = `${integrationRules} integration rules (${totalSystemRules} total)`;
+    async function updateStats() {
+        let total = 0, enabled = 0, integrationRules = 0;
+        integrationData.forEach(cat => cat.integrations.forEach(i => {
+            total++;
+            if (i.enabled) { enabled++; integrationRules += i.rule_count; }
+        }));
+        document.getElementById('enabled-count').textContent = `${enabled} templates active`;
+
+        let totalRules = integrationRules;
+        try {
+            const r = await fetch('/api/v1/rules?is_active=true');
+            if (r.ok) { const d = await r.json(); totalRules = Array.isArray(d) ? d.length : integrationRules; }
+        } catch (e) {}
+        document.getElementById('rules-count').textContent = `${totalRules} rules active`;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     function showToast(message, type = 'info') {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
         const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
-
         toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg transform transition-all duration-300`;
         toast.textContent = message;
-
         container.appendChild(toast);
-
         setTimeout(() => {
             toast.classList.add('opacity-0', 'translate-x-full');
             setTimeout(() => toast.remove(), 300);

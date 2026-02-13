@@ -60,7 +60,8 @@ class TestTemplateStructure:
                 )
                 seen_ids[rule_id] = template_id
         # Sanity: we should have a substantial number of rules
-        assert len(seen_ids) > 50, f"Only {len(seen_ids)} rules found across all templates"
+        # (10 templates with ~29 rules total after simplification from 30 templates)
+        assert len(seen_ids) > 20, f"Only {len(seen_ids)} rules found across all templates"
 
     def test_all_rule_types_match_enum(self):
         """Every rule_type value must be a valid RuleType enum member."""
@@ -92,7 +93,7 @@ class TestHelperFunctions:
         """get_template should return a dict for a known template ID."""
         template = get_template("gmail")
         assert template is not None
-        assert template["name"] == "Gmail"
+        assert template["name"] == "Gmail / Email"
 
     def test_get_template_returns_none_for_unknown(self):
         """get_template should return None for unknown template ID."""

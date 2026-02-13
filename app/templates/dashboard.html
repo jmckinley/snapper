@@ -40,16 +40,19 @@
         </div>
     </div>
 
-    <!-- Quick Add Integrations - Hero Section -->
+    <!-- Traffic Summary + Rule Templates -->
     <div class="bg-white rounded-lg shadow-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <div>
-                <h2 class="text-lg font-semibold text-gray-900">Quick Add Integrations</h2>
+                <h2 class="text-lg font-semibold text-gray-900">Rule Templates</h2>
                 <p class="text-sm text-gray-500">Click any service to add security rules instantly</p>
             </div>
-            <a href="/integrations" class="text-sm text-primary-600 hover:text-primary-700 font-medium">
-                View all 30+ integrations →
-            </a>
+            <div class="flex items-center gap-4">
+                <span id="traffic-summary" class="text-sm text-gray-500 hidden"></span>
+                <a href="/integrations" class="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                    Manage rules &amp; templates →
+                </a>
+            </div>
         </div>
         <div class="p-6">
             <!-- Popular Integrations Grid -->
@@ -198,11 +201,11 @@
 
 {% block scripts %}
 <script>
-    // Popular integrations to show on dashboard
+    // Popular integrations to show on dashboard (matches simplified templates)
     const POPULAR_INTEGRATIONS = [
-        'github', 'gmail', 'slack', 'google_calendar',
-        'vercel', 'supabase', 'notion', 'linear',
-        'aws', 'postgresql', 'openai', 'discord'
+        'shell', 'filesystem', 'github', 'browser',
+        'network', 'aws', 'database', 'slack',
+        'gmail', 'custom_mcp'
     ];
 
     let allIntegrations = {};
@@ -213,6 +216,7 @@
         loadStats();
         loadActivity();
         loadRecentBlocks();
+        loadTrafficSummary();
     });
 
     async function loadIntegrations() {
@@ -241,6 +245,17 @@
         const html = POPULAR_INTEGRATIONS.map(id => {
             const int = allIntegrations[id];
             if (!int) return '';
+
+            // Custom MCP gets a special "+" style
+            if (id === 'custom_mcp') {
+                return `
+                    <a href="/integrations#add-server"
+                       class="relative flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50 rounded-lg transition-all cursor-pointer">
+                        <span class="text-2xl mb-1">+</span>
+                        <span class="text-sm font-medium text-gray-600">Add MCP Server</span>
+                    </a>
+                `;
+            }
 
             const enabledClass = int.enabled
                 ? 'border-green-300 bg-green-50'
@@ -575,6 +590,24 @@
             }
         } catch (error) {
             showToast('Failed to disable integration', 'error');
+        }
+    }
+
+    async function loadTrafficSummary() {
+        try {
+            const response = await fetch('/api/v1/integrations/traffic/insights?hours=168');
+            if (!response.ok) return;
+            const data = await response.json();
+            const el = document.getElementById('traffic-summary');
+            if (data.total_unique_commands > 0) {
+                const uncoveredBadge = data.total_uncovered > 0
+                    ? `<span class="text-red-600 font-medium">${data.total_uncovered} uncovered</span>`
+                    : '<span class="text-green-600 font-medium">all covered</span>';
+                el.innerHTML = `${data.total_unique_commands} commands seen &middot; ${uncoveredBadge}`;
+                el.classList.remove('hidden');
+            }
+        } catch (error) {
+            // Silently ignore — traffic summary is optional
         }
     }
 
