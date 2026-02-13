@@ -390,7 +390,7 @@ rm -rf /opt/snapper
 
 - [Telegram Setup](TELEGRAM_SETUP.md) — Approval notifications on your phone
 - [Slack Setup](SLACK_SETUP.md) — Approval notifications in Slack
-- [User Guide](USER_GUIDE.md) — Rules, PII vault, approval workflows, agent setup for all types
+- [User Guide](USER_GUIDE.md) — Rules, PII vault, approval workflows, integrations, agent setup for all types
 - [Security Guide](SECURITY.md) — Encryption, PII detection, rate limiting, infrastructure hardening
 - [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) — Plugin vs shell hook details (OpenClaw-specific)
 - [API Reference](API.md) — REST API documentation

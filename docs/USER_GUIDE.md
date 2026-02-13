@@ -21,8 +21,9 @@ This guide walks through everything you need as a Snapper user, from first setup
 8. [Emergency Controls](#emergency-controls)
 9. [Agent Setup](#agent-setup)
 10. [Audit Dashboard](#audit-dashboard)
-11. [Dashboard](#dashboard)
-12. [Troubleshooting](#troubleshooting)
+11. [Integrations & Traffic Discovery](#integrations--traffic-discovery)
+12. [Dashboard](#dashboard)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -651,6 +652,91 @@ The Audit page (`/audit`) provides observability into what your agents are doing
 - **Pagination** — Navigate through large audit logs with previous/next controls.
 
 The stats are powered by `GET /api/v1/audit/stats?hours=24` which returns aggregated counts and an hourly breakdown.
+
+---
+
+## Integrations & Traffic Discovery
+
+The Integrations page (`/integrations`) is where you manage rule templates and see what your agents are actually doing.
+
+### Traffic Discovery
+
+Snapper passively detects MCP servers and tools from live agent traffic — no configuration needed. Every time an agent calls `evaluate`, Snapper parses the `command` and `tool_name` to identify the service.
+
+**What it detects:**
+- **MCP servers** — `mcp__github__create_issue` → GitHub (MCP)
+- **CLI tools** — `git status`, `curl https://api.example.com` → Git, cURL
+- **Built-in tools** — `browser`, `exec` → Browser, Exec
+- **OpenClaw format** — `slack_post_message` → Slack (MCP)
+
+**Using the Insights view:**
+
+1. Visit `/integrations` — the "Discovered Activity" section shows services your agents have used
+2. Each service card shows: total evaluation count, coverage status (green = all commands covered, red = uncovered commands)
+3. Expand a card to see individual commands with counts, last seen, and decision breakdown (allow/deny/approve)
+4. Uncovered commands have a **"Create Rule"** button — pick an action (allow/deny/approve) and pattern mode (prefix/exact)
+5. If a matching template exists, you'll see an **"Enable Template"** link
+
+**Period selector:** Switch between 24h, 7d, and 30d views. Agent filter lets you scope to a specific agent.
+
+**Empty state:** If no traffic has been recorded yet, you'll see a message explaining that activity will appear once agents start sending requests.
+
+### Rule Templates
+
+Snapper includes 10 pre-built rule templates for common services:
+
+| Template | Rules | What It Covers |
+|----------|-------|---------------|
+| **Shell / Bash** | 4 | Safe commands (ls, git, cat), block destructive (rm -rf, mkfs), approval for installs |
+| **Filesystem** | 3 | File read/write patterns + MCP filesystem server |
+| **GitHub** | 4 | Git CLI + MCP GitHub server (reads allowed, writes approved, deletes blocked) |
+| **Browser** | 3 | Browser tool, Puppeteer, Playwright MCP servers |
+| **Network / HTTP** | 3 | curl, wget, HTTP + MCP fetch server |
+| **AWS** | 3 | AWS CLI + MCP AWS server |
+| **Database** | 3 | PostgreSQL, SQLite, MongoDB MCP servers |
+| **Slack** | 4 | Slack MCP server (selectable: choose which rules to enable) |
+| **Gmail / Email** | 3 | Gmail and Google Mail MCP servers |
+| **Custom MCP** | 3 | Enter any server name — auto-generates read/write/delete rules |
+
+**Enabling a template:**
+1. Click **Enable** on any template card
+2. Rules are created with `source=integration` for easy management
+3. The template card shows "Enabled" with a rule count
+4. Click **Disable** to soft-delete all rules from that template
+
+**Selectable templates** (like Slack) let you pick which rules to enable — some may be off by default.
+
+### Custom MCP Server
+
+For MCP servers not in the template list, use **Custom MCP**:
+
+1. Click the "Custom MCP Server" card (or use the "Add MCP Server" input)
+2. Enter the server name (e.g., `google_calendar`, `notion`, `linear`)
+3. Snapper generates 3 rules:
+   - **Allow reads** — Pattern: `^mcp__google_calendar__(read|get|list|search|query).*`
+   - **Approve writes** — Pattern: `^mcp__google_calendar__(create|update|write|send|post|set).*`
+   - **Block destructive** — Pattern: `^mcp__google_calendar__(delete|drop|destroy|remove|purge).*`
+
+The server name autocomplete shows 40+ recognized MCP servers with display names.
+
+**Via API:**
+```bash
+# Smart defaults for any server
+curl -X POST https://your-snapper:8443/api/v1/integrations/traffic/create-server-rules \
+  -H "Content-Type: application/json" \
+  -d '{"server_name": "notion"}'
+
+# Or use the custom_mcp template
+curl -X POST https://your-snapper:8443/api/v1/integrations/custom_mcp/enable \
+  -H "Content-Type: application/json" \
+  -d '{"custom_server_name": "notion"}'
+```
+
+### Legacy Rules
+
+If you previously enabled integrations that have been simplified (e.g., Linear, Notion, Discord), those rules continue to work — they evaluate normally against agent traffic. They appear in a "Legacy Rules" section at the bottom of the Integrations page with a note explaining they were created from templates that have been consolidated.
+
+Manage legacy rules on the Rules page, or disable them from the Integrations page.
 
 ---
 

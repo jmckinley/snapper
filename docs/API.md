@@ -392,10 +392,152 @@ curl -X POST http://localhost:8000/api/v1/approvals/{id}/decide \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/integrations` | List available integrations |
-| GET | `/api/v1/integrations/{id}` | Get integration details |
-| POST | `/api/v1/integrations/{id}/enable` | Enable integration |
-| POST | `/api/v1/integrations/{id}/disable` | Disable integration |
+| GET | `/api/v1/integrations` | List integration templates by category |
+| GET | `/api/v1/integrations/{id}` | Get integration template details |
+| POST | `/api/v1/integrations/{id}/enable` | Enable integration (creates rules) |
+| POST | `/api/v1/integrations/{id}/disable` | Disable integration (soft-deletes rules) |
+| GET | `/api/v1/integrations/categories/summary` | Category summaries with counts |
+| GET | `/api/v1/integrations/legacy-rules` | Rules from removed templates |
+
+### Traffic Discovery
+
+Passively discovers MCP servers and tools from live agent traffic, checks rule coverage, and creates rules from discovered commands.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/integrations/traffic/insights` | Discovered services with coverage analysis |
+| GET | `/api/v1/integrations/traffic/coverage` | Check if a command is covered by rules |
+| POST | `/api/v1/integrations/traffic/create-rule` | Create rule from a discovered command |
+| POST | `/api/v1/integrations/traffic/create-server-rules` | Generate 3 smart default rules for a server |
+| GET | `/api/v1/integrations/traffic/known-servers` | List 40+ recognized MCP servers |
+
+#### Traffic Insights
+
+Returns discovered services grouped by MCP server, CLI tool, or builtin — with command counts, coverage status, and template links.
+
+```bash
+curl "http://localhost:8000/api/v1/integrations/traffic/insights?hours=168"
+```
+
+Query params: `agent_id` (optional UUID), `hours` (1-720, default 168)
+
+Response:
+```json
+{
+  "period_hours": 168,
+  "total_evaluations": 633,
+  "total_unique_commands": 59,
+  "total_uncovered": 12,
+  "service_groups": [
+    {
+      "server_key": "mcp__github",
+      "display_name": "GitHub (MCP)",
+      "source_type": "mcp",
+      "total_count": 142,
+      "uncovered_count": 3,
+      "has_template": true,
+      "template_id": "github",
+      "commands": [
+        {
+          "command": "mcp__github__create_issue",
+          "count": 47,
+          "last_seen": "2026-02-13T10:30:00Z",
+          "decisions": {"allow": 42, "deny": 3, "require_approval": 2},
+          "has_matching_rule": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Coverage Check
+
+Check whether a specific command is covered by any active rule, with parsed tool info and template linking.
+
+```bash
+curl "http://localhost:8000/api/v1/integrations/traffic/coverage?command=mcp__github__create_issue"
+```
+
+Query params: `command` (required), `agent_id` (optional UUID)
+
+Response:
+```json
+{
+  "command": "mcp__github__create_issue",
+  "covered": true,
+  "matching_rules": [{"id": "uuid", "name": "GitHub - Allow Read", "rule_type": "command_allowlist"}],
+  "parsed": {
+    "source_type": "mcp",
+    "server_key": "github",
+    "display_name": "GitHub",
+    "tool_name": "create_issue",
+    "template_id": "github"
+  }
+}
+```
+
+#### Create Rule from Traffic
+
+Create a rule from a discovered command using prefix or exact pattern mode.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/integrations/traffic/create-rule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "command": "mcp__github__create_issue",
+    "action": "allow",
+    "pattern_mode": "prefix",
+    "agent_id": null,
+    "name": null
+  }'
+```
+
+- `pattern_mode: "prefix"` → generates `^mcp__github__create.*` (broader match)
+- `pattern_mode: "exact"` → generates `^mcp__github__create_issue$` (single command)
+- `action`: `"allow"`, `"deny"`, or `"require_approval"`
+- `name`: optional custom name (auto-generated if omitted)
+
+#### Create Server Rules (Smart Defaults)
+
+Generate 3 rules for any MCP server: allow reads, require approval for writes, deny destructive operations.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/integrations/traffic/create-server-rules \
+  -H "Content-Type: application/json" \
+  -d '{"server_name": "google_calendar", "agent_id": null}'
+```
+
+Response:
+```json
+{
+  "server_name": "google_calendar",
+  "rules_created": 3,
+  "rules": [
+    {"name": "Google Calendar MCP - Allow Read Operations", "rule_type": "command_allowlist", "action": "allow"},
+    {"name": "Google Calendar MCP - Approve Write Operations", "rule_type": "command_allowlist", "action": "require_approval"},
+    {"name": "Google Calendar MCP - Block Destructive Operations", "rule_type": "command_denylist", "action": "deny"}
+  ]
+}
+```
+
+#### Custom MCP Template
+
+Enable the `custom_mcp` template with a server name to auto-generate 3 rules:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/integrations/custom_mcp/enable \
+  -H "Content-Type: application/json" \
+  -d '{"custom_server_name": "my_tool"}'
+```
+
+#### Known Servers
+
+List all recognized MCP servers (40+) with display names, prefixes, and template links.
+
+```bash
+curl http://localhost:8000/api/v1/integrations/traffic/known-servers
+```
 
 ### Telegram Webhook
 

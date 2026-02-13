@@ -603,6 +603,12 @@ Each log entry includes:
 - `(severity, created_at)` — Alert filtering
 - `created_at` — BRIN index for efficient time-range scans on large tables
 
+### Traffic Monitoring & Coverage Analysis
+
+Snapper passively discovers MCP servers and tools from live agent traffic. The Integrations page shows which commands have matching rules and which are uncovered — helping identify gaps in your rule set. This is observational only (no enforcement changes) and uses the same audit log data that powers the Audit dashboard.
+
+Coverage analysis checks every discovered command against active rule patterns, so you can see at a glance whether a new MCP server your agent started using has any security rules in place.
+
 ### Policy Violations & Alerts
 
 Serious events generate `PolicyViolation` and `Alert` records with resolution tracking:

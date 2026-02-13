@@ -381,6 +381,33 @@ The script sends real messages through the OpenClaw CLI, which triggers the snap
 
 **Last validated:** 2026-02-10 — 19/19 passed on live VPS deployment.
 
+### Integration & Traffic Discovery Tests (`scripts/e2e_integrations_test.sh`)
+
+Tests traffic discovery, simplified templates, custom MCP servers, coverage analysis, and legacy compatibility:
+
+```bash
+# Run all 109 tests across 11 phases
+bash scripts/e2e_integrations_test.sh
+```
+
+| Phase | Tests | What It Validates |
+|-------|-------|-------------------|
+| 0 | Environment (3) | Snapper health, Redis, test agent creation |
+| 1 | Template structure (27) | 10 templates, 5 categories, specific IDs, removed templates absent |
+| 2 | Known servers (5) | 40+ MCP servers, display names, template links |
+| 3 | Traffic insights (4) | Structure, field presence, empty state |
+| 4 | Coverage check (12) | MCP/CLI/builtin parsing, covered/uncovered, template mapping |
+| 5 | Rule creation (13) | Prefix/exact modes, custom names, validation, smart defaults |
+| 6 | Template lifecycle (11) | Enable/disable, selectable rules, already-enabled errors |
+| 7 | Custom MCP (10) | 3-rule generation, evaluate verification, validation |
+| 8 | Legacy rules (5) | Removed template rules still evaluate, surfaced in legacy list |
+| 9 | Traffic insights with data (12) | Real evaluations, service groups, agent scoping |
+| 10 | Pattern verification (7) | Shell + GitHub templates vs live evaluate |
+
+The script creates temporary test agents and rules, validates results, and cleans up on exit.
+
+**Last validated:** 2026-02-13 — 109/109 passed on live VPS deployment.
+
 ---
 
 ## Execution Checklist
@@ -395,6 +422,8 @@ The script sends real messages through the OpenClaw CLI, which triggers the snap
 ### Automated Tests
 - [ ] Run `bash scripts/e2e_live_test.sh` — 39 tests across 7 phases
 - [ ] Verify 44/44 pass (or 39/39 if OpenClaw unavailable, Phase 2 skipped)
+- [ ] Run `bash scripts/e2e_integrations_test.sh` — 109 tests across 11 phases
+- [ ] Verify 109/109 pass
 
 ### Manual Test Execution
 - [ ] Group A: Command Blocking (7 tests)

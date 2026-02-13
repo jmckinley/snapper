@@ -277,6 +277,32 @@ Toggle via Telegram (`/pii protected` or `/pii auto`) or Slack (`/snapper-pii pr
 
 See the [Security Guide](docs/SECURITY.md) for full details on encryption, key management, and all security mechanisms.
 
+### Traffic Discovery & Integrations
+
+Snapper passively detects MCP servers and tools from live agent traffic, then suggests rules for uncovered commands. No configuration needed — it learns what your agents use.
+
+**How it works:**
+1. Every `evaluate` call already includes `command` and `tool_name`
+2. Snapper parses these to identify MCP servers (e.g., `mcp__github__create_issue` → GitHub), CLI tools (`git`, `curl`), and built-in tools (`browser`)
+3. The Integrations page shows discovered services, coverage status, and one-click rule creation
+
+**Key features:**
+- **Auto-discovery** — Detects 40+ known MCP servers by name pattern
+- **Coverage analysis** — Shows which commands have matching rules and which are uncovered
+- **Smart defaults** — One click creates 3 rules per server: allow reads, approve writes, deny destructive ops
+- **Custom MCP** — Enter any server name to generate rules for it
+- **10 rule templates** — Shell, Filesystem, GitHub, Browser, Network, AWS, Database, Slack, Gmail, Custom MCP
+- **Legacy support** — Rules from removed templates continue to work; surfaced in a legacy section
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/integrations/traffic/insights` | Discovered services, commands, coverage |
+| `GET /api/v1/integrations/traffic/coverage` | Check if a specific command is covered |
+| `POST /api/v1/integrations/traffic/create-rule` | Create rule from discovered command |
+| `POST /api/v1/integrations/traffic/create-server-rules` | Generate 3 smart default rules |
+| `GET /api/v1/integrations/traffic/known-servers` | List 40+ recognized MCP servers |
+| `GET /api/v1/integrations/legacy-rules` | Rules from removed templates |
+
 ### Additional Endpoints
 
 | Endpoint | Description |
@@ -462,7 +488,7 @@ See the [Security Guide](docs/SECURITY.md#architecture-assumptions) for full det
 | **Rules** | Create and manage security rules |
 | **Security** | Vulnerability tracking, threat feed |
 | **Audit** | Activity stats, timeline chart, filterable log viewer |
-| **Integrations** | Configure Slack, GitHub, and more |
+| **Integrations** | Traffic discovery, rule templates, custom MCP servers |
 | **Settings** | Configure alerts and notifications |
 | **Help** | In-app setup guide, FAQ, troubleshooting |
 
@@ -479,6 +505,8 @@ GET    /api/v1/vault/entries      # List vault entries (masked)
 GET    /api/v1/approvals/{id}/status  # Check approval status (polled by plugin)
 GET    /api/v1/audit/logs         # Get audit logs
 GET    /api/v1/audit/stats        # Aggregated stats + hourly breakdown
+GET    /api/v1/integrations/traffic/insights  # Discovered MCP servers + coverage
+POST   /api/v1/integrations/traffic/create-server-rules  # Smart default rules
 POST   /api/v1/setup/quick-register   # Quick-register any supported agent
 POST   /api/v1/setup/install-config   # Auto-install hook config
 GET    /health                    # Health check
@@ -595,7 +623,7 @@ E2E tests cover:
 - Rule creation and template application
 - Setup wizard with 6 agent type cards
 - Security and audit pages
-- Integrations page (categories, search, enable/disable)
+- Integrations page (traffic discovery, templates, custom MCP)
 - Responsive design
 
 ### Live E2E Integration Tests
@@ -624,14 +652,36 @@ Live E2E tests cover (39 tests across 7 phases):
 
 Prerequisites: Snapper running (app + postgres + redis), `jq` installed. OpenClaw optional for Phase 2.
 
+### Integration E2E Tests
+
+API-level tests for traffic discovery, templates, custom MCP, and legacy compatibility:
+
+```bash
+bash scripts/e2e_integrations_test.sh
+```
+
+Integration E2E tests cover (109 tests across 11 phases):
+- **Phase 0:** Environment verification
+- **Phase 1:** Template structure (10 templates, 5 categories)
+- **Phase 2:** Known MCP servers registry (40+ servers)
+- **Phase 3:** Traffic insights structure
+- **Phase 4:** Coverage checking (MCP, CLI, builtin tool parsing)
+- **Phase 5:** Rule creation from traffic (prefix/exact modes, smart defaults)
+- **Phase 6:** Template enable/disable lifecycle (including selectable rules)
+- **Phase 7:** Custom MCP server (3-rule generation, evaluate verification)
+- **Phase 8:** Legacy rules detection (removed template rules still work)
+- **Phase 9:** Traffic insights with real data
+- **Phase 10:** Rule pattern verification (shell + GitHub templates vs evaluate)
+
 ### Test Results
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 506 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations |
+| Unit tests | 588 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery |
 | E2E tests (Playwright) | 120 | Browser-based UI testing (skipped without browser) |
 | Live E2E integration | 39 | API-level rule engine, approvals, PII vault, emergency block, audit (skips OpenClaw if unavailable) |
-| **Total** | **665** | Full coverage across unit, UI, and live integration layers |
+| Live E2E integrations | 109 | Traffic discovery, templates, custom MCP, legacy rules, coverage analysis |
+| **Total** | **856** | Full coverage across unit, UI, and live integration layers |
 
 ## Common Commands
 

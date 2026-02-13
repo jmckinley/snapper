@@ -36,6 +36,7 @@ snapper/
 │   │   ├── rules.py           # Rules CRUD + evaluate endpoint
 │   │   ├── agents.py          # Agent management
 │   │   ├── vault.py           # PII vault CRUD API
+│   │   ├── integrations.py    # Integration templates + traffic discovery API
 │   │   ├── approvals.py       # Approval workflow + token resolution
 │   │   ├── telegram.py        # Telegram bot (/vault, /pii, /test, etc.)
 │   │   ├── slack.py           # Slack bot (slash commands, approvals, vault)
@@ -44,6 +45,7 @@ snapper/
 │   │   ├── __init__.py
 │   │   ├── rule_engine.py     # Rule evaluation (incl. PII gate evaluator)
 │   │   ├── pii_vault.py       # Fernet encryption, token resolution, CRUD
+│   │   ├── traffic_discovery.py # MCP server detection, coverage analysis
 │   │   ├── rate_limiter.py    # Rate limiting implementation
 │   │   └── security_monitor.py # Security research integration
 │   ├── schemas/               # Pydantic models
@@ -97,6 +99,7 @@ docker compose exec app pytest tests/test_openclaw_templates.py -v
 docker compose exec app pytest tests/test_integrations.py tests/test_security_monitor.py -v
 docker compose exec app pytest tests/test_security_research.py tests/test_security_defaults.py -v
 docker compose exec app pytest tests/test_integration_templates.py -v
+docker compose exec app pytest tests/test_traffic_discovery.py -v
 
 # Run with coverage
 docker compose exec app pytest tests/ --cov=app --cov-report=term-missing
@@ -113,6 +116,10 @@ E2E_CHAT_ID=<chat_id> bash scripts/e2e_live_test.sh             # with OpenClaw 
 # OpenClaw full-pipeline E2E tests (real agent traffic, ~12 min)
 # 19 tests: access control, rate limiting, PII detection, approvals, metadata, emergency block, audit
 E2E_CHAT_ID=<chat_id> bash scripts/e2e_openclaw_test.sh
+
+# Integration E2E tests (traffic discovery, templates, custom MCP)
+# 109 tests: templates, known servers, traffic insights, coverage, rule creation, custom MCP, legacy
+bash scripts/e2e_integrations_test.sh
 
 # Linting (inside container)
 docker compose exec app black app/ tests/
@@ -177,3 +184,5 @@ async def protected_endpoint():
 - **snapper-guard Plugin**: OpenClaw plugin (`plugins/snapper-guard/`) that intercepts browser tool calls, calls evaluate endpoint, and replaces vault tokens with real values in tool params via `before_tool_call` hook.
 - **Shell Hooks**: Use `$SNAPPER_URL` and `$SNAPPER_API_KEY` env vars (not hardcoded URLs/keys). Scripts in `scripts/openclaw-hooks/`.
 - **Slack Bot**: Full Telegram parity via Socket Mode (`app/routers/slack.py`). Uses slack-bolt[async]. Commands prefixed with `/snapper-` to avoid conflicts. PII vault uses DM-based multi-step flow. Alert routing: numeric `owner_chat_id` → Telegram, `U`-prefix → Slack DM.
+- **Traffic Discovery**: `app/services/traffic_discovery.py` parses tool names from audit logs to detect MCP servers, CLI tools, and builtins. 40+ known servers in registry. Coverage analysis checks commands against active rules. Smart defaults generate 3 rules per server (allow reads, approve writes, deny destructive). Custom MCP template for arbitrary servers.
+- **Integration Templates**: 10 simplified templates in `app/data/integration_templates.py` (was 30). Templates: shell, filesystem, github, browser, network, aws, database, slack, gmail, custom_mcp. 5 categories: system, developer, network, cloud, communication. Legacy rules from removed templates continue to work.
