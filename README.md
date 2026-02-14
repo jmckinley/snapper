@@ -556,7 +556,7 @@ export SNAPPER_API_KEY=snp_your_key_here
 | `DENY_BY_DEFAULT` | `false` | Deny unknown requests when learning mode is off |
 | `REQUIRE_API_KEY` | `false` | Require API key for agent requests |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,app` | Accepted Host headers |
-| `ALLOWED_ORIGINS` | `http://localhost:8000` | CORS/WebSocket origins |
+| `ALLOWED_ORIGINS` | `http://localhost:8000,...` | CORS/WebSocket origins (HTTP + HTTPS) |
 | `DEBUG` | `false` | Debug mode |
 
 See `.env.example` for the full list including database, Redis, Celery, alerting, and notification settings.
@@ -578,9 +578,11 @@ See `.env.example` for the full list including database, Redis, Celery, alerting
                           └──────────────┘   └──────────────────┘  └──────────┘
 ```
 
-**Stack:** FastAPI, PostgreSQL, Redis, Celery, Gunicorn, Docker Compose, slack-bolt.
+**Stack:** FastAPI, PostgreSQL, Redis, Celery, Gunicorn, Caddy, Docker Compose, slack-bolt.
 
-**Containers (5):** app, postgres, redis, celery-worker, celery-beat.
+**Containers (6):** app, caddy, postgres, redis, celery-worker, celery-beat.
+
+**HTTPS:** Caddy provides automatic HTTPS with self-signed certificates. Dashboard at `https://localhost:8443` (HTTPS) or `http://localhost:8000` (HTTP). For production with a domain, edit `Caddyfile` to use your domain and Caddy handles Let's Encrypt automatically.
 
 ## Testing
 

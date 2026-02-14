@@ -18,6 +18,9 @@ services:
   redis:
     ports: !reset []
 
+  caddy:
+    ports: !reset []
+
   celery-worker:
     build:
       target: production

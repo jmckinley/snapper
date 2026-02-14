@@ -104,7 +104,8 @@ echo -e "${GREEN}✓ Test database ready${NC}"
 
 # ── 6. Open browser ───────────────────────────────────────────────
 
-URL="http://localhost:8000"
+URL="https://localhost:8443"
+URL_HTTP="http://localhost:8000"
 echo -e "\n${BLUE}Opening dashboard...${NC}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
     open "$URL" 2>/dev/null || true
@@ -119,7 +120,8 @@ echo "╔═══════════════════════�
 echo "║              Setup complete!                                ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo -e "  ${BLUE}Dashboard:${NC}    $URL"
+echo -e "  ${BLUE}Dashboard:${NC}    $URL  (HTTPS)"
+echo -e "  ${BLUE}              ${NC}    $URL_HTTP  (HTTP)"
 echo -e "  ${BLUE}API docs:${NC}     $URL/api/docs"
 echo -e "  ${BLUE}Setup wizard:${NC} $URL/wizard"
 echo ""

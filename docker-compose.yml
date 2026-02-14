@@ -18,9 +18,9 @@ services:
       - LEARNING_MODE=${LEARNING_MODE:-true}
       - VALIDATE_WEBSOCKET_ORIGIN=${VALIDATE_WEBSOCKET_ORIGIN:-true}
       - REQUIRE_LOCALHOST_ONLY=${REQUIRE_LOCALHOST_ONLY:-false}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000,https://localhost:8443,https://127.0.0.1:8443}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,app}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000,https://localhost:8443,https://127.0.0.1:8443}
       - DEBUG=${DEBUG:-true}
       - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -75,6 +75,20 @@ services:
       timeout: 5s
       retries: 5
     command: redis-server --appendonly yes
+
+  # Caddy Reverse Proxy (HTTPS)
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
 
   # Celery Worker
   celery-worker:
@@ -191,6 +205,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  caddy_data:
+  caddy_config:
 
 networks:
   default:

@@ -1,0 +1,19 @@
+# Snapper - Caddy Reverse Proxy Configuration
+#
+# Provides automatic HTTPS with self-signed certificates.
+# Access the dashboard at https://localhost:8443
+#
+# For custom domains, replace :8443 with your domain:
+#   yourdomain.com {
+#     reverse_proxy app:8000
+#   }
+
+{
+	auto_https disable_redirects
+}
+
+:8443 {
+	tls internal
+
+	reverse_proxy app:8000
+}
