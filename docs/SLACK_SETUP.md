@@ -46,7 +46,8 @@ Snapper's Slack bot uses **Socket Mode**, so no public URL or webhook endpoint i
       { "command": "/snapper-pending", "description": "List pending approval requests" },
       { "command": "/snapper-pii", "description": "Toggle PII gate mode", "usage_hint": "protected | auto" },
       { "command": "/snapper-purge", "description": "Clean up bot messages", "usage_hint": "7d | 2h | all" },
-      { "command": "/snapper-help", "description": "Show all available commands" }
+      { "command": "/snapper-help", "description": "Show all available commands" },
+      { "command": "/snapper-dashboard", "description": "Open Snapper dashboard in browser" }
     ]
   },
   "oauth_config": {
@@ -72,7 +73,7 @@ Snapper's Slack bot uses **Socket Mode**, so no public URL or webhook endpoint i
 3. **Socket Mode:** Settings → Socket Mode → Toggle **On** → Generate an app-level token with `connections:write` scope → Copy the `xapp-...` token
 4. **Bot Scopes:** OAuth & Permissions → Bot Token Scopes → Add: `chat:write`, `commands`, `im:history`, `im:write`, `users:read`, `app_mentions:read`
 5. **Install to Workspace:** OAuth & Permissions → Install to Workspace → Copy the `xoxb-...` Bot Token
-6. **Slash Commands:** Slash Commands → Create all 11 commands listed in the [Command Reference](#slash-command-reference)
+6. **Slash Commands:** Slash Commands → Create all 12 commands listed in the [Command Reference](#slash-command-reference)
 7. **Interactivity:** Interactivity & Shortcuts → Toggle **On** (no URL needed for Socket Mode)
 8. **Events:** Event Subscriptions → Toggle **On** → Subscribe to bot event: `message.im`
 
@@ -160,6 +161,7 @@ When registering agents (via dashboard or API), set the **owner_chat_id** to you
 | `/snapper-block` | Emergency block ALL agent actions |
 | `/snapper-unblock` | Resume normal operation |
 | `/snapper-purge` | Clean up old bot messages |
+| `/snapper-dashboard` | Open Snapper dashboard in browser |
 
 ## Approval Notifications
 

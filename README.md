@@ -230,6 +230,7 @@ Control Snapper from your phone with the Telegram bot (autocomplete menu on `/`)
 | `/purge *` | Purge PII from ALL agents (with confirm) |
 | `/block` | Emergency block ALL agent actions |
 | `/unblock` | Resume normal operation |
+| `/dashboard` | Open Snapper dashboard in browser |
 
 **Quick actions:** When a test is blocked, tap inline buttons to:
 - **Allow Once** — One-time pass (no rule created)
@@ -255,6 +256,7 @@ Control Snapper from Slack with slash commands and interactive Block Kit buttons
 | `/snapper-block` | Emergency block ALL agent actions |
 | `/snapper-unblock` | Resume normal operation |
 | `/snapper-purge` | Clean up old bot messages |
+| `/snapper-dashboard` | Open Snapper dashboard in browser |
 
 **Quick actions:** Blocked actions and approval requests show interactive Block Kit buttons for one-tap approve/deny.
 

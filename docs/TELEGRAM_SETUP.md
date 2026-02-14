@@ -96,6 +96,7 @@ Once configured, your bot supports these commands:
 | `/purge *` | Purge PII from ALL agents |
 | `/block` | Emergency block ALL actions |
 | `/unblock` | Resume normal operation |
+| `/dashboard` | Open Snapper dashboard in browser |
 
 ## Testing Rules
 

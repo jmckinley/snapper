@@ -127,6 +127,7 @@ The Telegram bot is your primary interface to Snapper. It sends you real-time no
 | `/trust disable [name]` | Disable trust enforcement (all agents, or named) |
 | `/block` | Emergency block ALL agent actions |
 | `/unblock` | Resume normal operation |
+| `/dashboard` | Open Snapper dashboard in browser |
 
 ### Notification Types
 
@@ -198,6 +199,7 @@ The Slack bot provides the same functionality as the Telegram bot, using slash c
 | `/snapper-block` | Emergency block ALL agent actions |
 | `/snapper-unblock` | Resume normal operation |
 | `/snapper-purge` | Clean up old bot messages |
+| `/snapper-dashboard` | Open Snapper dashboard in browser |
 
 ### Notification Examples
 
