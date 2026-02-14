@@ -22,9 +22,9 @@ class TestDashboardPage:
         expect(dashboard_page.locator("text=Blocked (24h)")).to_be_visible()
         expect(dashboard_page.locator("text=Approvals Pending")).to_be_visible()
 
-    def test_dashboard_has_traffic_coverage(self, dashboard_page: Page):
-        """Dashboard shows traffic coverage section."""
-        expect(dashboard_page.locator("text=Traffic Coverage")).to_be_visible()
+    def test_dashboard_has_traffic_summary(self, dashboard_page: Page):
+        """Dashboard shows traffic summary section."""
+        expect(dashboard_page.locator("text=Traffic Summary")).to_be_visible()
 
     def test_dashboard_has_recent_blocks(self, dashboard_page: Page):
         """Dashboard shows recent blocks section."""
