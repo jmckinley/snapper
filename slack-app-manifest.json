@@ -79,6 +79,11 @@
         "command": "/snapper-help",
         "description": "Show all available commands",
         "should_escape": false
+      },
+      {
+        "command": "/snapper-dashboard",
+        "description": "Open Snapper dashboard in browser",
+        "should_escape": false
       }
     ]
   },

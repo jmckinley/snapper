@@ -151,6 +151,11 @@ def _register_commands(app):
         await ack()
         await _cmd_help(command, say)
 
+    @app.command("/snapper-dashboard")
+    async def handle_dashboard(ack, command, say):
+        await ack()
+        await _cmd_dashboard(command, say)
+
 
 def _register_actions(app):
     """Register all interactive button action handlers."""
@@ -365,6 +370,25 @@ async def _cmd_status(command, say):
 
 
 # ---------------------------------------------------------------------------
+# /snapper-dashboard
+# ---------------------------------------------------------------------------
+
+async def _cmd_dashboard(command, say):
+    dashboard_url = settings.allowed_origins_list[0] if settings.allowed_origins_list else "http://localhost:8000"
+    await _say_and_track(
+        say,
+        blocks=[
+            _header(":desktop_computer: Snapper Dashboard"),
+            _section(
+                "Manage rules, view agents, and configure security policies:\n\n"
+                f"<{dashboard_url}|:link: Open Dashboard>"
+            ),
+        ],
+        text=f"Snapper Dashboard - {dashboard_url}",
+    )
+
+
+# ---------------------------------------------------------------------------
 # /snapper-help
 # ---------------------------------------------------------------------------
 
@@ -400,7 +424,8 @@ async def _cmd_help(command, say):
                 "`/snapper-block` — Block ALL agent actions\n"
                 "`/snapper-unblock` — Resume normal operation\n\n"
                 "`/snapper-status` — Check Snapper connection\n"
-                "`/snapper-purge` — Clean up bot messages"
+                "`/snapper-purge` — Clean up bot messages\n"
+                "`/snapper-dashboard` — Open Snapper dashboard"
             ),
             _context(f"Your Slack User ID: `{user_id}` — enter this when connecting agents in the dashboard."),
         ],

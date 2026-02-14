@@ -39,6 +39,7 @@ BOT_COMMANDS = [
     {"command": "trust", "description": "View/reset agent trust scores"},
     {"command": "block", "description": "Emergency block ALL actions"},
     {"command": "unblock", "description": "Resume normal operation"},
+    {"command": "dashboard", "description": "Open Snapper dashboard in browser"},
 ]
 
 # Store test agent IDs per chat (in-memory for simplicity)
@@ -422,7 +423,8 @@ async def telegram_webhook(request: Request):
                 "/trust - View/manage agent trust scores\n"
                 "/purge - Delete old bot messages from chat\n"
                 "/block - Emergency block all actions\n"
-                "/unblock - Resume normal operation\n\n"
+                "/unblock - Resume normal operation\n"
+                "/dashboard - Open Snapper dashboard\n\n"
                 f"Your Chat ID: `{chat_id}`\n"
                 "_Enter this when connecting agents in the dashboard to enable Telegram features._"
             ),
@@ -463,7 +465,8 @@ async def telegram_webhook(request: Request):
                 "*Emergency:*\n"
                 "/block - Block ALL agent actions\n"
                 "/unblock - Resume normal operation\n\n"
-                "/status - Check Snapper connection"
+                "/status - Check Snapper connection\n"
+                "/dashboard - Open Snapper dashboard"
             ),
         )
     elif text.startswith("/status"):
@@ -571,6 +574,16 @@ async def telegram_webhook(request: Request):
         await _handle_purge_chat_command(chat_id, text, message)
     elif text.startswith("/trust"):
         await _handle_trust_command(chat_id, text, message)
+    elif text.startswith("/dashboard"):
+        dashboard_url = settings.allowed_origins_list[0] if settings.allowed_origins_list else "http://localhost:8000"
+        await _send_message(
+            chat_id=chat_id,
+            text=(
+                "🖥 *Snapper Dashboard*\n\n"
+                "Manage rules, view agents, and configure security policies:\n\n"
+                f"[Open Dashboard]({dashboard_url})"
+            ),
+        )
 
     return {"ok": True}
 
