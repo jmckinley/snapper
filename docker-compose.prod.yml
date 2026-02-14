@@ -19,7 +19,12 @@ services:
     ports: !reset []
 
   caddy:
-    ports: !reset []
+    # With SNAPPER_DOMAIN: serves on :80/:443 (Let's Encrypt)
+    # Without: serves on :8443 (self-signed)
+    ports: !override
+      - "80:80"
+      - "443:443"
+      - "${HTTPS_PORT:-8443}:8443"
 
   celery-worker:
     build:

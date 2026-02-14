@@ -1,15 +1,17 @@
 # Snapper - Caddy Reverse Proxy Configuration
 #
-# Provides automatic HTTPS with self-signed certificates.
-# Access the dashboard at https://localhost:8443
+# This file is the DEFAULT config for local development (self-signed cert).
+# It is overwritten at runtime by caddy-entrypoint.sh based on environment:
 #
-# The http_redirect listener wrapper auto-redirects plain HTTP
-# requests that land on the TLS port (e.g. http://host:8443 → https://host:8443).
+#   No SNAPPER_DOMAIN → self-signed cert on https://localhost:8443 (this file)
+#   SNAPPER_DOMAIN=snapper.example.com → auto Let's Encrypt on :443
 #
-# For custom domains, replace :8443 with your domain:
-#   yourdomain.com {
-#     reverse_proxy app:8000
-#   }
+# To use a real domain (no "Not Secure" warning):
+#   1. Point your domain's DNS A record to your server IP
+#   2. Set SNAPPER_DOMAIN in your .env file
+#   3. docker compose up -d
+#
+# Caddy handles certificate provisioning and renewal automatically.
 
 {
 	auto_https disable_redirects

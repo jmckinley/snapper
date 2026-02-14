@@ -77,12 +77,20 @@ services:
     command: redis-server --appendonly yes
 
   # Caddy Reverse Proxy (HTTPS)
+  # Set SNAPPER_DOMAIN in .env for auto Let's Encrypt (no "Not Secure" warning).
+  # Without it, serves self-signed cert on :8443 for local dev.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    entrypoint: ["/entrypoint.sh"]
     ports:
       - "${HTTPS_PORT:-8443}:8443"
+      - "80:80"
+      - "443:443"
+    environment:
+      - SNAPPER_DOMAIN=${SNAPPER_DOMAIN:-}
     volumes:
+      - ./caddy-entrypoint.sh:/entrypoint.sh:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
