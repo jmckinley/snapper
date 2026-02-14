@@ -159,7 +159,7 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 ### 3.2 Rule Templates
 | Test ID | Description | Expected Result |
 |---------|-------------|-----------------|
-| RU-010 | List all templates | 25+ templates returned |
+| RU-010 | List all templates | 10 templates returned |
 | RU-011 | Apply CVE mitigation template | Rule created with correct params |
 | RU-012 | Apply Gmail protection template | Rule created |
 | RU-013 | Apply with parameter overrides | Overrides merged correctly |
@@ -306,10 +306,11 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 ### 6.4 First-Run Wizard
 | Test ID | Description | Expected Result |
 |---------|-------------|-----------------|
-| UI-030 | Step 1: Discovery | Finds Snapper instances |
-| UI-031 | Step 2: Registration | Agent registered |
+| UI-030 | Step 1: Discovery | Welcome page loads |
+| UI-031 | Step 2: Agent type selection | 6 agent cards, register button |
 | UI-032 | Step 3: Security profile | Rules applied |
-| UI-033 | Step 4: Complete | Redirects to dashboard |
+| UI-033 | Step 4: Notifications | Telegram/Slack options shown |
+| UI-034 | Step 5: Complete | Agent ID and config snippet displayed |
 
 ---
 
@@ -414,6 +415,52 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | MCP-032 | DELETE without WHERE | DENY |
 | MCP-033 | DROP TABLE | DENY |
 | MCP-034 | SQL injection attempt | DENY |
+
+---
+
+## 12. Traffic Discovery & Integrations Tests
+
+### 12.1 Traffic Discovery Service
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TD-001 | Empty audit data | No service groups returned |
+| TD-002 | Group MCP commands by server | `mcp__github__*` grouped under "GitHub (MCP)" |
+| TD-003 | Group CLI commands by tool | `git status`, `git push` grouped under "git" |
+| TD-004 | Identify uncovered commands | Commands with no matching rule flagged |
+| TD-005 | Mark covered commands | Commands matching active rules marked covered |
+| TD-006 | Agent ID filter scopes results | Only agent's traffic returned |
+| TD-007 | Hours parameter limits range | Only recent traffic returned |
+| TD-008 | Cache results in Redis | 5-min TTL cache hit on second call |
+
+### 12.2 Coverage Check
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TD-010 | Uncovered command | `covered: false`, no matching rules |
+| TD-011 | Covered by allowlist | `covered: true`, matching rule returned |
+| TD-012 | Covered by denylist | `covered: true`, matching rule returned |
+
+### 12.3 Rule Creation from Traffic
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TD-020 | Create allow rule with prefix | Pattern: `^mcp__github__create.*` |
+| TD-021 | Create deny rule with exact match | Pattern: `^mcp__github__delete_repo$` |
+| TD-022 | Auto-generate descriptive name | Name includes server and action |
+| TD-023 | Reject empty command | 400 error |
+
+### 12.4 Integration Templates
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TD-030 | List templates | 10 templates in 5 categories |
+| TD-031 | Enable template creates rules | Rules with source="integration" |
+| TD-032 | Disable template soft-deletes | Rules marked is_deleted=true |
+| TD-033 | Custom MCP generates 3 rules | Allow reads, approve writes, deny destructive |
+| TD-034 | Custom MCP rejects missing name | 400 error |
+
+### 12.5 Bot Commands
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TD-040 | Telegram /dashboard | Dashboard URL link sent |
+| TD-041 | Slack /snapper-dashboard | Dashboard URL link sent |
 
 ---
 
