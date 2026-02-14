@@ -30,6 +30,8 @@ from app.schemas.audit import (
     AuditLogResponse,
     AuditStatsResponse,
     ComplianceReportResponse,
+    DailyBreakdown,
+    DailyStatsResponse,
     HourlyBreakdown,
     ViolationListResponse,
     ViolationResolve,
@@ -116,6 +118,80 @@ async def get_audit_stats(
         denied_count=denied_count,
         pending_count=pending_count,
         hourly_breakdown=hourly_breakdown,
+    )
+
+
+@router.get("/stats/daily", response_model=DailyStatsResponse)
+async def get_daily_stats(
+    db: DbSessionDep,
+    days: int = Query(7, ge=1, le=30),
+    agent_id: Optional[UUID] = None,
+):
+    """Get daily breakdown of allowed/denied/pending for the last N days.
+
+    Optionally filter by agent_id for per-agent charts.
+    """
+    since = datetime.utcnow() - timedelta(days=days)
+
+    day_col = func.date_trunc("day", AuditLog.created_at).label("day")
+    stmt = (
+        select(
+            day_col,
+            AuditLog.action,
+            func.count().label("cnt"),
+        )
+        .where(
+            AuditLog.created_at >= since,
+            AuditLog.action.in_([
+                AuditAction.REQUEST_ALLOWED,
+                AuditAction.REQUEST_DENIED,
+                AuditAction.REQUEST_PENDING_APPROVAL,
+            ]),
+        )
+        .group_by(day_col, AuditLog.action)
+        .order_by(day_col)
+    )
+
+    if agent_id:
+        stmt = stmt.where(AuditLog.agent_id == agent_id)
+
+    result = await db.execute(stmt)
+
+    # Build map: date -> {allowed, denied, pending}
+    daily_map: dict[str, dict[str, int]] = {}
+    # Pre-fill all days so chart has no gaps
+    for i in range(days):
+        d = (datetime.utcnow() - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        daily_map[d] = {"allowed": 0, "denied": 0, "pending": 0}
+
+    for row in result:
+        day_str = row.day.strftime("%Y-%m-%d")
+        if day_str not in daily_map:
+            daily_map[day_str] = {"allowed": 0, "denied": 0, "pending": 0}
+        if row.action == AuditAction.REQUEST_ALLOWED:
+            daily_map[day_str]["allowed"] = row.cnt
+        elif row.action == AuditAction.REQUEST_DENIED:
+            daily_map[day_str]["denied"] = row.cnt
+        elif row.action == AuditAction.REQUEST_PENDING_APPROVAL:
+            daily_map[day_str]["pending"] = row.cnt
+
+    daily_breakdown = [
+        DailyBreakdown(date=d, **v) for d, v in sorted(daily_map.items())
+    ]
+
+    # Get agent name if filtering by agent
+    agent_name = None
+    if agent_id:
+        agent_result = await db.execute(
+            select(Agent.name).where(Agent.id == agent_id)
+        )
+        agent_name = agent_result.scalar_one_or_none()
+
+    return DailyStatsResponse(
+        days=days,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        daily_breakdown=daily_breakdown,
     )
 
 

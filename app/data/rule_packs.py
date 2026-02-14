@@ -1,7 +1,8 @@
-"""Pre-built rule templates for popular integrations.
+"""Curated rule packs for known MCP servers and integrations.
 
-These templates provide sensible security defaults for common MCP servers
-and can be enabled with one click from the dashboard.
+Each pack contains expert-crafted security rules with patterns matching
+real MCP tool names. Used by traffic discovery (for known servers) and
+the "Add MCP Server" manual path.
 
 Patterns match both Claude-style (mcp__server__tool) and OpenClaw-style
 (server_tool) naming conventions, as well as bare CLI commands.
@@ -9,15 +10,15 @@ Patterns match both Claude-style (mcp__server__tool) and OpenClaw-style
 
 from typing import Any
 
-# Template structure:
+# Pack structure:
 # - name: Display name
 # - description: What this integration does
 # - icon: Emoji or icon identifier
 # - category: Group for UI organization
-# - mcp_matcher: Regex for matching tool names to this template
+# - mcp_matcher: Regex for matching tool names to this pack
 # - rules: List of rule definitions to create when enabled
 
-INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
+RULE_PACKS: dict[str, dict[str, Any]] = {
     # =========================================================================
     # SYSTEM
     # =========================================================================
@@ -564,23 +565,10 @@ INTEGRATION_TEMPLATES: dict[str, dict[str, Any]] = {
             },
         ]
     },
-
-    # =========================================================================
-    # CUSTOM — user-defined MCP server
-    # =========================================================================
-    "custom_mcp": {
-        "name": "Custom MCP Server",
-        "description": "Add rules for any MCP server — enter the server name and get smart defaults",
-        "icon": "🔧",
-        "category": "system",
-        "mcp_matcher": "",
-        "custom": True,
-        "rules": [],  # Dynamically generated from server name
-    },
 }
 
 # Categories for UI organization
-INTEGRATION_CATEGORIES = {
+RULE_PACK_CATEGORIES = {
     "system": {
         "name": "System",
         "description": "Shell, filesystem, and local tools",
@@ -609,26 +597,26 @@ INTEGRATION_CATEGORIES = {
 }
 
 
-def get_templates_by_category() -> dict[str, list[dict]]:
-    """Get integration templates organized by category."""
+def get_packs_by_category() -> dict[str, list[dict]]:
+    """Get rule packs organized by category."""
     result = {}
-    for category_id, category_info in INTEGRATION_CATEGORIES.items():
-        templates = [
+    for category_id, category_info in RULE_PACK_CATEGORIES.items():
+        packs = [
             {
-                "id": template_id,
-                **template_data,
+                "id": pack_id,
+                **pack_data,
             }
-            for template_id, template_data in INTEGRATION_TEMPLATES.items()
-            if template_data.get("category") == category_id
+            for pack_id, pack_data in RULE_PACKS.items()
+            if pack_data.get("category") == category_id
         ]
-        if templates:
+        if packs:
             result[category_id] = {
                 "info": category_info,
-                "templates": templates,
+                "packs": packs,
             }
     return result
 
 
-def get_template(template_id: str) -> dict | None:
-    """Get a specific integration template by ID."""
-    return INTEGRATION_TEMPLATES.get(template_id)
+def get_rule_pack(pack_id: str) -> dict | None:
+    """Get a specific rule pack by ID."""
+    return RULE_PACKS.get(pack_id)

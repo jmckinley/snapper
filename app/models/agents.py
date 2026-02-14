@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -233,6 +234,12 @@ class Agent(Base):
     __table_args__ = (
         Index("ix_agents_status_trust", "status", "trust_level"),
         Index("ix_agents_active", "is_deleted", "status"),
+        Index(
+            "uq_agents_name_active",
+            "name",
+            unique=True,
+            postgresql_where=text("is_deleted = false"),
+        ),
     )
 
     def __repr__(self) -> str:

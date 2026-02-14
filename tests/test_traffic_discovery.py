@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from httpx import AsyncClient
 
-from app.data.integration_templates import INTEGRATION_TEMPLATES
+from app.data.rule_packs import RULE_PACKS
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 from app.models.rules import Rule, RuleType, RuleAction
 from app.services.traffic_discovery import (
@@ -351,15 +351,25 @@ class TestGenerateRulesForServer:
         assert any("mcp__" in p for p in patterns)
         assert any("google_calendar_" in p for p in patterns)
 
-    def test_known_server_uses_display_name(self):
-        """Known server resolves to a friendly display name in rule names."""
+    def test_known_server_returns_curated_pack(self):
+        """Known server with curated pack returns full curated rules (more than 3)."""
         rules = generate_rules_for_server("github")
+        # GitHub pack has 4 curated rules
+        assert len(rules) == len(RULE_PACKS["github"]["rules"])
+        assert len(rules) > 3
         assert "GitHub" in rules[0]["name"]
 
-    def test_unknown_server_uses_titleized_name(self):
-        """Unknown server gets a titleized name."""
+    def test_unknown_server_returns_generic_three(self):
+        """Unknown server returns exactly 3 generic rules."""
         rules = generate_rules_for_server("my-custom-thing")
+        assert len(rules) == 3
         assert "My Custom Thing" in rules[0]["name"]
+
+    def test_known_server_without_pack_returns_generic(self):
+        """Known server with no curated pack (template_id=None) returns generic 3."""
+        # "linear" is known but has template_id=None
+        rules = generate_rules_for_server("linear")
+        assert len(rules) == 3
 
     def test_rejects_empty_server_name(self):
         """Empty server name raises ValueError."""
@@ -436,59 +446,6 @@ class TestGenerateRuleFromCommand:
         rule = generate_rule_from_command("mcp__slack__post", action="allow")
         assert rule["rule_type"] == "command_allowlist"
 
-
-# ---------------------------------------------------------------------------
-# Custom MCP template enable
-# ---------------------------------------------------------------------------
-
-
-class TestCustomMCPTemplate:
-
-    @pytest.mark.asyncio
-    async def test_enable_generates_three_rules(self, client: AsyncClient, db_session: AsyncSession):
-        """Enabling custom_mcp with server_name creates 3 rules."""
-        response = await client.post(
-            "/api/v1/integrations/custom_mcp/enable",
-            json={"custom_server_name": "google_calendar"},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["rules_created"] == 3
-
-        result = await db_session.execute(
-            select(Rule).where(
-                Rule.source == "integration",
-                Rule.source_reference == "custom_mcp:google_calendar",
-            )
-        )
-        rules = list(result.scalars().all())
-        assert len(rules) == 3
-
-    @pytest.mark.asyncio
-    async def test_patterns_use_provided_server_name(self, client: AsyncClient, db_session: AsyncSession):
-        """Created rules have patterns containing the server name."""
-        await client.post(
-            "/api/v1/integrations/custom_mcp/enable",
-            json={"custom_server_name": "my_server"},
-        )
-
-        result = await db_session.execute(
-            select(Rule).where(Rule.source_reference == "custom_mcp:my_server")
-        )
-        rules = list(result.scalars().all())
-        for rule in rules:
-            patterns = rule.parameters.get("patterns", [])
-            assert any("my_server" in p for p in patterns)
-
-    @pytest.mark.asyncio
-    async def test_rejects_missing_server_name(self, client: AsyncClient):
-        """Enabling custom_mcp without server_name returns 400."""
-        response = await client.post(
-            "/api/v1/integrations/custom_mcp/enable",
-            json={},
-        )
-        assert response.status_code == 400
-        assert "custom_server_name" in response.json()["detail"]
 
 
 

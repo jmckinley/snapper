@@ -87,21 +87,21 @@ class TestAuditStatsCards:
 
 
 class TestActivityChart:
-    """Activity timeline chart."""
+    """7-day traffic line chart."""
 
-    def test_chart_container_visible(self, audit_page: Page):
-        """Timeline chart container exists."""
-        expect(audit_page.locator("#timeline-chart")).to_be_visible()
-
-    def test_chart_legend(self, audit_page: Page):
-        """Chart shows Allowed/Blocked legend."""
-        chart_section = audit_page.locator("#timeline-chart").locator("..")
-        expect(chart_section.locator("span:has-text('Allowed')")).to_be_visible()
-        expect(chart_section.locator("span:has-text('Blocked')")).to_be_visible()
+    def test_chart_canvas_visible(self, audit_page: Page):
+        """Chart canvas element exists."""
+        expect(audit_page.locator("#daily-chart")).to_be_visible()
 
     def test_chart_title(self, audit_page: Page):
-        """Chart section has Activity heading."""
-        expect(audit_page.locator("text=Activity (Last 24 Hours)")).to_be_visible()
+        """Chart section has Traffic heading."""
+        expect(audit_page.locator("text=Traffic (Last 7 Days)")).to_be_visible()
+
+    def test_agent_filter_dropdown(self, audit_page: Page):
+        """Agent filter dropdown exists with 'All Agents' default."""
+        sel = audit_page.locator("#chart-agent-filter")
+        expect(sel).to_be_visible()
+        expect(sel.locator("option").first).to_have_text("All Agents")
 
 
 class TestAuditTabs:

@@ -127,9 +127,10 @@ class TestRegisterAgentModal:
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        # Fill in the form
-        unique_id = f"test-agent-{int(time.time())}"
-        agents_page.fill("input[name='name']", "E2E Test Agent")
+        # Fill in the form (unique name + ID to avoid conflicts)
+        ts = int(time.time())
+        unique_id = f"test-agent-{ts}"
+        agents_page.fill("input[name='name']", f"E2E Test Agent {ts}")
         agents_page.fill("input[name='external_id']", unique_id)
         agents_page.fill("textarea[name='description']", "Created by E2E test")
 
@@ -169,8 +170,9 @@ class TestAgentActions:
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        unique_id = f"api-key-test-{int(time.time())}"
-        agents_page.fill("input[name='name']", "API Key Test Agent")
+        ts = int(time.time())
+        unique_id = f"api-key-test-{ts}"
+        agents_page.fill("input[name='name']", f"API Key Test {ts}")
         agents_page.fill("input[name='external_id']", unique_id)
         agents_page.click("#register-modal button:has-text('Add AI Service')")
         agents_page.wait_for_selector("#register-modal", state="hidden", timeout=5000)

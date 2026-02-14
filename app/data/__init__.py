@@ -1,15 +1,15 @@
 """Data modules for Snapper."""
 
-from app.data.integration_templates import (
-    INTEGRATION_TEMPLATES,
-    INTEGRATION_CATEGORIES,
-    get_templates_by_category,
-    get_template,
+from app.data.rule_packs import (
+    RULE_PACKS,
+    RULE_PACK_CATEGORIES,
+    get_packs_by_category,
+    get_rule_pack,
 )
 
 __all__ = [
-    "INTEGRATION_TEMPLATES",
-    "INTEGRATION_CATEGORIES",
-    "get_templates_by_category",
-    "get_template",
+    "RULE_PACKS",
+    "RULE_PACK_CATEGORIES",
+    "get_packs_by_category",
+    "get_rule_pack",
 ]

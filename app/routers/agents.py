@@ -93,6 +93,18 @@ async def create_agent(
             detail=f"Agent with external_id '{agent_data.external_id}' already exists",
         )
 
+    # Check for duplicate name among active agents
+    name_stmt = select(Agent).where(
+        Agent.name == agent_data.name,
+        Agent.is_deleted == False,
+    )
+    name_exists = (await db.execute(name_stmt)).scalar_one_or_none()
+    if name_exists:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"An active agent named '{agent_data.name}' already exists",
+        )
+
     # Create agent
     agent = Agent(
         name=agent_data.name,
@@ -303,7 +315,7 @@ async def bulk_create_agents(
 
     for agent_data in bulk_data.agents:
         try:
-            # Check for existing
+            # Check for existing external_id
             stmt = select(Agent).where(Agent.external_id == agent_data.external_id)
             existing = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -311,6 +323,18 @@ async def bulk_create_agents(
                 failed.append({
                     "external_id": agent_data.external_id,
                     "error": "Already exists",
+                })
+                continue
+
+            # Check for duplicate name
+            name_stmt = select(Agent).where(
+                Agent.name == agent_data.name,
+                Agent.is_deleted == False,
+            )
+            if (await db.execute(name_stmt)).scalar_one_or_none():
+                failed.append({
+                    "external_id": agent_data.external_id,
+                    "error": f"Agent named '{agent_data.name}' already exists",
                 })
                 continue
 

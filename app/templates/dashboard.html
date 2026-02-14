@@ -2,6 +2,10 @@
 
 {% block title %}Dashboard - Snapper{% endblock %}
 
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% endblock %}
+
 {% block header %}
 <header class="bg-white shadow">
     <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -40,30 +44,31 @@
         </div>
     </div>
 
-    <!-- Traffic Summary + Rule Templates -->
+    <!-- Traffic Coverage Overview -->
     <div class="bg-white rounded-lg shadow-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <div>
-                <h2 class="text-lg font-semibold text-gray-900">Rule Templates</h2>
-                <p class="text-sm text-gray-500">Click any service to add security rules instantly</p>
+                <h2 class="text-lg font-semibold text-gray-900">Traffic Coverage</h2>
+                <p class="text-sm text-gray-500">Snapper watches agent traffic and auto-discovers services</p>
             </div>
             <div class="flex items-center gap-4">
                 <span id="traffic-summary" class="text-sm text-gray-500 hidden"></span>
                 <a href="/integrations" class="text-sm text-primary-600 hover:text-primary-700 font-medium">
-                    Manage rules &amp; templates →
+                    View details →
                 </a>
             </div>
         </div>
         <div class="p-6">
-            <!-- Popular Integrations Grid -->
-            <div id="popular-integrations" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div id="coverage-overview">
                 <!-- Loading skeleton -->
-                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
-                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
-                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
-                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
-                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
-                <div class="animate-pulse h-20 bg-gray-100 rounded-lg"></div>
+                <div class="animate-pulse space-y-3">
+                    <div class="h-4 w-48 bg-gray-100 rounded"></div>
+                    <div class="flex gap-3">
+                        <div class="h-12 w-32 bg-gray-100 rounded-lg"></div>
+                        <div class="h-12 w-32 bg-gray-100 rounded-lg"></div>
+                        <div class="h-12 w-32 bg-gray-100 rounded-lg"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -78,7 +83,7 @@
                     </svg>
                 </div>
                 <div class="ml-4">
-                    <p class="text-sm font-medium text-gray-500">Integrations Active</p>
+                    <p class="text-sm font-medium text-gray-500">Services Active</p>
                     <p id="stat-integrations" class="text-2xl font-bold text-gray-900">--</p>
                 </div>
             </div>
@@ -124,6 +129,17 @@
         </div>
     </div>
 
+    <!-- Traffic Chart (7 Days) -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium text-gray-700">Traffic (Last 7 Days)</h3>
+            <a href="/audit" class="text-xs text-primary-600 hover:text-primary-700">Full audit →</a>
+        </div>
+        <div class="relative" style="height: 200px">
+            <canvas id="dashboard-chart"></canvas>
+        </div>
+    </div>
+
     <!-- Recent Blocks Section -->
     <div class="bg-white rounded-lg shadow-lg border-l-4 border-red-500">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -145,12 +161,12 @@
 
     <!-- Two Column Layout -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Recently Enabled -->
+        <!-- Discovered Services -->
         <div class="bg-white rounded-lg shadow">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-semibold text-gray-900">Active Integrations</h3>
+                <h3 class="text-lg font-semibold text-gray-900">Discovered Services</h3>
             </div>
-            <div id="active-integrations" class="divide-y divide-gray-200">
+            <div id="discovered-services" class="divide-y divide-gray-200">
                 <div class="px-6 py-4 text-gray-500 text-sm">Loading...</div>
             </div>
         </div>
@@ -166,158 +182,182 @@
         </div>
     </div>
 </div>
-
-<!-- Quick Enable Modal -->
-<div id="enable-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
-    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
-        <div class="fixed inset-0 transition-opacity" onclick="closeEnableModal()">
-            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
-        </div>
-        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-            <div class="bg-white px-4 pt-5 pb-4 sm:p-6">
-                <div class="flex items-center mb-4">
-                    <span id="modal-icon" class="text-4xl mr-4"></span>
-                    <div>
-                        <h3 id="modal-name" class="text-xl font-bold text-gray-900"></h3>
-                        <p id="modal-desc" class="text-sm text-gray-500"></p>
-                    </div>
-                </div>
-                <div id="modal-rules-preview" class="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
-                    <!-- Rules preview will go here -->
-                </div>
-            </div>
-            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button id="modal-enable-btn" onclick="confirmEnable()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 sm:ml-3 sm:w-auto sm:text-sm">
-                    Enable Integration
-                </button>
-                <button onclick="closeEnableModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Popular integrations to show on dashboard (matches simplified templates)
-    const POPULAR_INTEGRATIONS = [
-        'shell', 'filesystem', 'github', 'browser',
-        'network', 'aws', 'database', 'slack',
-        'gmail', 'custom_mcp'
-    ];
-
-    let allIntegrations = {};
-    let selectedIntegration = null;
+    let activePacks = [];
+    let trafficInsights = null;
 
     document.addEventListener('DOMContentLoaded', async () => {
-        await loadIntegrations();
+        await Promise.all([loadActivePacks(), loadTrafficInsights()]);
+        renderCoverageOverview();
+        renderDiscoveredServices();
         loadStats();
+        loadDailyChart();
         loadActivity();
         loadRecentBlocks();
-        loadTrafficSummary();
     });
 
-    async function loadIntegrations() {
+    async function loadActivePacks() {
         try {
-            const response = await fetch('/api/v1/integrations');
-            const categories = await response.json();
-
-            // Flatten into lookup
-            categories.forEach(cat => {
-                cat.integrations.forEach(int => {
-                    allIntegrations[int.id] = int;
-                });
-            });
-
-            renderPopularIntegrations();
-            renderActiveIntegrations();
-            updateIntegrationStats();
+            const response = await fetch('/api/v1/integrations/active-packs');
+            activePacks = await response.json();
         } catch (error) {
-            console.error('Failed to load integrations:', error);
+            console.error('Failed to load active packs:', error);
         }
     }
 
-    function renderPopularIntegrations() {
-        const container = document.getElementById('popular-integrations');
-
-        const html = POPULAR_INTEGRATIONS.map(id => {
-            const int = allIntegrations[id];
-            if (!int) return '';
-
-            // Custom MCP gets a special "+" style
-            if (id === 'custom_mcp') {
-                return `
-                    <a href="/integrations#add-server"
-                       class="relative flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50 rounded-lg transition-all cursor-pointer">
-                        <span class="text-2xl mb-1">+</span>
-                        <span class="text-sm font-medium text-gray-600">Add MCP Server</span>
-                    </a>
-                `;
+    async function loadTrafficInsights() {
+        try {
+            const response = await fetch('/api/v1/integrations/traffic/insights?hours=168');
+            if (response.ok) {
+                trafficInsights = await response.json();
             }
-
-            const enabledClass = int.enabled
-                ? 'border-green-300 bg-green-50'
-                : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50';
-            const statusDot = int.enabled
-                ? '<span class="absolute top-2 right-2 h-2 w-2 bg-green-500 rounded-full"></span>'
-                : '';
-
-            return `
-                <button onclick="showEnableModal('${id}')"
-                        class="relative flex flex-col items-center justify-center p-4 border-2 ${enabledClass} rounded-lg transition-all cursor-pointer">
-                    ${statusDot}
-                    <span class="text-2xl mb-1">${int.icon}</span>
-                    <span class="text-sm font-medium text-gray-900">${int.name}</span>
-                    ${int.enabled ? '<span class="text-xs text-green-600">Active</span>' : ''}
-                </button>
-            `;
-        }).join('');
-
-        container.innerHTML = html;
+        } catch (error) {
+            // Traffic insights are optional
+        }
     }
 
-    function renderActiveIntegrations() {
-        const container = document.getElementById('active-integrations');
-        const active = Object.values(allIntegrations).filter(i => i.enabled);
+    function renderCoverageOverview() {
+        const container = document.getElementById('coverage-overview');
+        const totalCommands = trafficInsights?.total_unique_commands || 0;
+        const uncovered = trafficInsights?.total_uncovered || 0;
+        const covered = totalCommands - uncovered;
 
-        if (active.length === 0) {
+        // Traffic summary badge in header
+        const summaryEl = document.getElementById('traffic-summary');
+        if (totalCommands > 0) {
+            const badge = uncovered > 0
+                ? `<span class="text-red-600 font-medium">${uncovered} uncovered</span>`
+                : '<span class="text-green-600 font-medium">all covered</span>';
+            summaryEl.innerHTML = `${totalCommands} commands seen &middot; ${badge}`;
+            summaryEl.classList.remove('hidden');
+        }
+
+        // Build the coverage section
+        let html = '';
+
+        // Coverage bar (if we have traffic)
+        if (totalCommands > 0) {
+            const pct = Math.round((covered / totalCommands) * 100);
+            const barColor = pct === 100 ? 'bg-green-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-red-500';
+            html += `
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-medium text-gray-700">${pct}% of traffic covered by rules</span>
+                        <span class="text-xs text-gray-500">${covered}/${totalCommands} commands</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="${barColor} h-2 rounded-full transition-all" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Protected services chips
+        if (activePacks.length > 0) {
+            const chips = activePacks.map(pack => `
+                <a href="/integrations"
+                   class="flex items-center gap-2 px-3 py-2 border border-green-200 bg-green-50 rounded-lg transition-all hover:bg-green-100">
+                    <span class="text-lg">${pack.icon}</span>
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">${escapeHtml(pack.display_name)}</span>
+                        <span class="text-xs text-green-600 ml-1">${pack.rule_count} rules</span>
+                    </div>
+                </a>
+            `).join('');
+            html += `
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Protected Services</p>
+                <div class="flex flex-wrap gap-2">${chips}</div>
+            `;
+        } else if (totalCommands === 0) {
+            html = `
+                <div class="text-center py-4">
+                    <div class="text-3xl mb-2">📡</div>
+                    <p class="text-gray-500 text-sm">Waiting for agent traffic</p>
+                    <p class="text-xs text-gray-400 mt-1">Snapper will auto-detect services as your agents make requests</p>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="text-center py-2">
+                    <p class="text-gray-500 text-sm">No services protected yet</p>
+                    <a href="/integrations" class="text-sm text-primary-600 hover:text-primary-700 mt-1 inline-block">
+                        Review discovered traffic →
+                    </a>
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+        updateServiceStats();
+    }
+
+    function renderDiscoveredServices() {
+        const container = document.getElementById('discovered-services');
+
+        const groups = trafficInsights?.service_groups || [];
+        if (groups.length === 0) {
             container.innerHTML = `
                 <div class="px-6 py-8 text-center">
-                    <p class="text-gray-500">No integrations enabled yet</p>
-                    <p class="text-sm text-gray-400 mt-1">Click any service above to get started</p>
+                    <p class="text-gray-500">No services discovered yet</p>
+                    <p class="text-sm text-gray-400 mt-1">Services appear here as your agents make requests</p>
                 </div>
             `;
             return;
         }
 
-        container.innerHTML = active.slice(0, 5).map(int => `
-            <div class="px-6 py-3 flex items-center justify-between hover:bg-gray-50">
-                <div class="flex items-center">
-                    <span class="text-xl mr-3">${int.icon}</span>
-                    <div>
-                        <p class="font-medium text-gray-900">${int.name}</p>
-                        <p class="text-xs text-gray-500">${int.rule_count} rules active</p>
+        container.innerHTML = groups.slice(0, 5).map(server => {
+            const total = server.total_count || 0;
+            const uncovered = server.uncovered_count || 0;
+            // Most recent activity across all commands
+            const lastSeen = (server.commands || []).reduce((latest, cmd) =>
+                cmd.last_seen && cmd.last_seen > latest ? cmd.last_seen : latest, '');
+            const lastLabel = lastSeen ? getTimeAgo(new Date(lastSeen)) : '';
+            const statusBadge = uncovered > 0
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">${uncovered} uncovered</span>`
+                : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">covered</span>`;
+
+            return `
+                <div class="px-6 py-3 flex items-center justify-between hover:bg-gray-50">
+                    <div class="flex items-center">
+                        <span class="text-xl mr-3">${server.icon || '🔌'}</span>
+                        <div>
+                            <p class="font-medium text-gray-900">${escapeHtml(server.display_name || server.server_key)}</p>
+                            <p class="text-xs text-gray-500">${total} commands seen${lastLabel ? ` · last ${lastLabel}` : ''}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${statusBadge}
+                        <a href="/integrations" class="text-xs text-primary-600 hover:text-primary-700">Details</a>
                     </div>
                 </div>
-                <button onclick="disableIntegration('${int.id}')" class="text-xs text-red-600 hover:text-red-700">
-                    Disable
-                </button>
-            </div>
-        `).join('') + (active.length > 5 ? `
+            `;
+        }).join('') + (groups.length > 5 ? `
             <a href="/integrations" class="block px-6 py-3 text-center text-sm text-primary-600 hover:bg-gray-50">
-                View all ${active.length} active integrations →
+                View all ${groups.length} discovered services →
             </a>
         ` : '');
     }
 
-    function updateIntegrationStats() {
-        const active = Object.values(allIntegrations).filter(i => i.enabled);
-        const totalRules = active.reduce((sum, i) => sum + i.rule_count, 0);
+    async function updateServiceStats() {
+        // Count discovered services from traffic (more meaningful than active packs)
+        const serviceCount = trafficInsights?.service_groups?.length || 0;
+        document.getElementById('stat-integrations').textContent = serviceCount;
 
-        document.getElementById('stat-integrations').textContent = active.length;
-        document.getElementById('stat-rules').textContent = totalRules;
+        // Fetch total active rules from all sources (not just packs)
+        try {
+            const r = await fetch('/api/v1/rules?is_active=true&page_size=1');
+            if (r.ok) {
+                const d = await r.json();
+                document.getElementById('stat-rules').textContent = d.total || 0;
+            }
+        } catch (e) {
+            // Fallback to pack rules count
+            const packRules = activePacks.reduce((sum, p) => sum + p.rule_count, 0);
+            document.getElementById('stat-rules').textContent = packRules;
+        }
     }
 
     async function loadStats() {
@@ -469,6 +509,68 @@
         }
     }
 
+    async function loadDailyChart() {
+        try {
+            const r = await fetch('/api/v1/audit/stats/daily?days=7');
+            const data = await r.json();
+            const ctx = document.getElementById('dashboard-chart');
+            const labels = data.daily_breakdown.map(d => {
+                const dt = new Date(d.date + 'T12:00:00');
+                return dt.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+            });
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Allowed',
+                            data: data.daily_breakdown.map(d => d.allowed),
+                            borderColor: 'rgb(34, 197, 94)',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5,
+                        },
+                        {
+                            label: 'Blocked',
+                            data: data.daily_breakdown.map(d => d.denied),
+                            borderColor: 'rgb(239, 68, 68)',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5,
+                        },
+                        {
+                            label: 'Pending',
+                            data: data.daily_breakdown.map(d => d.pending),
+                            borderColor: 'rgb(234, 179, 8)',
+                            backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                            tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { boxWidth: 10, padding: 12, font: { size: 10 } },
+                        },
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0, font: { size: 10 } },
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                        },
+                    },
+                },
+            });
+        } catch (e) {
+            console.error('Failed to load daily chart:', e);
+        }
+    }
+
     function getTimeAgo(date) {
         const seconds = Math.floor((new Date() - date) / 1000);
         if (seconds < 60) return 'just now';
@@ -486,130 +588,6 @@
         return div.innerHTML;
     }
 
-    async function showEnableModal(integrationId) {
-        selectedIntegration = allIntegrations[integrationId];
-        if (!selectedIntegration) return;
-
-        // If already enabled, go to integrations page
-        if (selectedIntegration.enabled) {
-            window.location.href = '/integrations';
-            return;
-        }
-
-        document.getElementById('modal-icon').textContent = selectedIntegration.icon;
-        document.getElementById('modal-name').textContent = selectedIntegration.name;
-        document.getElementById('modal-desc').textContent = selectedIntegration.description;
-
-        // Fetch full details for rules preview
-        try {
-            const response = await fetch(`/api/v1/integrations/${integrationId}`);
-            const details = await response.json();
-
-            const rulesHtml = details.rules.map(rule => {
-                const actionColor = rule.action === 'allow' ? 'green' :
-                                   rule.action === 'deny' ? 'red' : 'yellow';
-                const actionIcon = rule.action === 'allow' ? '✓' :
-                                  rule.action === 'deny' ? '✕' : '?';
-
-                // Extract patterns from parameters
-                const patterns = rule.parameters?.patterns || [];
-                const patternsDisplay = patterns.length > 0
-                    ? patterns.slice(0, 3).map(p => `<code class="text-xs bg-gray-200 px-1 rounded">${p}</code>`).join(' ')
-                    + (patterns.length > 3 ? ` <span class="text-gray-400">+${patterns.length - 3}</span>` : '')
-                    : '';
-
-                return `
-                    <div class="py-3 border-b border-gray-200 last:border-0">
-                        <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-gray-900">${rule.name.replace(selectedIntegration.name + ' - ', '')}</span>
-                            <span class="text-xs px-2 py-1 rounded bg-${actionColor}-100 text-${actionColor}-700">
-                                ${actionIcon} ${rule.action.replace('_', ' ')}
-                            </span>
-                        </div>
-                        ${rule.description ? `<p class="text-xs text-gray-500 mt-1">${rule.description}</p>` : ''}
-                        ${patternsDisplay ? `<div class="mt-2 text-xs text-gray-400">Commands: ${patternsDisplay}</div>` : ''}
-                    </div>
-                `;
-            }).join('');
-
-            document.getElementById('modal-rules-preview').innerHTML = rulesHtml || '<p class="text-gray-500">No rules</p>';
-        } catch (error) {
-            document.getElementById('modal-rules-preview').innerHTML = '<p class="text-red-500">Failed to load rules</p>';
-        }
-
-        document.getElementById('enable-modal').classList.remove('hidden');
-    }
-
-    function closeEnableModal() {
-        document.getElementById('enable-modal').classList.add('hidden');
-        selectedIntegration = null;
-    }
-
-    async function confirmEnable() {
-        if (!selectedIntegration) return;
-
-        const btn = document.getElementById('modal-enable-btn');
-        btn.disabled = true;
-        btn.textContent = 'Enabling...';
-
-        try {
-            const response = await fetch(`/api/v1/integrations/${selectedIntegration.id}/enable`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({})
-            });
-
-            if (response.ok) {
-                closeEnableModal();
-                await loadIntegrations();
-                showToast(`${selectedIntegration.name} enabled successfully!`, 'success');
-            } else {
-                const error = await response.json();
-                showToast(error.detail || 'Failed to enable', 'error');
-            }
-        } catch (error) {
-            showToast('Failed to enable integration', 'error');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Enable Integration';
-        }
-    }
-
-    async function disableIntegration(integrationId) {
-        if (!confirm('Disable this integration and remove its rules?')) return;
-
-        try {
-            const response = await fetch(`/api/v1/integrations/${integrationId}/disable`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            if (response.ok) {
-                await loadIntegrations();
-                showToast('Integration disabled', 'success');
-            }
-        } catch (error) {
-            showToast('Failed to disable integration', 'error');
-        }
-    }
-
-    async function loadTrafficSummary() {
-        try {
-            const response = await fetch('/api/v1/integrations/traffic/insights?hours=168');
-            if (!response.ok) return;
-            const data = await response.json();
-            const el = document.getElementById('traffic-summary');
-            if (data.total_unique_commands > 0) {
-                const uncoveredBadge = data.total_uncovered > 0
-                    ? `<span class="text-red-600 font-medium">${data.total_uncovered} uncovered</span>`
-                    : '<span class="text-green-600 font-medium">all covered</span>';
-                el.innerHTML = `${data.total_unique_commands} commands seen &middot; ${uncoveredBadge}`;
-                el.classList.remove('hidden');
-            }
-        } catch (error) {
-            // Silently ignore — traffic summary is optional
-        }
-    }
 
     function showToast(message, type = 'info') {
         const container = document.getElementById('toast-container');

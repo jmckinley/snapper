@@ -475,9 +475,11 @@ async def discover_traffic(
 # ---------------------------------------------------------------------------
 
 def generate_rules_for_server(server_name: str) -> list[dict]:
-    """Generate three default rules for an MCP server: allow reads, approve writes, deny destructive.
+    """Generate rules for an MCP server.
 
-    Works for any server name — known or unknown.
+    For known servers with a curated rule pack, returns the full curated rules.
+    For unknown servers, generates three generic defaults:
+      allow reads, approve writes, deny destructive.
     """
     if not server_name or not server_name.strip():
         raise ValueError("server_name must not be empty")
@@ -486,8 +488,15 @@ def generate_rules_for_server(server_name: str) -> list[dict]:
     info = KNOWN_MCP_SERVERS.get(sn, {})
     display = info.get("display", _titleize(sn))
 
-    # Build patterns that match both Claude (mcp__server__tool) and OpenClaw (server_tool) formats
-    # Also handle the server name as-is
+    # Check if a curated rule pack exists for this server
+    template_id = info.get("template_id")
+    if template_id:
+        from app.data.rule_packs import get_rule_pack
+        pack = get_rule_pack(template_id)
+        if pack and pack.get("rules"):
+            return pack["rules"]
+
+    # Fallback: generate generic 3 rules
     read_verbs = "read|get|list|search|query|describe|fetch|view|find|show|status|info|count"
     write_verbs = "create|update|write|send|post|set|put|add|edit|modify|upsert|insert|comment|reply|push|commit|upload|move|rename|append"
     delete_verbs = "delete|drop|destroy|remove|purge|truncate|kill|force|archive|ban|kick"

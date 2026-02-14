@@ -11,7 +11,7 @@
                 <p class="mt-1 text-sm text-gray-500">Discover what your agents are doing and create rules from live traffic</p>
             </div>
             <div class="flex items-center space-x-4">
-                <span id="enabled-count" class="text-sm text-gray-500">0 templates active</span>
+                <span id="packs-count" class="text-sm text-gray-500">0 packs active</span>
                 <span class="text-gray-300">|</span>
                 <span id="rules-count" class="text-sm text-gray-500">0 rules active</span>
             </div>
@@ -77,7 +77,7 @@
                 <span class="text-2xl">🔧</span>
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">Add MCP Server</h2>
-                    <p class="text-sm text-gray-500">Create smart default rules for any MCP server — known or custom</p>
+                    <p class="text-sm text-gray-500">Create rules for any MCP server — known servers get curated packs, others get smart defaults</p>
                 </div>
             </div>
         </div>
@@ -95,28 +95,27 @@
                     Create Rules
                 </button>
             </div>
-            <p class="text-xs text-gray-400 mt-2">Creates 3 rules: allow reads, approve writes, block destructive ops. Patterns match both <code>mcp__server__tool</code> and <code>server_tool</code> formats.</p>
+            <p class="text-xs text-gray-400 mt-2">Known servers (e.g. github, slack, aws) get curated rule packs. Unknown servers get 3 defaults: allow reads, approve writes, block destructive.</p>
         </div>
     </div>
 
     <!-- ================================================================== -->
-    <!-- SECTION 3: Rule Templates                                          -->
+    <!-- SECTION 3: Active Rule Packs                                       -->
     <!-- ================================================================== -->
     <div class="bg-white rounded-lg shadow-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center space-x-3">
                 <span class="text-2xl">📋</span>
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900">Rule Templates</h2>
-                    <p class="text-sm text-gray-500">Pre-built security rules with patterns matching real MCP tool names</p>
+                    <h2 class="text-lg font-semibold text-gray-900">Active Rule Packs</h2>
+                    <p class="text-sm text-gray-500">Rule groups created from discovery or manual server setup</p>
                 </div>
             </div>
         </div>
-        <div id="integrations-container" class="divide-y divide-gray-100">
-            <div class="animate-pulse space-y-4 p-6">
-                <div class="h-8 bg-gray-200 rounded w-1/4"></div>
-                <div class="h-20 bg-gray-200 rounded"></div>
-                <div class="h-20 bg-gray-200 rounded"></div>
+        <div id="active-packs-container" class="divide-y divide-gray-100">
+            <div class="px-6 py-12 text-center text-gray-400">
+                <div class="text-4xl mb-3">📋</div>
+                <p>Loading active packs...</p>
             </div>
         </div>
     </div>
@@ -126,16 +125,13 @@
 
 {% block scripts %}
 <script>
-    let integrationData = [];
-    let integrationDetails = {};
-    let expandedIntegration = null;
-    let selectedRules = new Set();
     let trafficData = null;
+    let activePacksData = [];
 
     document.addEventListener('DOMContentLoaded', () => {
         loadTrafficInsights();
-        loadIntegrations();
         loadKnownServers();
+        loadActivePacks();
     });
 
     // =====================================================================
@@ -183,13 +179,21 @@
                 ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">${group.uncovered_count} uncovered</span>`
                 : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">fully covered</span>`;
 
-            const templateBtn = group.has_template && group.template_id
-                ? `<button onclick="event.stopPropagation(); toggleIntegrationExpand('${group.template_id}')"
-                          class="text-xs px-2 py-1 bg-primary-100 text-primary-700 rounded hover:bg-primary-200">Enable Template</button>`
-                : group.source_type === 'mcp' || group.source_type === 'unknown'
-                    ? `<button onclick="event.stopPropagation(); addServerFromGroup('${group.server_key}')"
-                              class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">Add Rules</button>`
-                    : '';
+            // Determine rule count label for the button
+            let addBtnLabel = 'Add Default Rules (3)';
+            if (group.has_template && group.template_id) {
+                // Lookup curated pack rule count
+                addBtnLabel = `Add Rules`;
+            }
+
+            // Compute most recent activity timestamp
+            const lastSeen = group.commands.reduce((latest, cmd) => {
+                return cmd.last_seen && cmd.last_seen > latest ? cmd.last_seen : latest;
+            }, '');
+            const lastSeenLabel = lastSeen ? getTimeAgo(new Date(lastSeen)) : '';
+
+            const addBtn = `<button onclick="event.stopPropagation(); addServerFromDiscovery('${escapeHtml(group.server_key)}')"
+                      class="text-xs px-2 py-1 bg-primary-100 text-primary-700 rounded hover:bg-primary-200">${addBtnLabel}</button>`;
 
             const commandRows = group.commands.map(cmd => {
                 const covered = cmd.has_matching_rule;
@@ -226,12 +230,12 @@
                                 <span class="text-xl">${group.icon}</span>
                                 <div>
                                     <span class="font-medium text-gray-900">${escapeHtml(group.display_name)}</span>
-                                    <span class="text-xs text-gray-400 ml-2">${group.total_count} calls · ${group.commands.length} tools</span>
+                                    <span class="text-xs text-gray-400 ml-2">${group.total_count} calls · ${group.commands.length} tools${lastSeenLabel ? ` · last ${lastSeenLabel}` : ''}</span>
                                 </div>
                                 ${coverageBadge}
                             </div>
                             <div class="flex items-center gap-3">
-                                ${templateBtn}
+                                ${addBtn}
                                 <svg class="w-4 h-4 text-gray-400 transition-transform traffic-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                                 </svg>
@@ -253,10 +257,9 @@
         chevron.classList.toggle('rotate-180');
     }
 
-    function addServerFromGroup(serverKey) {
+    function addServerFromDiscovery(serverKey) {
         document.getElementById('add-server-name').value = serverKey;
-        document.getElementById('add-server-name').scrollIntoView({ behavior: 'smooth' });
-        document.getElementById('add-server-name').focus();
+        addMCPServer();
     }
 
     // =====================================================================
@@ -312,9 +315,11 @@
             });
             if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
             const result = await response.json();
-            showToast(`Created ${result.rules_created} rules for ${name}`, 'success');
+            const packLabel = result.source === 'rule_pack' ? 'curated' : 'default';
+            showToast(`Created ${result.rules_created} ${packLabel} rules for ${name}`, 'success');
             document.getElementById('add-server-name').value = '';
             loadTrafficInsights();
+            loadActivePacks();
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
@@ -337,262 +342,101 @@
     }
 
     // =====================================================================
-    // Integration Templates (same as before, simplified)
+    // Active Rule Packs
     // =====================================================================
 
-    async function loadIntegrations() {
+    async function loadActivePacks() {
         try {
-            const response = await fetch('/api/v1/integrations');
-            integrationData = await response.json();
-            renderIntegrations(integrationData);
-            await updateStats();
+            const response = await fetch('/api/v1/integrations/active-packs');
+            activePacksData = await response.json();
+            renderActivePacks(activePacksData);
+            updateStats();
         } catch (error) {
-            console.error('Failed to load integrations:', error);
-            document.getElementById('integrations-container').innerHTML = `
-                <div class="text-center py-12 text-red-500">Failed to load templates.</div>
+            console.error('Failed to load active packs:', error);
+            document.getElementById('active-packs-container').innerHTML = `
+                <div class="text-center py-12 text-red-500 text-sm">Failed to load active packs.</div>
             `;
         }
     }
 
-    function renderIntegrations(categories) {
-        const container = document.getElementById('integrations-container');
-        if (!categories.length) {
-            container.innerHTML = '<div class="text-center py-12 text-gray-500">No templates available.</div>';
+    function renderActivePacks(packs) {
+        const container = document.getElementById('active-packs-container');
+
+        if (!packs || packs.length === 0) {
+            container.innerHTML = `
+                <div class="px-6 py-12 text-center">
+                    <div class="text-4xl mb-3">📋</div>
+                    <p class="text-gray-500 font-medium">No rule packs active yet</p>
+                    <p class="text-sm text-gray-400 mt-1">Add rules from discovered traffic above or type a server name to get started</p>
+                </div>
+            `;
             return;
         }
 
-        container.innerHTML = categories.map(category => `
-            <div>
-                <div class="px-6 py-3 border-b border-gray-200 bg-gray-50">
-                    <div class="flex items-center">
-                        <span class="text-xl mr-2">${category.icon}</span>
-                        <span class="font-semibold text-gray-700">${category.name}</span>
-                        <span class="text-xs text-gray-400 ml-2">${category.description}</span>
-                    </div>
-                </div>
-                <div class="divide-y divide-gray-100">
-                    ${category.integrations.map(i => renderIntegrationRow(i)).join('')}
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function renderIntegrationRow(integration) {
-        const isExpanded = expandedIntegration === integration.id;
-        const statusBadge = integration.enabled
-            ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">${integration.rule_count} active</span>`
-            : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Disabled</span>`;
-
-        return `
-            <div id="integration-${integration.id}" class="${isExpanded ? 'bg-gray-50' : ''}">
-                <div class="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                     onclick="toggleIntegrationExpand('${integration.id}')">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl">${integration.icon}</span>
-                            <div>
-                                <span class="font-medium text-gray-900">${integration.name}</span>
-                                <span class="ml-2">${statusBadge}</span>
-                            </div>
+        container.innerHTML = packs.map(pack => {
+            const ruleRows = pack.rules.map(rule => {
+                const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
+                return `
+                    <div class="pl-12 pr-6 py-2 flex items-center justify-between text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-${actionColor}-400"></span>
+                            <span class="text-gray-900">${escapeHtml(rule.name)}</span>
                         </div>
-                        <svg class="w-4 h-4 text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}"
-                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
+                        <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-0.5 ml-9">${integration.description}</p>
-                </div>
-                <div id="rules-${integration.id}" class="${isExpanded ? '' : 'hidden'}">
-                    <div class="px-6 pb-4">
-                        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                            <div class="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                                <code class="text-xs text-gray-500">${integration.mcp_matcher}</code>
-                                <div id="actions-${integration.id}" class="flex items-center space-x-2"></div>
+                `;
+            }).join('');
+
+            return `
+                <div class="pack-group">
+                    <div class="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                         onclick="togglePackGroup(this)">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl">${pack.icon}</span>
+                                <div>
+                                    <span class="font-medium text-gray-900">${escapeHtml(pack.display_name)}</span>
+                                    <span class="inline-flex items-center ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">${pack.rule_count} rules</span>
+                                </div>
                             </div>
-                            <div id="rules-list-${integration.id}" class="divide-y divide-gray-100">
-                                <div class="px-4 py-4 text-center text-gray-500 text-sm">Loading...</div>
+                            <div class="flex items-center gap-3">
+                                <button onclick="event.stopPropagation(); disableServerRules('${escapeHtml(pack.source_reference)}')"
+                                        class="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200">Disable</button>
+                                <svg class="w-4 h-4 text-gray-400 transition-transform pack-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        `;
-    }
-
-    async function toggleIntegrationExpand(integrationId) {
-        const wasExpanded = expandedIntegration === integrationId;
-        if (expandedIntegration) {
-            document.getElementById(`rules-${expandedIntegration}`)?.classList.add('hidden');
-            document.getElementById(`integration-${expandedIntegration}`)?.classList.remove('bg-gray-50');
-        }
-        if (wasExpanded) { expandedIntegration = null; return; }
-
-        expandedIntegration = integrationId;
-        const rulesSection = document.getElementById(`rules-${integrationId}`);
-        const row = document.getElementById(`integration-${integrationId}`);
-        if (rulesSection) {
-            rulesSection.classList.remove('hidden');
-            row?.classList.add('bg-gray-50');
-            if (!integrationDetails[integrationId]) {
-                await loadIntegrationDetails(integrationId);
-            } else {
-                renderRulesForIntegration(integrationId);
-            }
-        }
-    }
-
-    async function loadIntegrationDetails(integrationId) {
-        try {
-            const response = await fetch(`/api/v1/integrations/${integrationId}`);
-            const details = await response.json();
-            integrationDetails[integrationId] = details;
-            selectedRules = new Set();
-            details.rules.forEach(rule => {
-                if (details.enabled && rule.enabled) selectedRules.add(rule.id);
-                else if (!details.enabled && rule.default_enabled !== false) selectedRules.add(rule.id);
-            });
-            renderRulesForIntegration(integrationId);
-        } catch (error) {
-            document.getElementById(`rules-list-${integrationId}`).innerHTML =
-                `<div class="px-4 py-4 text-center text-red-500 text-sm">Failed to load rules.</div>`;
-        }
-    }
-
-    function renderRulesForIntegration(integrationId) {
-        const details = integrationDetails[integrationId];
-        if (!details) return;
-        const rulesList = document.getElementById(`rules-list-${integrationId}`);
-        const actionsDiv = document.getElementById(`actions-${integrationId}`);
-
-        if (details.custom && !details.enabled) {
-            // Custom MCP — show server name input inline
-            actionsDiv.innerHTML = `
-                <input type="text" id="custom-server-${integrationId}" placeholder="server name"
-                       class="text-xs border-gray-300 rounded px-2 py-1 w-32">
-                <button onclick="enableCustomMCP('${integrationId}')"
-                        class="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Create</button>
-            `;
-            rulesList.innerHTML = `<div class="px-4 py-4 text-sm text-gray-500">Enter a server name to auto-generate rules.</div>`;
-            return;
-        }
-
-        if (details.enabled) {
-            actionsDiv.innerHTML = `
-                <button onclick="disableIntegration('${integrationId}')"
-                        class="text-xs px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200">Disable All</button>
-            `;
-        } else {
-            actionsDiv.innerHTML = `
-                <button onclick="enableIntegration('${integrationId}')"
-                        class="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Enable All</button>
-            `;
-        }
-
-        if (details.enabled && details.existing_rules && details.existing_rules.length > 0) {
-            rulesList.innerHTML = details.existing_rules.map(rule => renderActiveRuleRow(rule, details)).join('');
-        } else if (!details.rules || details.rules.length === 0) {
-            rulesList.innerHTML = `<div class="px-4 py-4 text-center text-gray-500 text-sm">No rules defined.</div>`;
-        } else {
-            rulesList.innerHTML = details.rules.map(rule => renderRuleRow(rule, details)).join('');
-        }
-    }
-
-    function renderActiveRuleRow(rule, integration) {
-        const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
-        const ruleName = rule.name.replace(integration.name + ' - ', '');
-        const patterns = rule.parameters?.patterns || [];
-        const patternsHtml = patterns.slice(0, 3).map(p =>
-            `<code class="text-xs bg-gray-100 px-1 rounded text-gray-500">${escapeHtml(p)}</code>`
-        ).join(' ');
-
-        return `
-            <div class="px-4 py-2 bg-green-50/50 hover:bg-gray-50 transition-colors">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                        <span class="font-medium text-sm text-gray-900">${escapeHtml(ruleName)}</span>
+                    <div class="pack-rules hidden border-t border-gray-100">
+                        ${ruleRows}
                     </div>
-                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
                 </div>
-                ${patterns.length > 0 ? `<div class="mt-1 ml-4 flex flex-wrap gap-1">${patternsHtml}</div>` : ''}
-            </div>
-        `;
+            `;
+        }).join('');
     }
 
-    function renderRuleRow(rule, integration) {
-        const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
-        const patterns = rule.parameters?.patterns || [];
-        const patternsHtml = patterns.slice(0, 3).map(p =>
-            `<code class="text-xs bg-gray-100 px-1 rounded text-gray-500">${escapeHtml(p)}</code>`
-        ).join(' ');
-        const ruleName = rule.name.replace(integration.name + ' - ', '');
-
-        return `
-            <div class="px-4 py-2 hover:bg-gray-50 transition-colors">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="w-1.5 h-1.5 bg-gray-300 rounded-full"></span>
-                        <span class="font-medium text-sm text-gray-900">${escapeHtml(ruleName)}</span>
-                    </div>
-                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
-                </div>
-                ${rule.description ? `<p class="text-xs text-gray-500 mt-0.5 ml-4">${escapeHtml(rule.description)}</p>` : ''}
-                ${patterns.length > 0 ? `<div class="mt-1 ml-4 flex flex-wrap gap-1">${patternsHtml}</div>` : ''}
-            </div>
-        `;
+    function togglePackGroup(header) {
+        const rules = header.nextElementSibling;
+        const chevron = header.querySelector('.pack-chevron');
+        rules.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
     }
 
-    async function enableCustomMCP(integrationId) {
-        const serverName = document.getElementById(`custom-server-${integrationId}`)?.value?.trim();
-        if (!serverName) { showToast('Enter a server name', 'error'); return; }
+    async function disableServerRules(sourceReference) {
+        if (!confirm('Disable this rule pack and deactivate all its rules?')) return;
 
         try {
-            const response = await fetch(`/api/v1/integrations/${integrationId}/enable`, {
+            const response = await fetch('/api/v1/integrations/traffic/disable-server-rules', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ custom_server_name: serverName }),
+                body: JSON.stringify({ server_name: sourceReference }),
             });
             if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
             const result = await response.json();
             showToast(result.message, 'success');
-            delete integrationDetails[integrationId];
-            await loadIntegrations();
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    async function enableIntegration(integrationId) {
-        try {
-            const response = await fetch(`/api/v1/integrations/${integrationId}/enable`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            });
-            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
-            const result = await response.json();
-            showToast(result.message, 'success');
-            delete integrationDetails[integrationId];
-            await loadIntegrations();
-            setTimeout(() => toggleIntegrationExpand(integrationId), 100);
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    async function disableIntegration(integrationId) {
-        if (!confirm('Disable this integration and deactivate all its rules?')) return;
-        try {
-            const response = await fetch(`/api/v1/integrations/${integrationId}/disable`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            });
-            if (!response.ok) throw new Error((await response.json()).detail || 'Failed');
-            const result = await response.json();
-            showToast(result.message, 'success');
-            delete integrationDetails[integrationId];
-            await loadIntegrations();
-            setTimeout(() => toggleIntegrationExpand(integrationId), 100);
+            loadActivePacks();
+            loadTrafficInsights();
         } catch (error) {
             showToast(error.message, 'error');
         }
@@ -603,17 +447,12 @@
     // =====================================================================
 
     async function updateStats() {
-        let total = 0, enabled = 0, integrationRules = 0;
-        integrationData.forEach(cat => cat.integrations.forEach(i => {
-            total++;
-            if (i.enabled) { enabled++; integrationRules += i.rule_count; }
-        }));
-        document.getElementById('enabled-count').textContent = `${enabled} templates active`;
+        document.getElementById('packs-count').textContent = `${activePacksData.length} packs active`;
 
-        let totalRules = integrationRules;
+        let totalRules = activePacksData.reduce((sum, p) => sum + p.rule_count, 0);
         try {
             const r = await fetch('/api/v1/rules?is_active=true');
-            if (r.ok) { const d = await r.json(); totalRules = Array.isArray(d) ? d.length : integrationRules; }
+            if (r.ok) { const d = await r.json(); totalRules = Array.isArray(d) ? d.length : totalRules; }
         } catch (e) {}
         document.getElementById('rules-count').textContent = `${totalRules} rules active`;
     }
@@ -622,6 +461,17 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function getTimeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        return `${days}d ago`;
     }
 
     function showToast(message, type = 'info') {

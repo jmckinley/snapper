@@ -1,4 +1,8 @@
-"""API routes for managing integration templates and traffic discovery."""
+"""API routes for traffic discovery and rule pack management.
+
+Discovery-first approach: rules come from live traffic detection or manual
+"Add MCP Server" input. No template catalog browsing.
+"""
 
 import logging
 import re
@@ -11,12 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.integration_templates import (
-    INTEGRATION_TEMPLATES,
-    INTEGRATION_CATEGORIES,
-    get_templates_by_category,
-    get_template,
-)
+from app.data.rule_packs import RULE_PACKS, get_rule_pack
 from app.database import get_db
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 from app.models.rules import Rule, RuleType, RuleAction
@@ -38,48 +37,6 @@ router = APIRouter(prefix="/integrations", tags=["integrations"])
 # Pydantic models
 # ---------------------------------------------------------------------------
 
-class IntegrationInfo(BaseModel):
-    """Information about an integration."""
-    id: str
-    name: str
-    description: str
-    icon: str
-    category: str
-    mcp_matcher: str
-    enabled: bool
-    rule_count: int
-
-
-class CategoryInfo(BaseModel):
-    """Information about an integration category."""
-    id: str
-    name: str
-    description: str
-    icon: str
-    integrations: list[IntegrationInfo]
-
-
-class EnableIntegrationRequest(BaseModel):
-    """Request to enable an integration."""
-    agent_id: Optional[UUID] = None
-    selected_rules: Optional[list[str]] = None
-    custom_server_name: Optional[str] = None  # For custom_mcp template
-
-
-class EnableIntegrationResponse(BaseModel):
-    """Response after enabling an integration."""
-    integration_id: str
-    rules_created: int
-    message: str
-
-
-class DisableIntegrationResponse(BaseModel):
-    """Response after disabling an integration."""
-    integration_id: str
-    rules_deleted: int
-    message: str
-
-
 class CreateRuleFromTrafficRequest(BaseModel):
     """Request to create a rule from discovered traffic."""
     command: str
@@ -95,8 +52,24 @@ class CreateRulesForServerRequest(BaseModel):
     agent_id: Optional[UUID] = None
 
 
+class DisableServerRulesRequest(BaseModel):
+    """Request to disable all rules for a server."""
+    server_name: str
+    agent_id: Optional[UUID] = None
+
+
+class ActivePackInfo(BaseModel):
+    """Information about an active rule pack group."""
+    pack_id: str | None
+    display_name: str
+    icon: str
+    source_reference: str
+    rule_count: int
+    rules: list[dict]
+
+
 # ---------------------------------------------------------------------------
-# Traffic discovery endpoints
+# Traffic discovery endpoints (unchanged)
 # ---------------------------------------------------------------------------
 
 @router.get("/traffic/insights")
@@ -108,7 +81,7 @@ async def get_traffic_insights(
     """Discover MCP servers and tools from live audit traffic.
 
     Analyses recent evaluate requests, groups commands by detected service,
-    checks rule coverage, and links to available templates.
+    checks rule coverage, and links to available rule packs.
     """
     try:
         from app.redis_client import redis_client
@@ -203,39 +176,51 @@ async def create_rules_for_server(
     request: CreateRulesForServerRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create smart default rules for an MCP server (allow reads, approve writes, deny destructive).
+    """Create rules for an MCP server.
 
-    Works for any server name — known or unknown.
+    For known servers with a curated rule pack, creates the full curated set.
+    For unknown servers, creates 3 generic defaults (allow reads, approve writes, deny destructive).
     """
     if not request.server_name.strip():
         raise HTTPException(status_code=400, detail="server_name must not be empty")
 
     rule_defs = generate_rules_for_server(request.server_name)
-    created = []
 
+    # Determine source based on whether curated pack was used
+    sn = request.server_name.strip().lower().replace("-", "_")
+    info = KNOWN_MCP_SERVERS.get(sn, {})
+    template_id = info.get("template_id")
+    pack = get_rule_pack(template_id) if template_id else None
+    is_curated = pack is not None and pack.get("rules")
+
+    source = "rule_pack" if is_curated else "traffic_discovery"
+    source_ref = template_id if is_curated else f"mcp_server:{request.server_name}"
+
+    created = []
     for rule_def in rule_defs:
         rule = Rule(
             name=rule_def["name"],
-            description=rule_def["description"],
+            description=rule_def.get("description", ""),
             rule_type=RuleType(rule_def["rule_type"]),
             action=RuleAction(rule_def["action"]),
-            priority=rule_def["priority"],
-            parameters=rule_def["parameters"],
+            priority=rule_def.get("priority", 0),
+            parameters=rule_def.get("parameters", {}),
             agent_id=request.agent_id,
             is_active=True,
-            source="traffic_discovery",
-            source_reference=f"mcp_server:{request.server_name}",
+            source=source,
+            source_reference=source_ref,
         )
         db.add(rule)
         created.append(rule)
 
     await db.commit()
 
-    logger.info(f"Created {len(created)} rules for MCP server '{request.server_name}'")
+    logger.info(f"Created {len(created)} rules for MCP server '{request.server_name}' (source={source})")
 
     return {
         "server_name": request.server_name,
         "rules_created": len(created),
+        "source": source,
         "rules": [
             {
                 "id": str(r.id),
@@ -266,307 +251,112 @@ async def list_known_servers():
 
 
 # ---------------------------------------------------------------------------
-# Template list / detail endpoints
+# Active packs & disable endpoints (new)
 # ---------------------------------------------------------------------------
 
-@router.get("", response_model=list[CategoryInfo])
-async def list_integrations(
+@router.get("/active-packs")
+async def get_active_packs(
     db: AsyncSession = Depends(get_db),
     agent_id: Optional[UUID] = None,
 ):
-    """List all available integration templates organized by category.
+    """Get active rule groups by source_reference.
 
-    Shows which integrations are enabled (have rules created).
+    Returns rule packs and traffic-discovered server rules that are currently active.
     """
-    query = select(Rule).where(Rule.is_active == True, Rule.is_deleted == False)
-    if agent_id:
-        query = query.where(Rule.agent_id == agent_id)
-
-    result = await db.execute(query)
-    existing_rules = result.scalars().all()
-
-    enabled_integrations = set()
-    integration_rule_counts = {}
-
-    for rule in existing_rules:
-        for template_id, template in INTEGRATION_TEMPLATES.items():
-            matched = False
-            if rule.source == "integration" and rule.source_reference == template_id:
-                matched = True
-            elif rule.name.startswith(f"{template['name']} -"):
-                matched = True
-            if matched:
-                enabled_integrations.add(template_id)
-                integration_rule_counts[template_id] = integration_rule_counts.get(template_id, 0) + 1
-
-    categories = []
-    for category_id, category_info in INTEGRATION_CATEGORIES.items():
-        integrations = []
-        for template_id, template in INTEGRATION_TEMPLATES.items():
-            if template.get("category") == category_id:
-                integrations.append(IntegrationInfo(
-                    id=template_id,
-                    name=template["name"],
-                    description=template["description"],
-                    icon=template["icon"],
-                    category=category_id,
-                    mcp_matcher=template["mcp_matcher"],
-                    enabled=template_id in enabled_integrations,
-                    rule_count=integration_rule_counts.get(template_id, 0),
-                ))
-
-        if integrations:
-            categories.append(CategoryInfo(
-                id=category_id,
-                name=category_info["name"],
-                description=category_info["description"],
-                icon=category_info["icon"],
-                integrations=integrations,
-            ))
-
-    return categories
-
-
-@router.get("/categories/summary")
-async def get_categories_summary():
-    """Get a summary of integration categories."""
-    summary = []
-    for category_id, category_info in INTEGRATION_CATEGORIES.items():
-        count = sum(
-            1 for t in INTEGRATION_TEMPLATES.values()
-            if t.get("category") == category_id
-        )
-        summary.append({
-            "id": category_id,
-            **category_info,
-            "integration_count": count,
-        })
-    return summary
-
-
-
-@router.get("/{integration_id}")
-async def get_integration(
-    integration_id: str,
-    db: AsyncSession = Depends(get_db),
-    agent_id: Optional[UUID] = None,
-):
-    """Get details about a specific integration template."""
-    template = get_template(integration_id)
-    if not template:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Integration '{integration_id}' not found",
-        )
-
     query = select(Rule).where(
         Rule.is_active == True,
         Rule.is_deleted == False,
-        or_(
-            Rule.name.like(f"{template['name']} -%"),
-            (Rule.source == "integration") & (Rule.source_reference == integration_id),
-        ),
+        Rule.source.in_(["rule_pack", "traffic_discovery"]),
     )
     if agent_id:
-        query = query.where(Rule.agent_id == agent_id)
+        query = query.where(
+            or_(Rule.agent_id == agent_id, Rule.agent_id.is_(None))
+        )
 
     result = await db.execute(query)
-    existing_rules = result.scalars().all()
+    rules = result.scalars().all()
 
-    existing_rule_names = {rule.name for rule in existing_rules}
+    # Group by source_reference
+    groups: dict[str, dict] = {}
+    for rule in rules:
+        ref = rule.source_reference or "unknown"
+        if ref not in groups:
+            # Determine display info
+            pack_id = None
+            display_name = ref
+            icon = "🔧"
 
-    enriched_rules = []
-    for rule_def in template.get("rules", []):
-        enriched_rules.append({
-            **rule_def,
-            "enabled": rule_def["name"] in existing_rule_names,
-            "default_enabled": rule_def.get("default_enabled", True),
+            if rule.source == "rule_pack" and rule.source_reference:
+                pack_id = rule.source_reference
+                pack = get_rule_pack(pack_id)
+                if pack:
+                    display_name = pack["name"]
+                    icon = pack["icon"]
+            elif rule.source == "traffic_discovery" and ref.startswith("mcp_server:"):
+                server_name = ref.replace("mcp_server:", "")
+                sn = server_name.lower().replace("-", "_")
+                info = KNOWN_MCP_SERVERS.get(sn, {})
+                display_name = info.get("display", server_name.replace("_", " ").title())
+                icon = info.get("icon", "🔧")
+
+            groups[ref] = {
+                "pack_id": pack_id,
+                "display_name": display_name,
+                "icon": icon,
+                "source_reference": ref,
+                "rule_count": 0,
+                "rules": [],
+            }
+
+        groups[ref]["rule_count"] += 1
+        groups[ref]["rules"].append({
+            "id": str(rule.id),
+            "name": rule.name,
+            "rule_type": rule.rule_type.value if hasattr(rule.rule_type, "value") else rule.rule_type,
+            "action": rule.action.value if hasattr(rule.action, "value") else rule.action,
+            "priority": rule.priority,
         })
 
-    return {
-        "id": integration_id,
-        "name": template["name"],
-        "description": template["description"],
-        "icon": template["icon"],
-        "category": template.get("category", ""),
-        "mcp_matcher": template.get("mcp_matcher", ""),
-        "selectable_rules": template.get("selectable_rules", False),
-        "custom": template.get("custom", False),
-        "enabled": len(existing_rules) > 0,
-        "rule_count": len(existing_rules),
-        "rules": enriched_rules,
-        "existing_rules": [
-            {
-                "id": str(rule.id),
-                "name": rule.name,
-                "rule_type": rule.rule_type.value if hasattr(rule.rule_type, 'value') else rule.rule_type,
-                "action": rule.action.value if hasattr(rule.action, 'value') else rule.action,
-                "description": rule.description or "",
-                "priority": rule.priority,
-                "parameters": rule.parameters or {},
-            }
-            for rule in existing_rules
-        ],
-    }
+    return list(groups.values())
 
 
-@router.post("/{integration_id}/enable", response_model=EnableIntegrationResponse)
-async def enable_integration(
-    integration_id: str,
-    request: EnableIntegrationRequest,
+@router.post("/traffic/disable-server-rules")
+async def disable_server_rules(
+    request: DisableServerRulesRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Enable an integration by creating its default rules.
+    """Soft-delete all rules for a server name.
 
-    For custom_mcp, generates rules dynamically from custom_server_name.
+    Matches rules by source_reference (rule_pack ID, or mcp_server:<name>).
     """
-    template = get_template(integration_id)
-    if not template:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Integration '{integration_id}' not found",
-        )
+    if not request.server_name.strip():
+        raise HTTPException(status_code=400, detail="server_name must not be empty")
 
-    # Handle custom MCP server
-    if template.get("custom"):
-        if not request.custom_server_name or not request.custom_server_name.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="custom_server_name is required for custom MCP integration",
-            )
+    sn = request.server_name.strip()
 
-        server_name = request.custom_server_name.strip()
-        rule_defs = generate_rules_for_server(server_name)
-        rules_created = 0
+    # Build source_reference candidates
+    # Could be a pack_id directly, or mcp_server:<name>
+    refs = [sn, f"mcp_server:{sn}"]
+    # Also try normalized form
+    sn_normalized = sn.lower().replace("-", "_")
+    if sn_normalized != sn:
+        refs.extend([sn_normalized, f"mcp_server:{sn_normalized}"])
 
-        for rule_def in rule_defs:
-            rule = Rule(
-                name=rule_def["name"],
-                description=rule_def.get("description", ""),
-                rule_type=RuleType(rule_def["rule_type"]),
-                action=RuleAction(rule_def["action"]),
-                priority=rule_def.get("priority", 0),
-                parameters=rule_def.get("parameters", {}),
-                agent_id=request.agent_id,
-                is_active=True,
-                source="integration",
-                source_reference=f"custom_mcp:{server_name}",
-            )
-            db.add(rule)
-            rules_created += 1
-
-        await db.commit()
-        logger.info(f"Enabled custom MCP '{server_name}' with {rules_created} rules")
-
-        return EnableIntegrationResponse(
-            integration_id=integration_id,
-            rules_created=rules_created,
-            message=f"Created {rules_created} rules for MCP server '{server_name}'",
-        )
-
-    # Standard template enable
     query = select(Rule).where(
-        Rule.is_active == True,
-        or_(
-            Rule.name.like(f"{template['name']} -%"),
-            (Rule.source == "integration") & (Rule.source_reference == integration_id),
-        ),
+        Rule.is_deleted == False,
+        Rule.source.in_(["rule_pack", "traffic_discovery"]),
+        Rule.source_reference.in_(refs),
     )
     if request.agent_id:
         query = query.where(Rule.agent_id == request.agent_id)
-    else:
-        query = query.where(Rule.agent_id.is_(None))
-
-    result = await db.execute(query)
-    existing_rules = result.scalars().all()
-
-    if existing_rules:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Integration '{integration_id}' is already enabled with {len(existing_rules)} rules",
-        )
-
-    rules_created = 0
-    selectable = template.get("selectable_rules", False)
-
-    for rule_def in template.get("rules", []):
-        rule_id = rule_def.get("id")
-
-        if selectable and request.selected_rules is not None:
-            if rule_id not in request.selected_rules:
-                continue
-        elif selectable and request.selected_rules is None:
-            if not rule_def.get("default_enabled", True):
-                continue
-
-        rule_type = RuleType(rule_def["rule_type"])
-        action = RuleAction(rule_def["action"])
-
-        rule = Rule(
-            name=rule_def["name"],
-            description=rule_def.get("description", ""),
-            rule_type=rule_type,
-            action=action,
-            priority=rule_def.get("priority", 0),
-            parameters=rule_def.get("parameters", {}),
-            agent_id=request.agent_id,
-            is_active=True,
-            source="integration",
-            source_reference=integration_id,
-        )
-        db.add(rule)
-        rules_created += 1
-
-    await db.commit()
-
-    logger.info(f"Enabled integration '{integration_id}' with {rules_created} rules")
-
-    return EnableIntegrationResponse(
-        integration_id=integration_id,
-        rules_created=rules_created,
-        message=f"Successfully enabled {template['name']} with {rules_created} security rules",
-    )
-
-
-@router.post("/{integration_id}/disable", response_model=DisableIntegrationResponse)
-async def disable_integration(
-    integration_id: str,
-    db: AsyncSession = Depends(get_db),
-    agent_id: Optional[UUID] = None,
-):
-    """Disable an integration by soft-deleting its rules."""
-    template = get_template(integration_id)
-
-    # Build query — if template exists, match by name prefix too
-    conditions = [(Rule.source == "integration") & (Rule.source_reference == integration_id)]
-    if template:
-        conditions.append(Rule.name.like(f"{template['name']} -%"))
-    # Also match custom_mcp:* source_reference for custom server rules
-    conditions.append(
-        (Rule.source == "integration") & (Rule.source_reference.like(f"custom_mcp:{integration_id}"))
-    )
-
-    query = select(Rule).where(
-        Rule.is_deleted == False,
-        or_(*conditions),
-    )
-    if agent_id:
-        query = query.where(Rule.agent_id == agent_id)
-    else:
-        query = query.where(Rule.agent_id.is_(None))
 
     result = await db.execute(query)
     existing_rules = result.scalars().all()
 
     if not existing_rules:
-        if not template:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Integration '{integration_id}' not found and no matching rules exist",
-            )
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Integration '{integration_id}' is not enabled",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No active rules found for server '{sn}'",
         )
 
     rules_deleted = 0
@@ -577,15 +367,13 @@ async def disable_integration(
         rule.deleted_at = now
         rules_deleted += 1
 
-    template_name = template["name"] if template else integration_id
     audit_entry = AuditLog(
         action=AuditAction.RULE_DEACTIVATED,
         severity=AuditSeverity.INFO,
-        agent_id=agent_id,
-        message=f"Disabled integration '{integration_id}' ({template_name}), soft-deleted {rules_deleted} rules",
+        agent_id=request.agent_id,
+        message=f"Disabled server rules for '{sn}', soft-deleted {rules_deleted} rules",
         details={
-            "integration_id": integration_id,
-            "integration_name": template_name,
+            "server_name": sn,
             "rules_deleted": rules_deleted,
             "rule_ids": [str(rule.id) for rule in existing_rules],
         },
@@ -598,14 +386,14 @@ async def disable_integration(
         from app.redis_client import redis_client
         from app.services.rule_engine import RuleEngine
         engine = RuleEngine(db, redis_client)
-        await engine.invalidate_cache(agent_id)
+        await engine.invalidate_cache(request.agent_id)
     except Exception as e:
-        logger.warning(f"Failed to invalidate rule cache after disabling integration: {e}")
+        logger.warning(f"Failed to invalidate rule cache after disabling server rules: {e}")
 
-    logger.info(f"Disabled integration '{integration_id}', soft-deleted {rules_deleted} rules")
+    logger.info(f"Disabled server rules for '{sn}', soft-deleted {rules_deleted} rules")
 
-    return DisableIntegrationResponse(
-        integration_id=integration_id,
-        rules_deleted=rules_deleted,
-        message=f"Successfully disabled {template_name}, removed {rules_deleted} rules",
-    )
+    return {
+        "server_name": sn,
+        "rules_deleted": rules_deleted,
+        "message": f"Disabled {rules_deleted} rules for {sn}",
+    }

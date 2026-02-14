@@ -141,6 +141,24 @@ class HourlyBreakdown(BaseModel):
     denied: int
 
 
+class DailyBreakdown(BaseModel):
+    """Daily count of allowed, denied, and pending requests."""
+
+    date: str
+    allowed: int
+    denied: int
+    pending: int
+
+
+class DailyStatsResponse(BaseModel):
+    """Schema for daily stats over N days, optionally per-agent."""
+
+    days: int
+    agent_id: Optional[UUID] = None
+    agent_name: Optional[str] = None
+    daily_breakdown: List[DailyBreakdown]
+
+
 class AuditStatsResponse(BaseModel):
     """Schema for audit stats (summary + hourly breakdown)."""
 

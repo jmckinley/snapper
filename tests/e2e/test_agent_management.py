@@ -19,9 +19,11 @@ class TestRegisterAgent:
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        # Fill in required fields
-        unique_id = f"e2e-test-agent-{int(time.time())}"
-        agents_page.fill("#register-modal input[name='name']", "E2E Test Agent")
+        # Fill in required fields (unique name + external_id)
+        ts = int(time.time())
+        unique_name = f"E2E Test Agent {ts}"
+        unique_id = f"e2e-test-agent-{ts}"
+        agents_page.fill("#register-modal input[name='name']", unique_name)
         agents_page.fill("#register-modal input[name='external_id']", unique_id)
         agents_page.fill("#register-modal textarea[name='description']", "Created by E2E test for agent management")
 
@@ -37,12 +39,14 @@ class TestRegisterAgent:
 
     def test_register_agent_shows_api_key(self, agents_page: Page):
         """After registering, the agent's API key should be visible."""
-        unique_id = f"api-key-visible-{int(time.time())}"
+        ts = int(time.time())
+        unique_name = f"API Key Visible {ts}"
+        unique_id = f"api-key-visible-{ts}"
 
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        agents_page.fill("#register-modal input[name='name']", "API Key Visible Agent")
+        agents_page.fill("#register-modal input[name='name']", unique_name)
         agents_page.fill("#register-modal input[name='external_id']", unique_id)
         agents_page.click("#register-modal button:has-text('Add AI Service')")
         agents_page.wait_for_selector("#register-modal", state="hidden", timeout=5000)
@@ -59,12 +63,13 @@ class TestApiKeyManagement:
 
     def test_show_api_key(self, agents_page: Page):
         """Can reveal API key by clicking Show button."""
-        # First register an agent
-        unique_id = f"show-key-test-{int(time.time())}"
+        ts = int(time.time())
+        unique_name = f"Show Key Test {ts}"
+        unique_id = f"show-key-test-{ts}"
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        agents_page.fill("#register-modal input[name='name']", "Show Key Test Agent")
+        agents_page.fill("#register-modal input[name='name']", unique_name)
         agents_page.fill("#register-modal input[name='external_id']", unique_id)
         agents_page.click("#register-modal button:has-text('Add AI Service')")
         agents_page.wait_for_selector("#register-modal", state="hidden", timeout=5000)
@@ -82,12 +87,13 @@ class TestApiKeyManagement:
 
     def test_regenerate_api_key(self, agents_page: Page):
         """Can regenerate an agent's API key."""
-        # First register an agent
-        unique_id = f"regen-key-test-{int(time.time())}"
+        ts = int(time.time())
+        unique_name = f"Regen Key Test {ts}"
+        unique_id = f"regen-key-test-{ts}"
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        agents_page.fill("#register-modal input[name='name']", "Regen Key Test Agent")
+        agents_page.fill("#register-modal input[name='name']", unique_name)
         agents_page.fill("#register-modal input[name='external_id']", unique_id)
         agents_page.click("#register-modal button:has-text('Add AI Service')")
         agents_page.wait_for_selector("#register-modal", state="hidden", timeout=5000)
@@ -114,12 +120,13 @@ class TestAgentStatusManagement:
 
     def test_suspend_agent(self, agents_page: Page):
         """Can suspend an active agent."""
-        # First register an agent
-        unique_id = f"suspend-test-{int(time.time())}"
+        ts = int(time.time())
+        unique_name = f"Suspend Test {ts}"
+        unique_id = f"suspend-test-{ts}"
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        agents_page.fill("#register-modal input[name='name']", "Suspend Test Agent")
+        agents_page.fill("#register-modal input[name='name']", unique_name)
         agents_page.fill("#register-modal input[name='external_id']", unique_id)
         agents_page.click("#register-modal button:has-text('Add AI Service')")
         agents_page.wait_for_selector("#register-modal", state="hidden", timeout=5000)
@@ -151,12 +158,13 @@ class TestAgentStatusManagement:
 
     def test_activate_suspended_agent(self, agents_page: Page):
         """Can re-activate a suspended agent."""
-        # First register and suspend an agent
-        unique_id = f"activate-test-{int(time.time())}"
+        ts = int(time.time())
+        unique_name = f"Activate Test {ts}"
+        unique_id = f"activate-test-{ts}"
         agents_page.click("button:has-text('Add Another AI')")
         agents_page.wait_for_selector("#register-modal", state="visible")
 
-        agents_page.fill("#register-modal input[name='name']", "Activate Test Agent")
+        agents_page.fill("#register-modal input[name='name']", unique_name)
         agents_page.fill("#register-modal input[name='external_id']", unique_id)
         agents_page.click("#register-modal button:has-text('Add AI Service')")
         agents_page.wait_for_selector("#register-modal", state="hidden", timeout=5000)

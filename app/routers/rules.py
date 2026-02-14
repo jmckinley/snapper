@@ -37,8 +37,8 @@ router = APIRouter(prefix="/rules", dependencies=[Depends(default_rate_limit)])
 
 # Pre-built rule templates.
 # These templates cover agents/tools not in the Integrations page.
-# For service-specific rules (Gmail, GitHub, Slack, AWS, etc.),
-# see app/data/integration_templates.py.
+# For service-specific rule packs (Gmail, GitHub, Slack, AWS, etc.),
+# see app/data/rule_packs.py.
 RULE_TEMPLATES = {
     "cve-2026-25253-mitigation": {
         "id": "cve-2026-25253-mitigation",
@@ -248,9 +248,8 @@ RULE_TEMPLATES = {
     },
     # =========================================================================
     # MCP SERVER / INTEGRATION TEMPLATES
-    # (Service-specific templates for Gmail, GitHub, Slack, AWS, etc. have
-    #  been moved to app/data/integration_templates.py — only non-overlapping
-    #  MCP server templates remain here.)
+    # (Service-specific rule packs for Gmail, GitHub, Slack, AWS, etc. are
+    #  in app/data/rule_packs.py — only non-overlapping templates remain here.)
     # =========================================================================
     "brave-search-protection": {
         "id": "brave-search-protection",

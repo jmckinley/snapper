@@ -247,7 +247,7 @@ class TestRuleManagement:
         templates = response.json()
         assert len(templates) >= 15  # Non-integration templates
 
-        # Check for key templates (service-specific ones moved to integration_templates)
+        # Check for key templates (service-specific ones in rule_packs)
         template_ids = [t["id"] for t in templates]
         assert "credential-protection" in template_ids
         assert "openclaw-safe-commands" in template_ids

@@ -18,58 +18,17 @@ class TestIntegrationsPage:
 
     def test_sections_displayed(self, integrations_page: Page):
         """Main sections are displayed on the page."""
-        # Should have the key sections: Discovered Activity, Rule Templates
         page_text = integrations_page.content()
-        has_sections = (
-            "Discovered Activity" in page_text or
-            "Rule Templates" in page_text
-        )
-        assert has_sections, "Expected 'Discovered Activity' or 'Rule Templates' section on the page"
+        assert "Discovered Activity" in page_text, "Expected 'Discovered Activity' section"
+        assert "Add MCP Server" in page_text, "Expected 'Add MCP Server' section"
+        assert "Active Rule Packs" in page_text, "Expected 'Active Rule Packs' section"
 
-    def test_integration_cards_visible(self, integrations_page: Page):
-        """Integration cards are visible (Gmail, GitHub, etc.)."""
-        page_text = integrations_page.content()
-        # At least some well-known integrations should be visible
-        found = any(
-            name in page_text
-            for name in ["Gmail", "GitHub", "Slack", "Docker"]
-        )
-        assert found, "Expected at least one known integration name on the page"
+    def test_add_mcp_server_input_visible(self, integrations_page: Page):
+        """Add MCP Server section has an input field and button."""
+        input_field = integrations_page.locator("#add-server-name").first
+        expect(input_field).to_be_visible()
 
-    def test_search_filter_narrows_integrations(self, integrations_page: Page):
-        """Search/filter narrows visible integrations."""
-        search_input = integrations_page.locator(
-            "input[type='search'], input[type='text'][placeholder*='earch'], "
-            "input[placeholder*='ilter'], [data-testid='search-input']"
-        ).first
-
-        if search_input.is_visible():
-            search_input.fill("Gmail")
-            integrations_page.wait_for_timeout(500)
-            page_text = integrations_page.content()
-            assert "Gmail" in page_text
-        else:
-            pytest.skip("No search input found on integrations page")
-
-    def test_enable_disable_round_trip(self, integrations_page: Page):
-        """Enable → disable round-trip shows state change."""
-        # Find an enable button
-        enable_btn = integrations_page.locator(
-            "button:has-text('Enable'), [data-action='enable']"
-        ).first
-
-        if enable_btn.is_visible():
-            enable_btn.click()
-            integrations_page.wait_for_timeout(1000)
-
-            # After enabling, look for a disable button
-            disable_btn = integrations_page.locator(
-                "button:has-text('Disable'), [data-action='disable']"
-            ).first
-
-            if disable_btn.is_visible():
-                disable_btn.click()
-                integrations_page.wait_for_timeout(1000)
-            # Test passes if no errors during round-trip
-        else:
-            pytest.skip("No enable button found on integrations page")
+    def test_active_packs_section_visible(self, integrations_page: Page):
+        """Active Rule Packs section is visible."""
+        section = integrations_page.locator("text=Active Rule Packs")
+        expect(section).to_be_visible()

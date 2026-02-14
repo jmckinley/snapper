@@ -1,7 +1,7 @@
 """
 @module test_dashboard
 @description E2E tests for the Dashboard page.
-Tests dashboard loading, stats display, navigation, and integration modals.
+Tests dashboard loading, stats display, navigation, and active services.
 """
 
 from playwright.sync_api import Page, expect
@@ -17,22 +17,18 @@ class TestDashboardPage:
 
     def test_dashboard_has_stats(self, dashboard_page: Page):
         """Dashboard shows statistics cards."""
-        expect(dashboard_page.locator("text=Integrations Active")).to_be_visible()
+        expect(dashboard_page.get_by_text("Services Active", exact=True)).to_be_visible()
         expect(dashboard_page.locator("text=Rules Active")).to_be_visible()
         expect(dashboard_page.locator("text=Blocked (24h)")).to_be_visible()
         expect(dashboard_page.locator("text=Approvals Pending")).to_be_visible()
 
-    def test_dashboard_has_quick_add_integrations(self, dashboard_page: Page):
-        """Dashboard shows rule templates section."""
-        expect(dashboard_page.locator("text=Rule Templates")).to_be_visible()
+    def test_dashboard_has_traffic_coverage(self, dashboard_page: Page):
+        """Dashboard shows traffic coverage section."""
+        expect(dashboard_page.locator("text=Traffic Coverage")).to_be_visible()
 
     def test_dashboard_has_recent_blocks(self, dashboard_page: Page):
         """Dashboard shows recent blocks section."""
         expect(dashboard_page.locator("text=Recent Blocks")).to_be_visible()
-
-    def test_dashboard_has_active_integrations(self, dashboard_page: Page):
-        """Dashboard shows active integrations section."""
-        expect(dashboard_page.locator("text=Active Integrations")).to_be_visible()
 
     def test_dashboard_has_recent_activity(self, dashboard_page: Page):
         """Dashboard shows recent activity section."""
@@ -52,34 +48,3 @@ class TestDashboardPage:
         """Can navigate to security page from sidebar."""
         dashboard_page.click("nav a:has-text('Security')")
         expect(dashboard_page).to_have_url(f"{base_url}/security")
-
-
-class TestIntegrationModal:
-    """Tests for the integration enable modal."""
-
-    def test_clicking_integration_opens_modal(self, dashboard_page: Page):
-        """Clicking an integration shows the enable modal."""
-        # Wait for integrations to load
-        dashboard_page.wait_for_selector("#popular-integrations button", timeout=5000)
-
-        # Click on GitHub integration (one of the popular ones)
-        github_btn = dashboard_page.locator("#popular-integrations button:has-text('GitHub')")
-        if github_btn.count() > 0:
-            github_btn.click()
-            dashboard_page.wait_for_timeout(500)
-            # Modal should appear
-            expect(dashboard_page.locator("#enable-modal")).to_be_visible()
-
-    def test_modal_can_be_closed(self, dashboard_page: Page):
-        """Enable modal can be closed with cancel button."""
-        dashboard_page.wait_for_selector("#popular-integrations button", timeout=5000)
-
-        github_btn = dashboard_page.locator("#popular-integrations button:has-text('GitHub')")
-        if github_btn.count() > 0:
-            github_btn.click()
-            dashboard_page.wait_for_selector("#enable-modal", state="visible")
-
-            # Click cancel
-            dashboard_page.click("#enable-modal button:has-text('Cancel')")
-            dashboard_page.wait_for_timeout(300)
-            expect(dashboard_page.locator("#enable-modal")).to_be_hidden()
