@@ -7,7 +7,6 @@ Covers:
   - generate_rules_for_server() — smart default rule generation
   - generate_rule_from_command() — single-command rule generation
   - Custom MCP template — enable with server name
-  - Legacy compatibility — rules from removed templates
   - Traffic API endpoints — insights, coverage, create-rule, create-server-rules
 """
 
@@ -491,79 +490,6 @@ class TestCustomMCPTemplate:
         assert response.status_code == 400
         assert "custom_server_name" in response.json()["detail"]
 
-
-# ---------------------------------------------------------------------------
-# Legacy compatibility
-# ---------------------------------------------------------------------------
-
-
-class TestLegacyCompatibility:
-
-    @pytest.mark.asyncio
-    async def test_old_template_rules_still_evaluate(self, db_session: AsyncSession):
-        """Rules from removed templates (e.g., 'linear') still function as rules."""
-        rule = Rule(
-            id=uuid4(),
-            name="Linear - Allow Read",
-            rule_type=RuleType.COMMAND_ALLOWLIST,
-            action=RuleAction.ALLOW,
-            priority=100,
-            parameters={"patterns": ["^mcp__linear__.*"]},
-            is_active=True,
-            source="integration",
-            source_reference="linear",
-        )
-        db_session.add(rule)
-        await db_session.commit()
-
-        # The rule should still match commands
-        result = await check_coverage(db_session, "mcp__linear__create_issue")
-        assert result["covered"] is True
-
-    @pytest.mark.asyncio
-    async def test_legacy_rules_surfaced_in_list(self, client: AsyncClient, db_session: AsyncSession):
-        """Rules from removed templates appear in /legacy-rules endpoint."""
-        rule = Rule(
-            id=uuid4(),
-            name="Notion - Allow Read",
-            rule_type=RuleType.COMMAND_ALLOWLIST,
-            action=RuleAction.ALLOW,
-            priority=100,
-            parameters={"patterns": ["^notion_.*"]},
-            is_active=True,
-            source="integration",
-            source_reference="notion",  # removed template
-        )
-        db_session.add(rule)
-        await db_session.commit()
-
-        response = await client.get("/api/v1/integrations/legacy-rules")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["count"] == 1
-        assert data["rules"][0]["source_reference"] == "notion"
-
-    @pytest.mark.asyncio
-    async def test_current_templates_not_in_legacy(self, client: AsyncClient, db_session: AsyncSession):
-        """Rules from current templates do NOT appear in legacy-rules."""
-        rule = Rule(
-            id=uuid4(),
-            name="Gmail - Allow Read",
-            rule_type=RuleType.COMMAND_ALLOWLIST,
-            action=RuleAction.ALLOW,
-            priority=100,
-            parameters={},
-            is_active=True,
-            source="integration",
-            source_reference="gmail",
-        )
-        db_session.add(rule)
-        await db_session.commit()
-
-        response = await client.get("/api/v1/integrations/legacy-rules")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["count"] == 0
 
 
 # ---------------------------------------------------------------------------

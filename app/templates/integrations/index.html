@@ -121,21 +121,6 @@
         </div>
     </div>
 
-    <!-- ================================================================== -->
-    <!-- SECTION 4: Legacy Rules (if any)                                   -->
-    <!-- ================================================================== -->
-    <div id="legacy-section" class="hidden bg-yellow-50 rounded-lg shadow overflow-hidden border border-yellow-200">
-        <div class="px-6 py-4 border-b border-yellow-200">
-            <div class="flex items-center space-x-3">
-                <span class="text-xl">⚠️</span>
-                <div>
-                    <h2 class="text-md font-semibold text-yellow-800">Legacy Rules</h2>
-                    <p class="text-sm text-yellow-600">Created from templates that have been simplified. Still active.</p>
-                </div>
-            </div>
-        </div>
-        <div id="legacy-rules-list" class="divide-y divide-yellow-100"></div>
-    </div>
 </div>
 {% endblock %}
 
@@ -150,7 +135,6 @@
     document.addEventListener('DOMContentLoaded', () => {
         loadTrafficInsights();
         loadIntegrations();
-        loadLegacyRules();
         loadKnownServers();
     });
 
@@ -611,36 +595,6 @@
             setTimeout(() => toggleIntegrationExpand(integrationId), 100);
         } catch (error) {
             showToast(error.message, 'error');
-        }
-    }
-
-    // =====================================================================
-    // Legacy Rules
-    // =====================================================================
-
-    async function loadLegacyRules() {
-        try {
-            const response = await fetch('/api/v1/integrations/legacy-rules');
-            const data = await response.json();
-            if (data.count === 0) return;
-
-            document.getElementById('legacy-section').classList.remove('hidden');
-            document.getElementById('legacy-rules-list').innerHTML = data.rules.map(rule => {
-                const actionColor = rule.action === 'allow' ? 'green' : rule.action === 'deny' ? 'red' : 'yellow';
-                return `
-                    <div class="px-6 py-3">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <span class="font-medium text-sm text-gray-900">${escapeHtml(rule.name)}</span>
-                                <span class="text-xs text-gray-400 ml-2">from: ${escapeHtml(rule.source_reference)}</span>
-                            </div>
-                            <span class="px-2 py-0.5 rounded text-xs font-medium bg-${actionColor}-100 text-${actionColor}-700">${rule.action.replace('_', ' ')}</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        } catch (e) {
-            console.warn('Could not load legacy rules');
         }
     }
 

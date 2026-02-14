@@ -277,7 +277,6 @@ async def list_integrations(
     """List all available integration templates organized by category.
 
     Shows which integrations are enabled (have rules created).
-    Also surfaces legacy rules from removed templates.
     """
     query = select(Rule).where(Rule.is_active == True, Rule.is_deleted == False)
     if agent_id:
@@ -344,47 +343,6 @@ async def get_categories_summary():
         })
     return summary
 
-
-@router.get("/legacy-rules")
-async def list_legacy_rules(
-    db: AsyncSession = Depends(get_db),
-    agent_id: Optional[UUID] = None,
-):
-    """List rules from removed integration templates.
-
-    Returns rules with source='integration' whose source_reference
-    no longer matches any current template.
-    """
-    query = select(Rule).where(
-        Rule.is_active == True,
-        Rule.is_deleted == False,
-        Rule.source == "integration",
-    )
-    if agent_id:
-        query = query.where(Rule.agent_id == agent_id)
-
-    result = await db.execute(query)
-    rules = result.scalars().all()
-
-    current_ids = set(INTEGRATION_TEMPLATES.keys())
-    legacy = []
-    for rule in rules:
-        if rule.source_reference and rule.source_reference not in current_ids:
-            legacy.append({
-                "id": str(rule.id),
-                "name": rule.name,
-                "rule_type": rule.rule_type.value if hasattr(rule.rule_type, "value") else rule.rule_type,
-                "action": rule.action.value if hasattr(rule.action, "value") else rule.action,
-                "source_reference": rule.source_reference,
-                "priority": rule.priority,
-                "parameters": rule.parameters or {},
-            })
-
-    return {
-        "count": len(legacy),
-        "rules": legacy,
-        "note": "Created from templates that have been simplified. Still active — manage on the Rules page.",
-    }
 
 
 @router.get("/{integration_id}")
@@ -576,11 +534,7 @@ async def disable_integration(
     db: AsyncSession = Depends(get_db),
     agent_id: Optional[UUID] = None,
 ):
-    """Disable an integration by soft-deleting its rules.
-
-    Supports legacy template IDs — finds rules by source_reference
-    even if the template definition has been removed.
-    """
+    """Disable an integration by soft-deleting its rules."""
     template = get_template(integration_id)
 
     # Build query — if template exists, match by name prefix too
@@ -605,7 +559,6 @@ async def disable_integration(
     existing_rules = result.scalars().all()
 
     if not existing_rules:
-        # Legacy fallback — try matching source_reference directly
         if not template:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

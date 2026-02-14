@@ -77,10 +77,10 @@ class TestListIntegrations:
         assert gmail_found
 
     @pytest.mark.asyncio
-    async def test_legacy_name_prefix_detection_shows_enabled(
+    async def test_name_prefix_detection_shows_enabled(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """Integration with legacy name-prefix rules shows enabled=True."""
+        """Integration with name-prefix matching rules shows enabled=True."""
         rule = Rule(
             id=uuid4(),
             name="Gmail / Email - Allow Read Operations",
