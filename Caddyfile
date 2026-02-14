@@ -3,6 +3,9 @@
 # Provides automatic HTTPS with self-signed certificates.
 # Access the dashboard at https://localhost:8443
 #
+# The http_redirect listener wrapper auto-redirects plain HTTP
+# requests that land on the TLS port (e.g. http://host:8443 → https://host:8443).
+#
 # For custom domains, replace :8443 with your domain:
 #   yourdomain.com {
 #     reverse_proxy app:8000
@@ -10,10 +13,18 @@
 
 {
 	auto_https disable_redirects
+	servers :8443 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
 }
 
 :8443 {
 	tls internal
+
+	header Strict-Transport-Security "max-age=31536000"
 
 	reverse_proxy app:8000
 }
