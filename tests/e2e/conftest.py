@@ -4,6 +4,9 @@
 """
 
 import os
+import urllib.request
+import json
+import ssl
 from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
@@ -13,6 +16,63 @@ BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 
 # Directory for screenshots on failure
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
+
+# Wizard external_id prefixes that get reused across test runs.
+# Docker container hostname varies, so we match by prefix.
+WIZARD_EXTERNAL_PREFIXES = [
+    "openclaw-main",
+    "claude-code-",
+    "cursor-",
+    "windsurf-",
+    "cline-",
+    "snapper-10.0.0.1-",  # custom agent test uses host=10.0.0.1
+]
+
+
+def _api_request(method, path, data=None):
+    """Make a direct API request (bypassing Playwright) for test setup/teardown."""
+    url = f"{BASE_URL}{path}"
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    body = json.dumps(data).encode() if data else None
+    headers = {"Content-Type": "application/json"} if data else {}
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+            content = resp.read()
+            if content:
+                return json.loads(content)
+            return {"status": resp.status}
+    except urllib.error.HTTPError as e:
+        content = e.read()
+        if content:
+            try:
+                return json.loads(content)
+            except Exception:
+                pass
+        return None
+    except Exception:
+        return None
+
+
+def _cleanup_wizard_agents():
+    """Delete agents created by previous wizard test runs to avoid 409 conflicts."""
+    agents = _api_request("GET", "/api/v1/agents?page_size=100")
+    if not agents or "items" not in agents:
+        return
+    for agent in agents["items"]:
+        ext_id = agent.get("external_id", "")
+        if any(ext_id == prefix or ext_id.startswith(prefix) for prefix in WIZARD_EXTERNAL_PREFIXES):
+            _api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_stale_test_data():
+    """Clean up stale test data before running E2E suite."""
+    _cleanup_wizard_agents()
+    yield
 
 
 @pytest.fixture(scope="session")
@@ -76,7 +136,7 @@ def settings_page(page: Page, base_url: str) -> Page:
 def integrations_page(page: Page, base_url: str) -> Page:
     """Navigate to integrations page and wait for it to load."""
     page.goto(f"{base_url}/integrations")
-    page.wait_for_selector("text=Integrations", timeout=10000)
+    page.wait_for_selector("text=Rules & Traffic", timeout=10000)
     return page
 
 

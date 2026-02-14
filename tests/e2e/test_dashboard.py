@@ -19,13 +19,12 @@ class TestDashboardPage:
         """Dashboard shows statistics cards."""
         expect(dashboard_page.locator("text=Integrations Active")).to_be_visible()
         expect(dashboard_page.locator("text=Rules Active")).to_be_visible()
-        expect(dashboard_page.locator("text=Blocked Today")).to_be_visible()
+        expect(dashboard_page.locator("text=Blocked (24h)")).to_be_visible()
         expect(dashboard_page.locator("text=Approvals Pending")).to_be_visible()
 
     def test_dashboard_has_quick_add_integrations(self, dashboard_page: Page):
-        """Dashboard shows quick add integrations section."""
-        expect(dashboard_page.locator("text=Quick Add Integrations")).to_be_visible()
-        expect(dashboard_page.locator("text=View all 30+ integrations")).to_be_visible()
+        """Dashboard shows rule templates section."""
+        expect(dashboard_page.locator("text=Rule Templates")).to_be_visible()
 
     def test_dashboard_has_recent_blocks(self, dashboard_page: Page):
         """Dashboard shows recent blocks section."""

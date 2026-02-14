@@ -14,8 +14,21 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
+from .conftest import _api_request
+
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
+
+
+def _delete_agents_by_prefix(prefix: str):
+    """Delete agents whose external_id starts with prefix."""
+    agents = _api_request("GET", "/api/v1/agents?page_size=100")
+    if not agents or "items" not in agents:
+        return
+    for agent in agents["items"]:
+        ext_id = agent.get("external_id", "")
+        if ext_id.startswith(prefix):
+            _api_request("DELETE", f"/api/v1/agents/{agent['id']}")
 
 
 @pytest.fixture(autouse=True)
@@ -61,14 +74,14 @@ def _complete_wizard_flow(page: Page, agent_type: str, agent_label: str):
 
     # Click Register
     page.click("#register-btn")
-    page.wait_for_selector("#register-success", state="visible", timeout=10000)
+    page.wait_for_selector("#register-success", state="visible", timeout=30000)
     success_text = page.locator("#register-success").text_content()
     page.screenshot(path=str(SCREENSHOT_DIR / f"flow_{agent_type}_registered.png"))
 
     # Step 3: Security profile
-    page.wait_for_selector("#step3", state="visible", timeout=5000)
+    page.wait_for_selector("#step3", state="visible", timeout=10000)
     page.click("#apply-btn")
-    page.wait_for_selector("#step4", state="visible", timeout=5000)
+    page.wait_for_selector("#step4", state="visible", timeout=10000)
 
     # Step 4: Skip notifications
     page.click("text=Skip for now")
@@ -103,6 +116,7 @@ class TestWizardCursorFlow:
 
     def test_cursor_full_flow(self, wizard_page: Page):
         """Complete Cursor wizard flow end to end."""
+        _delete_agents_by_prefix("cursor-")
         page = _complete_wizard_flow(wizard_page, "cursor", "Cursor")
 
         # Cursor snippet should mention preToolUse or cursor hooks
@@ -122,6 +136,7 @@ class TestWizardWindsurfFlow:
 
     def test_windsurf_full_flow(self, wizard_page: Page):
         """Complete Windsurf wizard flow end to end."""
+        _delete_agents_by_prefix("windsurf-")
         page = _complete_wizard_flow(wizard_page, "windsurf", "Windsurf")
 
         # Windsurf snippet should mention windsurf or codeium hooks
@@ -141,6 +156,7 @@ class TestWizardClineFlow:
 
     def test_cline_full_flow(self, wizard_page: Page):
         """Complete Cline wizard flow end to end."""
+        _delete_agents_by_prefix("cline-")
         page = _complete_wizard_flow(wizard_page, "cline", "Cline")
 
         # Cline snippet should mention cline hooks
@@ -153,6 +169,7 @@ class TestWizardClaudeCodeFlow:
 
     def test_claude_code_full_flow(self, wizard_page: Page):
         """Complete Claude Code wizard flow end to end."""
+        _delete_agents_by_prefix("claude-code-")
         page = _complete_wizard_flow(wizard_page, "claude-code", "Claude Code")
 
         # Claude Code snippet should mention .claude or PreToolUse

@@ -12,17 +12,19 @@ class TestIntegrationsPage:
     """Playwright browser tests for the integrations page."""
 
     def test_page_loads_with_heading(self, integrations_page: Page):
-        """Page loads with 'Integrations' heading."""
+        """Page loads with 'Rules & Traffic' heading."""
         heading = integrations_page.locator("h1, h2, [data-testid='page-title']").first
-        expect(heading).to_contain_text("Integrations")
+        expect(heading).to_contain_text("Rules & Traffic")
 
-    def test_category_sections_displayed(self, integrations_page: Page):
-        """Category sections are displayed on the page."""
-        # Should have multiple category sections
-        categories = integrations_page.locator(
-            "[data-category], .integration-category, section"
-        ).all()
-        assert len(categories) > 0
+    def test_sections_displayed(self, integrations_page: Page):
+        """Main sections are displayed on the page."""
+        # Should have the key sections: Discovered Activity, Rule Templates
+        page_text = integrations_page.content()
+        has_sections = (
+            "Discovered Activity" in page_text or
+            "Rule Templates" in page_text
+        )
+        assert has_sections, "Expected 'Discovered Activity' or 'Rule Templates' section on the page"
 
     def test_integration_cards_visible(self, integrations_page: Page):
         """Integration cards are visible (Gmail, GitHub, etc.)."""

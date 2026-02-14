@@ -40,18 +40,25 @@ class TestAgentsPage:
 class TestOpenClawSetupModal:
     """Tests for the OpenClaw setup wizard modal."""
 
+    def _open_openclaw_modal(self, page: Page):
+        """Ensure the getting-started banner is visible and click Connect OpenClaw."""
+        # The banner hides when agents exist — force-show it for testing
+        page.evaluate("document.getElementById('getting-started')?.classList.remove('hidden')")
+        page.wait_for_timeout(300)
+        btn = page.locator("button:has-text('Connect OpenClaw')")
+        btn.scroll_into_view_if_needed()
+        btn.click()
+        page.wait_for_timeout(500)  # Wait for modal animation
+
     def test_connect_openclaw_opens_modal(self, agents_page: Page):
         """Clicking 'Connect OpenClaw' opens the setup modal."""
-        # Use the specific button in the getting started banner
-        agents_page.click("button:has-text('Connect OpenClaw')")
-        agents_page.wait_for_timeout(500)  # Wait for modal animation
+        self._open_openclaw_modal(agents_page)
         expect(agents_page.locator("#openclaw-modal")).not_to_have_class("hidden")
         expect(agents_page.locator("text=Where is OpenClaw running?")).to_be_visible()
 
     def test_platform_selection_shows_all_options(self, agents_page: Page):
         """Setup modal shows all platform options."""
-        agents_page.click("button:has-text('Connect OpenClaw')")
-        agents_page.wait_for_timeout(500)
+        self._open_openclaw_modal(agents_page)
 
         expect(agents_page.locator(".platform-btn:has-text('macOS')")).to_be_visible()
         expect(agents_page.locator(".platform-btn:has-text('Linux')")).to_be_visible()
@@ -61,8 +68,7 @@ class TestOpenClawSetupModal:
 
     def test_selecting_platform_shows_instructions(self, agents_page: Page):
         """Selecting a platform shows setup instructions."""
-        agents_page.click("button:has-text('Connect OpenClaw')")
-        agents_page.wait_for_timeout(500)
+        self._open_openclaw_modal(agents_page)
 
         # Select macOS
         agents_page.click(".platform-btn:has-text('macOS')")
@@ -74,8 +80,7 @@ class TestOpenClawSetupModal:
 
     def test_back_button_returns_to_platform_selection(self, agents_page: Page):
         """Back button returns to platform selection step."""
-        agents_page.click("button:has-text('Connect OpenClaw')")
-        agents_page.wait_for_timeout(500)
+        self._open_openclaw_modal(agents_page)
 
         # Select a platform
         agents_page.click(".platform-btn:has-text('Docker')")
@@ -91,8 +96,7 @@ class TestOpenClawSetupModal:
 
     def test_modal_can_be_closed(self, agents_page: Page):
         """OpenClaw modal can be closed with cancel button."""
-        agents_page.click("button:has-text('Connect OpenClaw')")
-        agents_page.wait_for_timeout(500)
+        self._open_openclaw_modal(agents_page)
 
         agents_page.click("#openclaw-modal button:has-text('Cancel')")
         agents_page.wait_for_timeout(300)

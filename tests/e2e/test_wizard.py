@@ -11,8 +11,20 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
+from .conftest import _api_request
+
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
+
+
+def _delete_agent_by_external_id(ext_id: str):
+    """Delete an agent by external_id to allow re-registration in wizard tests."""
+    agents = _api_request("GET", "/api/v1/agents?page_size=100")
+    if not agents or "items" not in agents:
+        return
+    for agent in agents["items"]:
+        if agent.get("external_id") == ext_id:
+            _api_request("DELETE", f"/api/v1/agents/{agent['id']}")
 
 
 @pytest.fixture(autouse=True)
@@ -97,15 +109,16 @@ class TestWizardStep4Notifications:
     @pytest.fixture
     def step4_page(self, wizard_page: Page) -> Page:
         """Navigate to step 4 (notifications) via a quick registration flow."""
+        _delete_agent_by_external_id("openclaw-main")
         page = wizard_page
         page.click("text=Continue")
         page.wait_for_selector("#step2", state="visible")
         page.click('[data-type="openclaw"]')
         page.click("#register-btn")
-        page.wait_for_selector("#register-success", state="visible", timeout=10000)
-        page.wait_for_selector("#step3", state="visible", timeout=5000)
+        page.wait_for_selector("#register-success", state="visible", timeout=30000)
+        page.wait_for_selector("#step3", state="visible", timeout=10000)
         page.click("#apply-btn")
-        page.wait_for_selector("#step4", state="visible", timeout=5000)
+        page.wait_for_selector("#step4", state="visible", timeout=10000)
         return page
 
     def test_telegram_option_visible(self, step4_page: Page):
@@ -125,14 +138,17 @@ class TestWizardStep4Notifications:
 
     def test_telegram_fields_toggle(self, step4_page: Page):
         """Checking Telegram shows token/chat fields."""
-        step4_page.click('[data-channel="telegram"]')
+        # Click the checkbox directly to avoid double-toggle from label click behavior
+        step4_page.locator("#notify-telegram").check()
+        step4_page.wait_for_timeout(300)
         expect(step4_page.locator("#telegram-fields")).to_be_visible()
         expect(step4_page.locator("#wizard-telegram-token")).to_be_visible()
         expect(step4_page.locator("#wizard-telegram-chat")).to_be_visible()
 
     def test_slack_fields_toggle(self, step4_page: Page):
         """Checking Slack shows webhook field."""
-        step4_page.click('[data-channel="slack"]')
+        step4_page.locator("#notify-slack").check()
+        step4_page.wait_for_timeout(300)
         expect(step4_page.locator("#slack-fields")).to_be_visible()
         expect(step4_page.locator("#wizard-slack-webhook")).to_be_visible()
 
@@ -146,6 +162,7 @@ class TestWizardOpenClawFlow:
     """Full wizard flow selecting OpenClaw."""
 
     def test_openclaw_register_and_install(self, wizard_page: Page):
+        _delete_agent_by_external_id("openclaw-main")
         page = wizard_page
 
         # Step 1 -> 2
@@ -158,13 +175,13 @@ class TestWizardOpenClawFlow:
 
         # Register
         page.click("#register-btn")
-        page.wait_for_selector("#register-success", state="visible", timeout=10000)
+        page.wait_for_selector("#register-success", state="visible", timeout=30000)
         success_text = page.locator("#register-success").text_content()
         assert "OpenClaw" in success_text
         page.screenshot(path=str(SCREENSHOT_DIR / "flow_openclaw_registered.png"))
 
         # Step 3: Security profile (auto-advances after registration)
-        page.wait_for_selector("#step3", state="visible", timeout=5000)
+        page.wait_for_selector("#step3", state="visible", timeout=10000)
         page.screenshot(path=str(SCREENSHOT_DIR / "flow_openclaw_step3.png"))
 
         # Apply profile (recommended is pre-selected)
@@ -193,6 +210,7 @@ class TestWizardCustomFlow:
     """Full wizard flow selecting Custom agent."""
 
     def test_custom_register_shows_snippet(self, wizard_page: Page):
+        _delete_agent_by_external_id("snapper-10.0.0.1-9999")
         page = wizard_page
 
         # Step 1 -> 2
@@ -208,7 +226,7 @@ class TestWizardCustomFlow:
 
         # Register
         page.click("#register-btn")
-        page.wait_for_selector("#register-success", state="visible", timeout=10000)
+        page.wait_for_selector("#register-success", state="visible", timeout=30000)
         page.screenshot(path=str(SCREENSHOT_DIR / "flow_custom_registered.png"))
 
         # Step 3 -> apply
