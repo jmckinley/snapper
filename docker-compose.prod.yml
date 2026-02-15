@@ -19,10 +19,9 @@ services:
     ports: !reset []
 
   caddy:
-    # Only expose :8443 in prod — system Caddy owns :80/:443 for OpenClaw.
-    # If SNAPPER_DOMAIN is set, add 80:80 and 443:443 manually or use deploy.sh.
-    ports: !override
-      - "${HTTPS_PORT:-8443}:8443"
+    # Disabled in prod — system Caddy already proxies :8443 → :8000.
+    # Re-enable if deploying without a system-level reverse proxy.
+    profiles: ["caddy-sidecar"]
 
   celery-worker:
     build:
