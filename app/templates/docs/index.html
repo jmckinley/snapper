@@ -877,58 +877,109 @@ curl http://localhost:8000/api/v1/security/score/claude-code-macbook</code></pre
         <!-- Integrations API -->
         <div id="integrations-api" class="bg-white shadow rounded-lg p-6">
             <h2 class="text-lg font-medium text-gray-900 mb-4">Integrations API</h2>
-            <p class="text-sm text-gray-600 mb-6">Manage integration templates that bundle pre-configured security rules.</p>
+            <p class="text-sm text-gray-600 mb-6">Traffic discovery, rule pack management, and MCP server rule generation.</p>
 
             <div class="space-y-6">
-                <!-- List Integrations -->
+                <!-- Traffic Insights -->
                 <details class="group border rounded-lg">
                     <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
-                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations</code>
-                        <span class="text-sm text-gray-500 ml-auto">List all integrations</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/traffic/insights</code>
+                        <span class="text-sm text-gray-500 ml-auto">Discover MCP servers from live traffic</span>
                     </summary>
                     <div class="border-t p-4 space-y-3 text-sm">
-                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations</code></pre>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># All traffic in last 7 days (default)
+curl http://localhost:8000/api/v1/integrations/traffic/insights
+
+# Agent-scoped, last 24 hours
+curl "http://localhost:8000/api/v1/integrations/traffic/insights?agent_id=UUID&amp;hours=24"</code></pre>
                     </div>
                 </details>
 
-                <!-- Get Integration -->
+                <!-- Traffic Coverage -->
                 <details class="group border rounded-lg">
                     <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
-                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/{integration_id}</code>
-                        <span class="text-sm text-gray-500 ml-auto">Get integration details</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/traffic/coverage</code>
+                        <span class="text-sm text-gray-500 ml-auto">Check if a command is covered by rules</span>
                     </summary>
                     <div class="border-t p-4 space-y-3 text-sm">
-                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations/credential-protection</code></pre>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl "http://localhost:8000/api/v1/integrations/traffic/coverage?command=mcp__github__create_issue"</code></pre>
                     </div>
                 </details>
 
-                <!-- Enable / Disable -->
+                <!-- Create Rule from Traffic -->
                 <details class="group border rounded-lg">
                     <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
-                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/{integration_id}/enable | disable</code>
-                        <span class="text-sm text-gray-500 ml-auto">Enable or disable an integration</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/traffic/create-rule</code>
+                        <span class="text-sm text-gray-500 ml-auto">Create a rule from a discovered command</span>
                     </summary>
                     <div class="border-t p-4 space-y-3 text-sm">
-                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># Enable
-curl -X POST "http://localhost:8000/api/v1/integrations/credential-protection/enable?agent_id=claude-code-macbook"
-
-# Disable
-curl -X POST "http://localhost:8000/api/v1/integrations/credential-protection/disable?agent_id=claude-code-macbook"</code></pre>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/integrations/traffic/create-rule \
+  -H "Content-Type: application/json" \
+  -d '{"command": "mcp__notion__create_page", "action": "allow", "pattern_mode": "prefix"}'</code></pre>
                     </div>
                 </details>
 
-                <!-- Categories Summary -->
+                <!-- Create Server Rules -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/traffic/create-server-rules</code>
+                        <span class="text-sm text-gray-500 ml-auto">Create default rules for an MCP server</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code># Known server (curated rules)
+curl -X POST http://localhost:8000/api/v1/integrations/traffic/create-server-rules \
+  -H "Content-Type: application/json" \
+  -d '{"server_name": "github"}'
+
+# Unknown server (3 generic defaults)
+curl -X POST http://localhost:8000/api/v1/integrations/traffic/create-server-rules \
+  -H "Content-Type: application/json" \
+  -d '{"server_name": "my_custom_server"}'</code></pre>
+                    </div>
+                </details>
+
+                <!-- Known Servers -->
                 <details class="group border rounded-lg">
                     <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
-                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/categories/summary</code>
-                        <span class="text-sm text-gray-500 ml-auto">Get category summary</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/traffic/known-servers</code>
+                        <span class="text-sm text-gray-500 ml-auto">List known MCP servers for autocomplete</span>
                     </summary>
                     <div class="border-t p-4 space-y-3 text-sm">
-                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations/categories/summary</code></pre>
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations/traffic/known-servers</code></pre>
+                    </div>
+                </details>
+
+                <!-- Active Packs -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">GET</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/active-packs</code>
+                        <span class="text-sm text-gray-500 ml-auto">Get active rule packs and server rules</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl http://localhost:8000/api/v1/integrations/active-packs
+
+# Agent-scoped
+curl "http://localhost:8000/api/v1/integrations/active-packs?agent_id=UUID"</code></pre>
+                    </div>
+                </details>
+
+                <!-- Disable Server Rules -->
+                <details class="group border rounded-lg">
+                    <summary class="flex items-center gap-3 cursor-pointer p-4 hover:bg-gray-50">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">POST</span>
+                        <code class="text-sm font-medium text-gray-900">/api/v1/integrations/traffic/disable-server-rules</code>
+                        <span class="text-sm text-gray-500 ml-auto">Disable all rules for an MCP server</span>
+                    </summary>
+                    <div class="border-t p-4 space-y-3 text-sm">
+                        <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs"><code>curl -X POST http://localhost:8000/api/v1/integrations/traffic/disable-server-rules \
+  -H "Content-Type: application/json" \
+  -d '{"server_name": "github"}'</code></pre>
                     </div>
                 </details>
             </div>

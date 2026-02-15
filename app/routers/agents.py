@@ -6,7 +6,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -807,6 +807,58 @@ async def verify_api_key(
         "agent_name": agent.name,
         "external_id": agent.external_id,
         "status": agent.status,
+    }
+
+
+@router.post("/cleanup-test")
+async def cleanup_test_agents(
+    db: DbSessionDep,
+    confirm: bool = Query(False),
+):
+    """Hard-delete agents whose names match common test patterns.
+
+    Requires confirm=true as a safety check. Intended for CI/CD teardown
+    to remove orphaned E2E and unit-test agents from the database.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Requires confirm=true query parameter",
+        )
+
+    test_prefixes = (
+        "E2E",
+        "Test ",
+        "Suspend Test",
+        "Activate Test",
+        "API Key",
+        "Show Key",
+        "Regen Key",
+        "Quarantine Test",
+        "Bulk Test",
+        "Quick Test",
+        "Delete Test",
+        "Duplicate Test",
+    )
+
+    # Find agents matching any test prefix
+    conditions = [Agent.name.ilike(f"{p}%") for p in test_prefixes]
+    stmt = select(Agent).where(or_(*conditions))
+    result = await db.execute(stmt)
+    agents = list(result.scalars().all())
+
+    if not agents:
+        return {"deleted": 0, "message": "No test agents found"}
+
+    for agent in agents:
+        await db.delete(agent)
+
+    await db.commit()
+
+    logger.info(f"Cleaned up {len(agents)} test agents")
+    return {
+        "deleted": len(agents),
+        "names": [a.name for a in agents],
     }
 
 

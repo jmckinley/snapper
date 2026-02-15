@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# Snapper E2E — Integration Templates & Traffic Discovery Tests
+# Snapper E2E — Traffic Discovery & Integration Tests
 #
-# Tests all new endpoints introduced in the traffic-discovery + simplified-templates rework:
-#   - Template listing (10 templates, 5 categories)
+# Tests the discovery-first integration endpoints:
+#   - Active packs (rule groups by source)
 #   - Traffic discovery (insights, coverage, known-servers)
 #   - Rule creation from traffic (create-rule, create-server-rules)
-#   - Custom MCP server enable/disable
-#   - Legacy rules detection
-#   - Template enable/disable lifecycle
+#   - Disable server rules
+#   - Unknown server → 3 generic defaults
+#   - Known server → curated rule pack (> 3 rules)
 #
 # Run on VPS:  bash /opt/snapper/scripts/e2e_integrations_test.sh
 # Locally:     SNAPPER_URL=http://localhost:8000 bash scripts/e2e_integrations_test.sh
@@ -115,6 +115,25 @@ assert_gte() {
     fi
 }
 
+# Check if a decision is effectively "deny" (handles learning mode)
+# In learning mode, deny returns as "allow" with reason containing "[LEARNING MODE] Would be denied"
+is_denied() {
+    local eval_result="$1"
+    local decision
+    decision=$(echo "$eval_result" | jq -r '.decision // empty')
+    if [[ "$decision" == "deny" ]]; then
+        echo "deny"
+        return
+    fi
+    local reason
+    reason=$(echo "$eval_result" | jq -r '.reason // empty')
+    if echo "$reason" | grep -q "LEARNING MODE.*denied"; then
+        echo "deny"
+        return
+    fi
+    echo "$decision"
+}
+
 # Wrapper for curl with host header
 api_curl() {
     curl -sf "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" "$@" 2>/dev/null
@@ -195,10 +214,6 @@ cleanup() {
         if delete_rule "$rid"; then log "Deleted rule $rid"; else warn "Could not delete rule $rid"; fi
     done
 
-    # Disable any custom MCP integrations we enabled
-    api_curl -X POST "${API}/integrations/custom_mcp/disable" \
-        -H "Content-Type: application/json" >/dev/null 2>&1
-
     # Delete test agent
     if [[ -n "$AGENT_UUID" ]]; then
         if api_curl -X DELETE "${API}/agents/${AGENT_UUID}?hard_delete=true" >/dev/null 2>&1; then
@@ -210,6 +225,9 @@ cleanup() {
 
     # Flush traffic cache
     flush_traffic_cache 2>/dev/null
+
+    # Clean up orphaned test agents from all E2E runs
+    api_curl -X POST "${API}/agents/cleanup-test?confirm=true" >/dev/null 2>&1
 
     echo ""
     echo -e "${BOLD}========================================${NC}"
@@ -273,68 +291,59 @@ log "Agent UUID: $AGENT_UUID"
 log "Agent API Key: ${AGENT_API_KEY:0:10}..."
 
 # ============================================================
-# Phase 1: Integration Template Structure
+# Phase 1: Active Packs Endpoint
 # ============================================================
 echo ""
-echo -e "${BOLD}=== Phase 1: Template Structure (10 templates, 5 categories) ===${NC}"
+echo -e "${BOLD}=== Phase 1: Active Packs ===${NC}"
 
-# 1.1 List integrations returns categories
-log "Fetching integration list..."
-INTEGRATIONS=$(api_curl "${API}/integrations")
-NUM_CATEGORIES=$(echo "$INTEGRATIONS" | jq 'length')
-assert_eq "$NUM_CATEGORIES" "5" "1.1 Exactly 5 categories returned"
+# 1.1 Active packs returns empty list when no rules from packs/discovery
+log "Fetching active packs (should be empty)..."
+PACKS=$(api_curl "${API}/integrations/active-packs")
+PACKS_COUNT=$(echo "$PACKS" | jq 'length')
+assert_eq "$PACKS_COUNT" "0" "1.1 No active packs initially"
 
-# 1.2 Count total templates across all categories
-ALL_TEMPLATE_IDS=$(echo "$INTEGRATIONS" | jq -r '.[].integrations[].id' | sort)
-NUM_TEMPLATES=$(echo "$ALL_TEMPLATE_IDS" | wc -l | tr -d ' ')
-assert_eq "$NUM_TEMPLATES" "10" "1.2 Exactly 10 templates across all categories"
+# 1.2 Create server rules then verify they appear in active packs
+log "Creating rules for 'slack' to test active packs..."
+SLACK_SRV=$(api_curl -X POST "${API}/integrations/traffic/create-server-rules" \
+    -H "Content-Type: application/json" \
+    -d '{"server_name": "slack"}')
+SLACK_SRV_COUNT=$(echo "$SLACK_SRV" | jq -r '.rules_created // 0')
+assert_gt "$SLACK_SRV_COUNT" "0" "1.2a Slack server rules created"
 
-# 1.3 Verify specific kept template IDs exist
-for tid in shell filesystem github browser network aws database slack gmail custom_mcp; do
-    FOUND=$(echo "$ALL_TEMPLATE_IDS" | grep -c "^${tid}$" || true)
-    assert_eq "$FOUND" "1" "1.3 Template '${tid}' exists"
-done
+# Track for cleanup
+SLACK_SRV_IDS=$(echo "$SLACK_SRV" | jq -r '.rules[].id')
+for sid in $SLACK_SRV_IDS; do CREATED_RULES+=("$sid"); done
 
-# 1.4 Verify removed templates are NOT in list
-for removed_tid in linear notion discord telegram google_calendar vercel supabase; do
-    FOUND=$(echo "$ALL_TEMPLATE_IDS" | grep -c "^${removed_tid}$" || true)
-    assert_eq "$FOUND" "0" "1.4 Removed template '${removed_tid}' is absent"
-done
+PACKS_AFTER=$(api_curl "${API}/integrations/active-packs")
+PACKS_AFTER_COUNT=$(echo "$PACKS_AFTER" | jq 'length')
+assert_gt "$PACKS_AFTER_COUNT" "0" "1.2b Active packs non-empty after creating rules"
 
-# 1.5 All templates start disabled (no rules yet)
-ALL_ENABLED=$(echo "$INTEGRATIONS" | jq '[.[].integrations[] | select(.enabled == true)] | length')
-assert_eq "$ALL_ENABLED" "0" "1.5 All templates disabled initially"
+# 1.3 Active pack entry has correct structure
+FIRST_PACK=$(echo "$PACKS_AFTER" | jq '.[0]')
+FP_DISPLAY=$(echo "$FIRST_PACK" | jq -r '.display_name // empty')
+FP_ICON=$(echo "$FIRST_PACK" | jq -r '.icon // empty')
+FP_RULE_COUNT=$(echo "$FIRST_PACK" | jq '.rule_count // 0')
+FP_RULES_LEN=$(echo "$FIRST_PACK" | jq '.rules | length')
+assert_not_eq "$FP_DISPLAY" "" "1.3a Pack has display_name"
+assert_not_eq "$FP_ICON" "" "1.3b Pack has icon"
+assert_gt "$FP_RULE_COUNT" "0" "1.3c Pack rule_count > 0"
+assert_eq "$FP_RULE_COUNT" "$FP_RULES_LEN" "1.3d rule_count matches rules array length"
 
-# 1.6 Categories summary endpoint
-log "Fetching categories summary..."
-SUMMARY=$(api_curl "${API}/integrations/categories/summary")
-SUMMARY_COUNT=$(echo "$SUMMARY" | jq 'length')
-assert_eq "$SUMMARY_COUNT" "5" "1.6 Categories summary has 5 entries"
+# 1.4 Agent-scoped active packs
+log "Fetching agent-scoped active packs..."
+AGENT_PACKS=$(api_curl "${API}/integrations/active-packs?agent_id=${AGENT_UUID}")
+AGENT_PACKS_COUNT=$(echo "$AGENT_PACKS" | jq 'length')
+# Global rules (agent_id=null) should still appear
+assert_gte "$AGENT_PACKS_COUNT" "0" "1.4 Agent-scoped packs returns valid response"
 
-# 1.7 System category has correct count (shell + filesystem + custom_mcp = 3)
-SYSTEM_COUNT=$(echo "$SUMMARY" | jq '.[] | select(.id == "system") | .integration_count')
-assert_eq "$SYSTEM_COUNT" "3" "1.7 System category has 3 templates"
-
-# 1.8 Get single template details
-log "Fetching github template details..."
-GITHUB_DETAIL=$(api_curl "${API}/integrations/github")
-GITHUB_NAME=$(echo "$GITHUB_DETAIL" | jq -r '.name')
-GITHUB_RULES_COUNT=$(echo "$GITHUB_DETAIL" | jq '.rules | length')
-assert_eq "$GITHUB_NAME" "GitHub" "1.8a GitHub template name correct"
-assert_eq "$GITHUB_RULES_COUNT" "4" "1.8b GitHub has 4 rules"
-
-# 1.9 custom_mcp template has custom=true and empty rules
-CUSTOM_DETAIL=$(api_curl "${API}/integrations/custom_mcp")
-CUSTOM_IS_CUSTOM=$(echo "$CUSTOM_DETAIL" | jq -r '.custom')
-CUSTOM_RULES_COUNT=$(echo "$CUSTOM_DETAIL" | jq '.rules | length')
-assert_eq "$CUSTOM_IS_CUSTOM" "true" "1.9a custom_mcp has custom=true"
-assert_eq "$CUSTOM_RULES_COUNT" "0" "1.9b custom_mcp has 0 static rules"
-
-# 1.10 Nonexistent template returns 404
-NONEXIST_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
-    "${API}/integrations/nonexistent-xyz-123")
-assert_eq "$NONEXIST_CODE" "404" "1.10 Nonexistent template returns 404"
+# 1.5 Rules within pack have required fields
+PACK_RULE=$(echo "$FIRST_PACK" | jq '.rules[0]')
+PR_ID=$(echo "$PACK_RULE" | jq -r '.id // empty')
+PR_NAME=$(echo "$PACK_RULE" | jq -r '.name // empty')
+PR_ACTION=$(echo "$PACK_RULE" | jq -r '.action // empty')
+assert_not_eq "$PR_ID" "" "1.5a Pack rule has id"
+assert_not_eq "$PR_NAME" "" "1.5b Pack rule has name"
+assert_not_eq "$PR_ACTION" "" "1.5c Pack rule has action"
 
 # ============================================================
 # Phase 2: Known Servers Endpoint
@@ -543,217 +552,184 @@ EMPTY_SRV_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
 assert_eq "$EMPTY_SRV_CODE" "400" "5.8 Empty server name returns 400"
 
 # ============================================================
-# Phase 6: Standard Template Enable / Disable Lifecycle
+# Phase 6: Disable Server Rules
 # ============================================================
 echo ""
-echo -e "${BOLD}=== Phase 6: Template Enable / Disable ===${NC}"
+echo -e "${BOLD}=== Phase 6: Disable Server Rules ===${NC}"
 
-# 6.1 Enable gmail
-log "Enabling Gmail template..."
-ENABLE_RESP=$(api_curl -X POST "${API}/integrations/gmail/enable" \
+# 6.1 Create rules for a server, then disable them
+log "Creating rules for 'notion' to test disable..."
+NOTION_SRV=$(api_curl -X POST "${API}/integrations/traffic/create-server-rules" \
     -H "Content-Type: application/json" \
-    -d '{}')
-ENABLE_COUNT=$(echo "$ENABLE_RESP" | jq -r '.rules_created // 0')
-assert_gt "$ENABLE_COUNT" "0" "6.1a Gmail enabled with rules"
-assert_contains "$ENABLE_RESP" "gmail" "6.1b Response contains integration_id"
+    -d '{"server_name": "notion"}')
+NOTION_COUNT=$(echo "$NOTION_SRV" | jq -r '.rules_created // 0')
+assert_gt "$NOTION_COUNT" "0" "6.1 Notion server rules created"
+# Track for cleanup (though disable will soft-delete them)
+NOTION_IDS=$(echo "$NOTION_SRV" | jq -r '.rules[].id')
+for nid in $NOTION_IDS; do CREATED_RULES+=("$nid"); done
 
-# 6.2 Gmail detail shows enabled
-GMAIL_NOW=$(api_curl "${API}/integrations/gmail")
-GMAIL_ENABLED=$(echo "$GMAIL_NOW" | jq -r '.enabled')
-GMAIL_RC=$(echo "$GMAIL_NOW" | jq -r '.rule_count')
-assert_eq "$GMAIL_ENABLED" "true" "6.2a Gmail shows enabled"
-assert_gt "$GMAIL_RC" "0" "6.2b Gmail has rules"
+# 6.2 Verify they appear in active packs (match exact source_reference)
+PACKS_WITH_NOTION=$(api_curl "${API}/integrations/active-packs")
+NOTION_PACK=$(echo "$PACKS_WITH_NOTION" | jq '[.[] | select(.source_reference == "mcp_server:notion")] | length')
+assert_gt "$NOTION_PACK" "0" "6.2 Notion appears in active packs"
 
-# 6.3 Existing rules are populated
-GMAIL_EXISTING=$(echo "$GMAIL_NOW" | jq '.existing_rules | length')
-assert_gt "$GMAIL_EXISTING" "0" "6.3 existing_rules populated"
-
-# 6.4 Re-enable returns 400
-REENABLE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
-    -X POST "${API}/integrations/gmail/enable" \
+# 6.3 Disable server rules
+log "Disabling Notion rules..."
+DISABLE_RESP=$(api_curl -X POST "${API}/integrations/traffic/disable-server-rules" \
     -H "Content-Type: application/json" \
-    -d '{}')
-assert_eq "$REENABLE_CODE" "400" "6.4 Re-enable returns 400"
-
-# 6.5 Integration list shows gmail enabled
-INTEG_LIST=$(api_curl "${API}/integrations")
-GMAIL_IN_LIST=$(echo "$INTEG_LIST" | jq '[.[].integrations[] | select(.id == "gmail" and .enabled == true)] | length')
-assert_eq "$GMAIL_IN_LIST" "1" "6.5 Gmail shows enabled in list"
-
-# 6.6 Disable gmail
-log "Disabling Gmail..."
-DISABLE_RESP=$(api_curl -X POST "${API}/integrations/gmail/disable" \
-    -H "Content-Type: application/json")
+    -d '{"server_name": "notion"}')
 DISABLE_COUNT=$(echo "$DISABLE_RESP" | jq -r '.rules_deleted // 0')
-assert_gt "$DISABLE_COUNT" "0" "6.6 Gmail disabled, rules deleted"
+assert_gt "$DISABLE_COUNT" "0" "6.3a Notion rules disabled"
+assert_contains "$DISABLE_RESP" "notion" "6.3b Response contains server_name"
 
-# 6.7 Gmail now shows disabled
-GMAIL_AFTER=$(api_curl "${API}/integrations/gmail")
-GMAIL_AFTER_ENABLED=$(echo "$GMAIL_AFTER" | jq -r '.enabled')
-assert_eq "$GMAIL_AFTER_ENABLED" "false" "6.7 Gmail disabled after disable"
+# 6.4 Verify they no longer appear in active packs (match exact source_reference)
+PACKS_WITHOUT_NOTION=$(api_curl "${API}/integrations/active-packs")
+NOTION_AFTER=$(echo "$PACKS_WITHOUT_NOTION" | jq '[.[] | select(.source_reference == "mcp_server:notion")] | length')
+assert_eq "$NOTION_AFTER" "0" "6.4 Notion gone from active packs after disable"
 
-# 6.8 Disable again returns 400
+# 6.5 Disable again returns 404 (no active rules left)
 REDISABLE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
-    -X POST "${API}/integrations/gmail/disable" \
-    -H "Content-Type: application/json")
-assert_eq "$REDISABLE_CODE" "400" "6.8 Re-disable returns 400"
-
-# 6.9 Enable Slack (selectable template, defaults only)
-log "Enabling Slack (default rules only)..."
-SLACK_ENABLE=$(api_curl -X POST "${API}/integrations/slack/enable" \
+    -X POST "${API}/integrations/traffic/disable-server-rules" \
     -H "Content-Type: application/json" \
-    -d '{}')
-SLACK_RULES=$(echo "$SLACK_ENABLE" | jq -r '.rules_created // 0')
-assert_gt "$SLACK_RULES" "0" "6.9 Slack enabled with default rules"
+    -d '{"server_name": "notion"}')
+assert_eq "$REDISABLE_CODE" "404" "6.5 Re-disable returns 404"
 
-# 6.10 Disable Slack
-api_curl -X POST "${API}/integrations/slack/disable" \
-    -H "Content-Type: application/json" >/dev/null 2>&1
-log "Slack disabled (cleanup)"
-
-# 6.11 Enable Slack with explicit rule selection (first rule only)
-SLACK_DETAIL=$(api_curl "${API}/integrations/slack")
-FIRST_RULE_ID=$(echo "$SLACK_DETAIL" | jq -r '.rules[0].id')
-log "Enabling Slack with single selected rule: $FIRST_RULE_ID"
-SLACK_SEL_RESP=$(api_curl -X POST "${API}/integrations/slack/enable" \
+# 6.6 Empty server name returns 400
+EMPTY_DISABLE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    -X POST "${API}/integrations/traffic/disable-server-rules" \
     -H "Content-Type: application/json" \
-    -d "{\"selected_rules\": [\"${FIRST_RULE_ID}\"]}")
-SLACK_SEL_COUNT=$(echo "$SLACK_SEL_RESP" | jq -r '.rules_created // 0')
-assert_eq "$SLACK_SEL_COUNT" "1" "6.11 Slack with explicit selection: 1 rule"
+    -d '{"server_name": "  "}')
+assert_eq "$EMPTY_DISABLE_CODE" "400" "6.6 Empty server_name returns 400"
 
-# 6.12 Disable Slack (cleanup)
-api_curl -X POST "${API}/integrations/slack/disable" \
-    -H "Content-Type: application/json" >/dev/null 2>&1
-log "Slack disabled (cleanup)"
+# 6.7 Disable with normalized name (hyphens → underscores)
+log "Creating rules for 'google_calendar' then disabling with hyphen variant..."
+GCAL_SRV=$(api_curl -X POST "${API}/integrations/traffic/create-server-rules" \
+    -H "Content-Type: application/json" \
+    -d '{"server_name": "google_calendar"}')
+GCAL_COUNT=$(echo "$GCAL_SRV" | jq -r '.rules_created // 0')
+GCAL_IDS=$(echo "$GCAL_SRV" | jq -r '.rules[].id')
+for gid in $GCAL_IDS; do CREATED_RULES+=("$gid"); done
+
+GCAL_DISABLE=$(api_curl -X POST "${API}/integrations/traffic/disable-server-rules" \
+    -H "Content-Type: application/json" \
+    -d '{"server_name": "google-calendar"}')
+GCAL_DISABLED=$(echo "$GCAL_DISABLE" | jq -r '.rules_deleted // 0')
+assert_gt "$GCAL_DISABLED" "0" "6.7 Disable with hyphen variant works (normalization)"
 
 # ============================================================
-# Phase 7: Custom MCP Server Template
+# Phase 7: Unknown Server (Generic 3 Defaults)
 # ============================================================
 echo ""
-echo -e "${BOLD}=== Phase 7: Custom MCP Server Template ===${NC}"
+echo -e "${BOLD}=== Phase 7: Unknown Server → Generic Rules ===${NC}"
 
-# 7.1 Enable custom_mcp with server name
-log "Enabling custom MCP server 'e2e_test_server'..."
-CUSTOM_ENABLE=$(api_curl -X POST "${API}/integrations/custom_mcp/enable" \
+# 7.1 Create rules for an unknown server → should get 3 generic defaults
+log "Creating rules for unknown server 'e2e_mystery_server'..."
+UNKNOWN_RESP=$(api_curl -X POST "${API}/integrations/traffic/create-server-rules" \
     -H "Content-Type: application/json" \
-    -d '{"custom_server_name": "e2e_test_server"}')
-CUSTOM_RULES_CREATED=$(echo "$CUSTOM_ENABLE" | jq -r '.rules_created // 0')
-assert_eq "$CUSTOM_RULES_CREATED" "3" "7.1 Custom MCP created 3 rules"
+    -d '{"server_name": "e2e_mystery_server"}')
+UNKNOWN_COUNT=$(echo "$UNKNOWN_RESP" | jq -r '.rules_created // 0')
+UNKNOWN_SOURCE=$(echo "$UNKNOWN_RESP" | jq -r '.source // empty')
+assert_eq "$UNKNOWN_COUNT" "3" "7.1a Unknown server creates exactly 3 rules"
+assert_eq "$UNKNOWN_SOURCE" "traffic_discovery" "7.1b Source is traffic_discovery (not rule_pack)"
 
-# 7.2 Verify rules exist via rules API
-log "Verifying custom rules in database..."
-CUSTOM_RULES_RESP=$(api_curl "${API}/rules?page_size=100")
-CUSTOM_RULE_NAMES=$(echo "$CUSTOM_RULES_RESP" | jq -r '[.items[] | select(.source_reference == "custom_mcp:e2e_test_server") | .name] | sort | join("|")')
-assert_contains "$CUSTOM_RULE_NAMES" "Allow Read" "7.2a Has 'Allow Read' rule"
-assert_contains "$CUSTOM_RULE_NAMES" "Approve Write" "7.2b Has 'Approve Write' rule"
-assert_contains "$CUSTOM_RULE_NAMES" "Block Destructive" "7.2c Has 'Block Destructive' rule"
+# Track for cleanup
+UNKNOWN_IDS=$(echo "$UNKNOWN_RESP" | jq -r '.rules[].id')
+for uid in $UNKNOWN_IDS; do CREATED_RULES+=("$uid"); done
 
-# 7.3 Verify patterns contain the server name
-CUSTOM_PATTERNS=$(echo "$CUSTOM_RULES_RESP" | jq -r '[.items[] | select(.source_reference == "custom_mcp:e2e_test_server") | .parameters.patterns[]] | join(" ")')
-assert_contains "$CUSTOM_PATTERNS" "e2e_test_server" "7.3 Patterns reference server name"
+# 7.2 Verify the 3 rules have correct actions (allow + approve + deny)
+UNKNOWN_ACTIONS=$(echo "$UNKNOWN_RESP" | jq -r '[.rules[].action] | sort | join(",")')
+assert_eq "$UNKNOWN_ACTIONS" "allow,deny,require_approval" "7.2 Unknown server: allow + approve + deny"
 
-# 7.4 Rule evaluation against custom server rules
-log "Evaluating commands against custom server rules..."
-# Read operation — should be allowed
+# 7.3 Rule evaluation against unknown server rules
+log "Evaluating commands against unknown server rules..."
 READ_RESULT=$(evaluate "{
     \"agent_id\": \"${AGENT_UUID}\",
     \"request_type\": \"command\",
-    \"command\": \"mcp__e2e_test_server__list_items\"
+    \"command\": \"mcp__e2e_mystery_server__list_items\"
 }")
 READ_DECISION=$(echo "$READ_RESULT" | jq -r '.decision // empty')
-assert_eq "$READ_DECISION" "allow" "7.4a Read command allowed by custom rules"
+assert_eq "$READ_DECISION" "allow" "7.3a Read command allowed by generic rules"
 
-# Destructive operation — should be denied
 DELETE_RESULT=$(evaluate "{
     \"agent_id\": \"${AGENT_UUID}\",
     \"request_type\": \"command\",
-    \"command\": \"mcp__e2e_test_server__delete_all\"
+    \"command\": \"mcp__e2e_mystery_server__delete_all\"
 }")
-DELETE_DECISION=$(echo "$DELETE_RESULT" | jq -r '.decision // empty')
-assert_eq "$DELETE_DECISION" "deny" "7.4b Delete command denied by custom rules"
+DELETE_DECISION=$(is_denied "$DELETE_RESULT")
+assert_eq "$DELETE_DECISION" "deny" "7.3b Delete command denied by generic rules"
 
-# 7.5 Missing server name returns 400
-MISSING_SN_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
-    -X POST "${API}/integrations/custom_mcp/enable" \
+# 7.4 Unknown server appears in active packs
+PACKS_UNKNOWN=$(api_curl "${API}/integrations/active-packs")
+MYSTERY_PACK=$(echo "$PACKS_UNKNOWN" | jq '[.[] | select(.source_reference == "mcp_server:e2e_mystery_server")] | length')
+assert_eq "$MYSTERY_PACK" "1" "7.4 Unknown server in active packs"
+
+# 7.5 Clean up via disable-server-rules
+log "Disabling unknown server rules..."
+UNKNOWN_DISABLE=$(api_curl -X POST "${API}/integrations/traffic/disable-server-rules" \
     -H "Content-Type: application/json" \
-    -d '{}')
-assert_eq "$MISSING_SN_CODE" "400" "7.5 Missing server_name returns 400"
-
-# 7.6 Disable custom MCP — finds rules by source_reference
-log "Disabling custom MCP 'e2e_test_server'..."
-# The disable endpoint uses integration_id "custom_mcp" but also checks source_reference like "custom_mcp:e2e_test_server"
-# We need to clean up via the rules API directly since disable by template ID won't find custom ones
-CUSTOM_IDS=$(echo "$CUSTOM_RULES_RESP" | jq -r '.items[] | select(.source_reference == "custom_mcp:e2e_test_server") | .id')
-CUSTOM_DELETE_COUNT=0
-for cid in $CUSTOM_IDS; do
-    if delete_rule "$cid"; then
-        CUSTOM_DELETE_COUNT=$((CUSTOM_DELETE_COUNT + 1))
-    fi
-done
-assert_eq "$CUSTOM_DELETE_COUNT" "3" "7.6 Cleaned up 3 custom MCP rules"
+    -d '{"server_name": "e2e_mystery_server"}')
+UNKNOWN_DISABLED=$(echo "$UNKNOWN_DISABLE" | jq -r '.rules_deleted // 0')
+assert_eq "$UNKNOWN_DISABLED" "3" "7.5 Disabled 3 unknown server rules"
 
 # ============================================================
-# Phase 8: Legacy Rules Detection
+# Phase 8: Curated Pack (Known Server → More Than 3 Rules)
 # ============================================================
 echo ""
-echo -e "${BOLD}=== Phase 8: Legacy Rules (from removed templates) ===${NC}"
+echo -e "${BOLD}=== Phase 8: Curated Pack (known server) ===${NC}"
 
-# 8.1 Create a rule pretending to be from a removed template
-log "Creating a 'legacy' rule from removed template 'linear'..."
-LEGACY_RULE_ID=$(create_rule '{
-    "name":"Linear - Allow Issue Read (legacy)",
-    "rule_type":"command_allowlist",
-    "action":"allow",
-    "parameters":{"patterns":["^mcp__linear__.*"]},
-    "priority":100,
-    "is_active":true,
-    "source":"integration",
-    "source_reference":"linear"
-}')
-assert_not_eq "$LEGACY_RULE_ID" "" "8.1 Legacy rule created"
+# 8.1 Create rules for 'github' — known server with curated rule pack
+log "Creating rules for known server 'github'..."
+GITHUB_SRV=$(api_curl -X POST "${API}/integrations/traffic/create-server-rules" \
+    -H "Content-Type: application/json" \
+    -d '{"server_name": "github"}')
+GITHUB_SRV_COUNT=$(echo "$GITHUB_SRV" | jq -r '.rules_created // 0')
+GITHUB_SRV_SOURCE=$(echo "$GITHUB_SRV" | jq -r '.source // empty')
+assert_gt "$GITHUB_SRV_COUNT" "3" "8.1a GitHub creates more than 3 rules (curated)"
+assert_eq "$GITHUB_SRV_SOURCE" "rule_pack" "8.1b Source is rule_pack (curated)"
 
-# 8.2 Legacy rules endpoint returns it
-log "Fetching legacy rules..."
-LEGACY_RESP=$(api_curl "${API}/integrations/legacy-rules")
-LEGACY_COUNT=$(echo "$LEGACY_RESP" | jq -r '.count // 0')
-assert_gt "$LEGACY_COUNT" "0" "8.2a Legacy rules count > 0"
+# Track for cleanup
+GITHUB_SRV_IDS=$(echo "$GITHUB_SRV" | jq -r '.rules[].id')
+for gid in $GITHUB_SRV_IDS; do CREATED_RULES+=("$gid"); done
 
-LEGACY_REFS=$(echo "$LEGACY_RESP" | jq -r '.rules[].source_reference')
-assert_contains "$LEGACY_REFS" "linear" "8.2b 'linear' found in legacy rules"
+# 8.2 Verify curated rules have meaningful names
+GITHUB_RULE_NAMES=$(echo "$GITHUB_SRV" | jq -r '[.rules[].name] | join("|")')
+assert_contains "$GITHUB_RULE_NAMES" "GitHub" "8.2 Curated rules have 'GitHub' in names"
 
-# 8.3 Legacy response includes the helpful note
-LEGACY_NOTE=$(echo "$LEGACY_RESP" | jq -r '.note // empty')
-assert_contains "$LEGACY_NOTE" "simplified" "8.3 Legacy note mentions 'simplified'"
+# 8.3 Curated pack appears in active packs with pack_id
+PACKS_GH=$(api_curl "${API}/integrations/active-packs")
+GH_PACK=$(echo "$PACKS_GH" | jq '[.[] | select(.pack_id == "github")] | .[0]')
+GH_PACK_NAME=$(echo "$GH_PACK" | jq -r '.display_name // empty')
+GH_PACK_RULES=$(echo "$GH_PACK" | jq '.rule_count // 0')
+assert_eq "$GH_PACK_NAME" "GitHub" "8.3a GitHub pack display_name correct"
+assert_gt "$GH_PACK_RULES" "3" "8.3b GitHub pack has > 3 rules"
 
-# 8.4 Current template rules NOT in legacy list
-log "Creating a rule from current template 'gmail'..."
-CURRENT_RULE_ID=$(create_rule '{
-    "name":"Gmail - E2E Test (current)",
-    "rule_type":"command_allowlist",
-    "action":"allow",
-    "parameters":{},
-    "priority":100,
-    "is_active":true,
-    "source":"integration",
-    "source_reference":"gmail"
-}')
-
-LEGACY_RESP2=$(api_curl "${API}/integrations/legacy-rules")
-LEGACY_GMAIL=$(echo "$LEGACY_RESP2" | jq '[.rules[] | select(.source_reference == "gmail")] | length')
-assert_eq "$LEGACY_GMAIL" "0" "8.4 Current 'gmail' NOT in legacy rules"
-
-# 8.5 Legacy rule still evaluates (functional)
-log "Evaluating command against legacy rule..."
-LEGACY_EVAL=$(evaluate "{
+# 8.4 Evaluate against curated GitHub rules
+log "Evaluating commands against curated GitHub rules..."
+GH_READ_EVAL=$(evaluate "{
     \"agent_id\": \"${AGENT_UUID}\",
     \"request_type\": \"command\",
-    \"command\": \"mcp__linear__create_issue\"
+    \"command\": \"mcp__github__list_repos\"
 }")
-LEGACY_DECISION=$(echo "$LEGACY_EVAL" | jq -r '.decision // empty')
-assert_eq "$LEGACY_DECISION" "allow" "8.5 Legacy rule still evaluates correctly"
+GH_READ_DEC=$(echo "$GH_READ_EVAL" | jq -r '.decision // empty')
+assert_eq "$GH_READ_DEC" "allow" "8.4a GitHub read allowed by curated rules"
+
+GH_DELETE_EVAL=$(evaluate "{
+    \"agent_id\": \"${AGENT_UUID}\",
+    \"request_type\": \"command\",
+    \"command\": \"mcp__github__delete_repo\"
+}")
+GH_DELETE_DEC=$(is_denied "$GH_DELETE_EVAL")
+assert_eq "$GH_DELETE_DEC" "deny" "8.4b GitHub delete denied by curated rules"
+
+# 8.5 Disable curated pack via disable-server-rules
+log "Disabling GitHub curated pack..."
+GH_DISABLE=$(api_curl -X POST "${API}/integrations/traffic/disable-server-rules" \
+    -H "Content-Type: application/json" \
+    -d '{"server_name": "github"}')
+GH_DISABLED=$(echo "$GH_DISABLE" | jq -r '.rules_deleted // 0')
+assert_gt "$GH_DISABLED" "3" "8.5 Disabled more than 3 GitHub curated rules"
 
 # ============================================================
 # Phase 9: Traffic Insights with Real Data
@@ -802,9 +778,9 @@ AGENT_INSIGHTS=$(api_curl "${API}/integrations/traffic/insights?hours=168&agent_
 AGENT_EVALS=$(echo "$AGENT_INSIGHTS" | jq '.total_evaluations // 0')
 assert_gt "$AGENT_EVALS" "0" "9.6 Agent-scoped insights has evaluations"
 
-# 9.7 Check for e2e_test_server in insights (from Phase 7 evaluations)
-E2E_SERVER_GROUP=$(echo "$AGENT_INSIGHTS" | jq '[.service_groups[] | select(.server_key == "e2e_test_server")] | length')
-assert_gt "$E2E_SERVER_GROUP" "0" "9.7 e2e_test_server found in agent traffic"
+# 9.7 Check for e2e_mystery_server in insights (from Phase 7 evaluations)
+E2E_SERVER_GROUP=$(echo "$AGENT_INSIGHTS" | jq '[.service_groups[] | select(.server_key == "e2e_mystery_server")] | length')
+assert_gt "$E2E_SERVER_GROUP" "0" "9.7 e2e_mystery_server found in agent traffic"
 
 # 9.8 Check that covered commands are marked correctly
 COVERED_CMDS=$(echo "$INSIGHTS_REAL" | jq '[.service_groups[].commands[] | select(.has_matching_rule == true)] | length')
@@ -818,13 +794,30 @@ assert_eq "$COVERED_FIELD_EXISTS" "true" "9.8 Commands have has_matching_rule fi
 echo ""
 echo -e "${BOLD}=== Phase 10: Rule Pattern Verification ===${NC}"
 
-# Enable shell template and verify its rules work against real commands
-log "Enabling Shell template for pattern testing..."
-SHELL_ENABLE=$(api_curl -X POST "${API}/integrations/shell/enable" \
+# Create CLI allow + deny rules via create-rule endpoint
+log "Creating CLI rules for pattern testing..."
+CLI_ALLOW_RESP=$(api_curl -X POST "${API}/integrations/traffic/create-rule" \
     -H "Content-Type: application/json" \
-    -d '{}')
-SHELL_RULES_COUNT=$(echo "$SHELL_ENABLE" | jq -r '.rules_created // 0')
-assert_gt "$SHELL_RULES_COUNT" "0" "10.1 Shell template enabled"
+    -d '{"command": "ls", "action": "allow", "pattern_mode": "prefix"}')
+CLI_ALLOW_ID=$(echo "$CLI_ALLOW_RESP" | jq -r '.id // empty')
+assert_not_eq "$CLI_ALLOW_ID" "" "10.1a CLI allow rule created"
+if [[ -n "$CLI_ALLOW_ID" ]]; then CREATED_RULES+=("$CLI_ALLOW_ID"); fi
+
+CLI_DENY_ID=$(create_rule '{
+    "name": "E2E Block rm -rf",
+    "rule_type": "command_denylist",
+    "action": "deny",
+    "parameters": {"patterns": ["rm\\s+-rf"]},
+    "priority": 200,
+    "is_active": true
+}')
+assert_not_eq "$CLI_DENY_ID" "" "10.1b CLI deny rule created"
+
+GIT_ALLOW_RESP=$(api_curl -X POST "${API}/integrations/traffic/create-rule" \
+    -H "Content-Type: application/json" \
+    -d '{"command": "git status", "action": "allow", "pattern_mode": "prefix"}')
+GIT_ALLOW_ID=$(echo "$GIT_ALLOW_RESP" | jq -r '.id // empty')
+if [[ -n "$GIT_ALLOW_ID" ]]; then CREATED_RULES+=("$GIT_ALLOW_ID"); fi
 
 # 10.2 Safe command allowed
 SAFE_CMD=$(evaluate "{
@@ -833,7 +826,7 @@ SAFE_CMD=$(evaluate "{
     \"command\": \"ls -la /tmp\"
 }")
 SAFE_DECISION=$(echo "$SAFE_CMD" | jq -r '.decision // empty')
-assert_eq "$SAFE_DECISION" "allow" "10.2 'ls -la /tmp' allowed by shell template"
+assert_eq "$SAFE_DECISION" "allow" "10.2 'ls -la /tmp' allowed by CLI rule"
 
 # 10.3 Git read allowed
 GIT_READ=$(evaluate "{
@@ -842,7 +835,7 @@ GIT_READ=$(evaluate "{
     \"command\": \"git status\"
 }")
 GIT_DECISION=$(echo "$GIT_READ" | jq -r '.decision // empty')
-assert_eq "$GIT_DECISION" "allow" "10.3 'git status' allowed by shell template"
+assert_eq "$GIT_DECISION" "allow" "10.3 'git status' allowed by CLI rule"
 
 # 10.4 Dangerous command denied
 DANGER_CMD=$(evaluate "{
@@ -850,20 +843,18 @@ DANGER_CMD=$(evaluate "{
     \"request_type\": \"command\",
     \"command\": \"rm -rf /\"
 }")
-DANGER_DECISION=$(echo "$DANGER_CMD" | jq -r '.decision // empty')
-assert_eq "$DANGER_DECISION" "deny" "10.4 'rm -rf /' denied by shell template"
+DANGER_DECISION=$(is_denied "$DANGER_CMD")
+assert_eq "$DANGER_DECISION" "deny" "10.4 'rm -rf /' denied by CLI rule"
 
-# 10.5 Disable shell (cleanup)
-api_curl -X POST "${API}/integrations/shell/disable" \
-    -H "Content-Type: application/json" >/dev/null 2>&1
-
-# Enable github and test MCP patterns
-log "Enabling GitHub template for MCP pattern testing..."
-GH_ENABLE=$(api_curl -X POST "${API}/integrations/github/enable" \
+# Create GitHub server rules and test MCP patterns
+log "Creating GitHub rules for MCP pattern testing..."
+GH_SRV=$(api_curl -X POST "${API}/integrations/traffic/create-server-rules" \
     -H "Content-Type: application/json" \
-    -d '{}')
-GH_RULES=$(echo "$GH_ENABLE" | jq -r '.rules_created // 0')
-assert_gt "$GH_RULES" "0" "10.5a GitHub template enabled"
+    -d '{"server_name": "github"}')
+GH_RULES=$(echo "$GH_SRV" | jq -r '.rules_created // 0')
+assert_gt "$GH_RULES" "0" "10.5a GitHub rules created"
+GH_SRV_IDS=$(echo "$GH_SRV" | jq -r '.rules[].id')
+for gid in $GH_SRV_IDS; do CREATED_RULES+=("$gid"); done
 
 # 10.6 GitHub MCP read allowed
 GH_READ=$(evaluate "{
@@ -880,12 +871,13 @@ GH_DELETE=$(evaluate "{
     \"request_type\": \"command\",
     \"command\": \"mcp__github__delete_repo\"
 }")
-GH_DELETE_DEC=$(echo "$GH_DELETE" | jq -r '.decision // empty')
+GH_DELETE_DEC=$(is_denied "$GH_DELETE")
 assert_eq "$GH_DELETE_DEC" "deny" "10.7 'mcp__github__delete_repo' denied"
 
-# 10.8 Disable github (cleanup)
-api_curl -X POST "${API}/integrations/github/disable" \
-    -H "Content-Type: application/json" >/dev/null 2>&1
+# 10.8 Disable github rules (cleanup)
+api_curl -X POST "${API}/integrations/traffic/disable-server-rules" \
+    -H "Content-Type: application/json" \
+    -d '{"server_name": "github"}' >/dev/null 2>&1
 
 # ============================================================
 # Done — cleanup runs via EXIT trap

@@ -68,11 +68,17 @@ def _cleanup_wizard_agents():
             _api_request("DELETE", f"/api/v1/agents/{agent['id']}")
 
 
+def _cleanup_test_agents():
+    """Hard-delete agents matching test name patterns via the cleanup-test endpoint."""
+    _api_request("POST", "/api/v1/agents/cleanup-test?confirm=true")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_stale_test_data():
-    """Clean up stale test data before running E2E suite."""
+    """Clean up stale test data before and after running E2E suite."""
     _cleanup_wizard_agents()
     yield
+    _cleanup_test_agents()
 
 
 @pytest.fixture(scope="session")

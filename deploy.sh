@@ -429,6 +429,13 @@ SLACK_APP_TOKEN=
 SLACK_ALERT_CHANNEL=
 ENVEOF
 
+    # Add SNAPPER_DOMAIN when using domain mode (for Docker Caddy entrypoint)
+    if [[ -n "$DOMAIN" ]]; then
+        echo "" >> "$INSTALL_DIR/.env"
+        echo "# Domain for TLS (used by Caddy sidecar)" >> "$INSTALL_DIR/.env"
+        echo "SNAPPER_DOMAIN=${DOMAIN}" >> "$INSTALL_DIR/.env"
+    fi
+
     chmod 600 "$INSTALL_DIR/.env"
     ok "Production .env generated (SECRET_KEY: ${SECRET_KEY:0:8}...)"
     log "  ALLOWED_ORIGINS=${EXTERNAL_URL}"
@@ -506,18 +513,24 @@ else
             cat >> "$CADDYFILE" <<CADDYEOF
 
 ${DOMAIN} {
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     reverse_proxy localhost:8000
+}
+
+http://${DOMAIN} {
+    redir https://${DOMAIN}{uri} permanent
 }
 CADDYEOF
         else
             cat >> "$CADDYFILE" <<CADDYEOF
 
 ${DOMAIN}:${SNAPPER_PORT} {
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     reverse_proxy localhost:8000
 }
 CADDYEOF
         fi
-        ok "Caddy configured with automatic Let's Encrypt for $DOMAIN"
+        ok "Caddy configured with automatic Let's Encrypt for $DOMAIN (HSTS enabled)"
     else
         # IP-only mode: self-signed certificate
         if [[ ! -f "$CADDY_CERT_DIR/cert.pem" ]]; then
@@ -533,10 +546,11 @@ CADDYEOF
 
 :${SNAPPER_PORT} {
     tls ${CADDY_CERT_DIR}/cert.pem ${CADDY_CERT_DIR}/key.pem
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
     reverse_proxy localhost:8000
 }
 CADDYEOF
-        ok "Caddy configured with self-signed TLS on port $SNAPPER_PORT"
+        ok "Caddy configured with self-signed TLS on port $SNAPPER_PORT (HSTS enabled)"
     fi
 
     if ! caddy reload --config "$CADDYFILE" 2>/dev/null; then
