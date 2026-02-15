@@ -476,6 +476,18 @@ async def invite_member(
     db.add(invitation)
     await db.flush()
 
+    # Send invitation email (best-effort)
+    from app.services.email import send_invitation as send_invite_email
+
+    org = await db.get(Organization, org_id)
+    inviter = await db.get(User, user_id)
+    send_invite_email(
+        to=payload.email,
+        org_name=org.name if org else str(org_id),
+        inviter_name=inviter.username if inviter else "A team member",
+        token=invitation.token,
+    )
+
     logger.info(
         f"Invitation created: {invitation.id} for {payload.email} "
         f"to org {org_id} by user {user_id}"

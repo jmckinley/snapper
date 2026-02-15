@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
+from app.services.quota import QuotaChecker
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.rules import Rule
@@ -82,7 +83,12 @@ async def list_agents(
     )
 
 
-@router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=AgentResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(QuotaChecker("agents"))],
+)
 async def create_agent(
     agent_data: AgentCreate,
     db: DbSessionDep,

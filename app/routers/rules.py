@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
+from app.services.quota import QuotaChecker
 from app.models.rules import Rule, RuleAction, RuleType, RULE_PARAMETER_SCHEMAS
 from app.schemas.rules import (
     ApplyTemplateRequest,
@@ -641,7 +642,12 @@ async def list_rules(
     )
 
 
-@router.post("", response_model=RuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=RuleResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(QuotaChecker("rules"))],
+)
 async def create_rule(
     rule_data: RuleCreate,
     db: DbSessionDep,

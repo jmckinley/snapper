@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit
+from app.services.quota import QuotaChecker
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.services import pii_vault
@@ -120,7 +121,7 @@ class VaultDomainUpdate(BaseModel):
     "/entries",
     response_model=VaultEntryResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access)],
+    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access), Depends(QuotaChecker("vault_entries"))],
 )
 async def create_vault_entry(
     request: VaultEntryCreate,
