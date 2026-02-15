@@ -2,6 +2,7 @@
 services:
   # FastAPI Application
   app:
+    image: ghcr.io/jmckinley/snapper:dev
     build:
       context: .
       target: development
@@ -100,6 +101,7 @@ services:
 
   # Celery Worker
   celery-worker:
+    image: ghcr.io/jmckinley/snapper:dev
     build:
       context: .
       target: development
@@ -131,6 +133,7 @@ services:
 
   # Celery Beat (Scheduler)
   celery-beat:
+    image: ghcr.io/jmckinley/snapper:dev
     build:
       context: .
       target: development

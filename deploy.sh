@@ -444,13 +444,22 @@ ENVEOF
     log "  REQUIRE_API_KEY=true, REQUIRE_VAULT_AUTH=true"
 fi
 
-# ─── Step 3: Build and Start Containers ────────────────────────────────────
-log "Building and starting containers..."
+# ─── Step 3: Pull or Build and Start Containers ─────────────────────────────
+log "Starting containers..."
 
 cd "$INSTALL_DIR"
-if ! $COMPOSE_CMD up -d --build --force-recreate; then
-    err "Docker Compose failed. Check: $COMPOSE_CMD logs app"
-    exit 1
+if $COMPOSE_CMD pull 2>/dev/null; then
+    log "Using pre-built images from registry"
+    if ! $COMPOSE_CMD up -d --force-recreate; then
+        err "Docker Compose failed. Check: $COMPOSE_CMD logs app"
+        exit 1
+    fi
+else
+    log "Registry unavailable, building locally..."
+    if ! $COMPOSE_CMD up -d --build --force-recreate; then
+        err "Docker Compose failed. Check: $COMPOSE_CMD logs app"
+        exit 1
+    fi
 fi
 
 # Wait for postgres and redis to be healthy
@@ -981,7 +990,7 @@ echo ""
 echo -e "  Manage:     cd $INSTALL_DIR"
 echo -e "  Logs:       $COMPOSE_CMD logs -f"
 echo -e "  Stop:       $COMPOSE_CMD down"
-echo -e "  Update:     git pull && $COMPOSE_CMD up -d --build --force-recreate"
+echo -e "  Update:     git pull && $COMPOSE_CMD pull && $COMPOSE_CMD up -d --force-recreate"
 echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
 if [[ "${OC_CONFIGURED:-}" == "true" ]]; then

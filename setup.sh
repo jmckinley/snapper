@@ -66,7 +66,13 @@ fi
 # ── 3. Start containers ───────────────────────────────────────────
 
 echo -e "\n${BLUE}Starting containers...${NC}"
-docker compose up -d
+if docker compose pull 2>/dev/null; then
+    echo -e "${GREEN}✓ Pre-built images pulled from registry${NC}"
+    docker compose up -d
+else
+    echo -e "${YELLOW}Registry unavailable, building locally...${NC}"
+    docker compose up -d --build
+fi
 
 # ── 4. Wait for health ────────────────────────────────────────────
 

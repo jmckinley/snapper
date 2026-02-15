@@ -6,6 +6,7 @@
 # build target, port binding, and volume mounts.
 services:
   app:
+    image: ghcr.io/jmckinley/snapper:latest
     build:
       target: production
     ports: !override
@@ -24,11 +25,13 @@ services:
     profiles: ["caddy-sidecar"]
 
   celery-worker:
+    image: ghcr.io/jmckinley/snapper:latest
     build:
       target: production
     volumes: !reset []
 
   celery-beat:
+    image: ghcr.io/jmckinley/snapper:latest
     build:
       target: production
     volumes: !reset []
