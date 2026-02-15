@@ -8,6 +8,7 @@ from typing import List, Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
+    ForeignKey,
     Index,
     String,
     func,
@@ -141,6 +142,38 @@ class User(Base):
         nullable=False,
     )
 
+    # Organization
+    default_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="User's default organization context",
+    )
+
+    # OAuth
+    oauth_provider: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="OAuth provider: github, google",
+    )
+    oauth_provider_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="User ID from OAuth provider",
+    )
+
+    # Password reset
+    email_verification_token: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    password_reset_token: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    password_reset_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Soft delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
@@ -149,6 +182,7 @@ class User(Base):
 
     __table_args__ = (
         Index("ix_users_active", "is_active", "role"),
+        Index("ix_users_oauth", "oauth_provider", "oauth_provider_id"),
     )
 
     def __repr__(self) -> str:

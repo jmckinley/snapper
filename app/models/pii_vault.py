@@ -53,6 +53,15 @@ class PIIVaultEntry(Base):
         default=uuid.uuid4,
     )
 
+    # Organization scoping
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Organization this vault entry belongs to",
+    )
+
     # Ownership (multi-tenant keyed by Telegram chat ID)
     owner_chat_id: Mapped[str] = mapped_column(
         String(100),

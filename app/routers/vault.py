@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit, vault_write_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.services import pii_vault
@@ -125,6 +125,7 @@ class VaultDomainUpdate(BaseModel):
 async def create_vault_entry(
     request: VaultEntryCreate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep = None,
 ):
     """
     Create a new encrypted vault entry.
@@ -144,6 +145,11 @@ async def create_vault_entry(
         max_uses=request.max_uses,
         placeholder_value=request.placeholder_value,
     )
+
+    # Set organization_id if available
+    if org_id and hasattr(entry, "organization_id"):
+        entry.organization_id = org_id
+        await db.flush()
 
     # Audit log
     audit_log = AuditLog(
@@ -179,6 +185,7 @@ async def create_vault_entry(
 @router.get("/entries", response_model=List[VaultEntryResponse])
 async def list_vault_entries(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep = None,
     owner_chat_id: str = Query(..., description="Telegram chat ID of the owner"),
 ):
     """
@@ -187,6 +194,10 @@ async def list_vault_entries(
     Returns masked values only - decrypted values are never exposed via this endpoint.
     """
     entries = await pii_vault.list_entries(db=db, owner_chat_id=owner_chat_id)
+
+    # Filter by org if context is available
+    if org_id:
+        entries = [e for e in entries if getattr(e, "organization_id", None) == org_id or getattr(e, "organization_id", None) is None]
 
     return [
         VaultEntryResponse(

@@ -105,6 +105,22 @@ class Settings(BaseSettings):
     PII_VAULT_TOKEN_TTL_SECONDS: int = 30  # Resolved value Redis TTL (one-time retrieval)
     REQUIRE_VAULT_AUTH: bool = False  # Require API key or internal source for vault writes
 
+    # Authentication (JWT)
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Multi-tenancy
+    SELF_HOSTED: bool = False  # When true, bypasses all plan limits
+    REGISTRATION_ENABLED: bool = True
+
+    # Stripe billing
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_PRICE_PRO_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_PRO_YEARLY: Optional[str] = None
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

@@ -1,6 +1,7 @@
 """Dependency injection providers for FastAPI."""
 
-from typing import Annotated, AsyncGenerator
+from typing import Annotated, AsyncGenerator, Optional
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,6 +68,39 @@ async def get_request_id(request: Request) -> str:
 
         request_id = str(uuid.uuid4())
     return request_id
+
+
+# --- Organization context ---
+
+
+async def get_optional_org_id(request: Request) -> Optional[UUID]:
+    """Get org ID from request state if available (set by auth middleware).
+
+    Returns None when no user auth context exists (backward compat for
+    API-key-only access where scoping uses agent.organization_id).
+    """
+    org_id = getattr(request.state, "org_id", None)
+    if org_id:
+        try:
+            return UUID(str(org_id))
+        except (ValueError, AttributeError):
+            pass
+    return None
+
+
+async def require_org_id(request: Request) -> UUID:
+    """Require org ID from request state. Raises 400 if missing."""
+    org_id = await get_optional_org_id(request)
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organization context required",
+        )
+    return org_id
+
+
+OptionalOrgIdDep = Annotated[Optional[UUID], Depends(get_optional_org_id)]
+RequiredOrgIdDep = Annotated[UUID, Depends(require_org_id)]
 
 
 # Combined security dependencies

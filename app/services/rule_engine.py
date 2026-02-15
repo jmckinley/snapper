@@ -260,14 +260,32 @@ class RuleEngine:
         return result
 
     async def _load_rules(self, agent_id: UUID) -> List[Rule]:
-        """Load rules for agent with inheritance (global + agent-specific)."""
+        """Load rules for agent with inheritance (global + agent-specific).
+
+        Rules are scoped by organization: if the agent belongs to an org,
+        only rules from that org (or system-wide rules with org_id=NULL)
+        are loaded.
+        """
+        # Determine agent's organization for scoping
+        agent_stmt = select(Agent.organization_id).where(Agent.id == agent_id)
+        agent_result = await self.db.execute(agent_stmt)
+        agent_org_id = agent_result.scalar_one_or_none()
+
         # Always load fresh from database - caching disabled for security
         # This ensures rule changes take effect immediately
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.is_active == True,
             (Rule.agent_id == agent_id) | (Rule.agent_id == None),
-        ).order_by(Rule.priority.desc())
+        )
+
+        # Org scoping: only load rules from the agent's org or system-wide rules
+        if agent_org_id:
+            stmt = stmt.where(
+                (Rule.organization_id == agent_org_id) | (Rule.organization_id == None)
+            )
+
+        stmt = stmt.order_by(Rule.priority.desc())
 
         result = await self.db.execute(stmt)
         rules = list(result.scalars().all())

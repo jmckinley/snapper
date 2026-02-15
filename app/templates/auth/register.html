@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account - Snapper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="icon" type="image/png" href="/static/images/snapper-logo.png">
+</head>
+<body class="h-full bg-gray-900">
+    <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
+        <!-- Logo and heading -->
+        <div class="sm:mx-auto sm:w-full sm:max-w-sm">
+            <div class="flex justify-center">
+                <img src="/static/images/snapper-logo.png" alt="Snapper" class="h-16 w-16 rounded-full">
+            </div>
+            <h2 class="mt-6 text-center text-2xl font-bold leading-9 tracking-tight text-white">
+                Create your account
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-400">
+                Get started with Snapper Agent Application Firewall
+            </p>
+        </div>
+
+        <!-- Register card -->
+        <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+            <div class="bg-gray-800 px-6 py-8 shadow-xl rounded-lg sm:px-10">
+                <!-- Error message area -->
+                <div id="error-message" class="hidden mb-4 rounded-md bg-red-900/50 border border-red-500/50 p-3">
+                    <p class="text-sm text-red-300" id="error-text"></p>
+                </div>
+
+                <form id="register-form" class="space-y-5">
+                    <!-- Email -->
+                    <div>
+                        <label for="email" class="block text-sm font-medium leading-6 text-gray-300">
+                            Email address
+                        </label>
+                        <div class="mt-1.5">
+                            <input id="email" name="email" type="email" autocomplete="email" required
+                                class="block w-full rounded-md border-0 bg-gray-700 py-2.5 px-3 text-white shadow-sm ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
+                                placeholder="you@example.com">
+                        </div>
+                    </div>
+
+                    <!-- Username -->
+                    <div>
+                        <label for="username" class="block text-sm font-medium leading-6 text-gray-300">
+                            Username
+                        </label>
+                        <div class="mt-1.5">
+                            <input id="username" name="username" type="text" autocomplete="username" required
+                                class="block w-full rounded-md border-0 bg-gray-700 py-2.5 px-3 text-white shadow-sm ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
+                                placeholder="johndoe" minlength="3" maxlength="50"
+                                pattern="[a-zA-Z0-9_-]+">
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Letters, numbers, underscores, and hyphens only.</p>
+                    </div>
+
+                    <!-- Password -->
+                    <div>
+                        <label for="password" class="block text-sm font-medium leading-6 text-gray-300">
+                            Password
+                        </label>
+                        <div class="mt-1.5">
+                            <input id="password" name="password" type="password" autocomplete="new-password" required
+                                class="block w-full rounded-md border-0 bg-gray-700 py-2.5 px-3 text-white shadow-sm ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
+                                placeholder="At least 8 characters" minlength="8">
+                        </div>
+                    </div>
+
+                    <!-- Confirm Password -->
+                    <div>
+                        <label for="password_confirm" class="block text-sm font-medium leading-6 text-gray-300">
+                            Confirm password
+                        </label>
+                        <div class="mt-1.5">
+                            <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required
+                                class="block w-full rounded-md border-0 bg-gray-700 py-2.5 px-3 text-white shadow-sm ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
+                                placeholder="Repeat your password" minlength="8">
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <div>
+                        <button type="submit" id="submit-btn"
+                            class="flex w-full justify-center rounded-md bg-primary-600 px-3 py-2.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Create account
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Login link -->
+                <p class="mt-6 text-center text-sm text-gray-400">
+                    Already have an account?
+                    <a href="/login" class="font-medium text-primary-400 hover:text-primary-300">
+                        Sign in
+                    </a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <p class="mt-8 text-center text-xs text-gray-500">
+            &copy; 2026 McKinley Labs LLC &mdash; Snapper Agent Application Firewall
+        </p>
+    </div>
+
+    <script>
+        const form = document.getElementById('register-form');
+        const errorDiv = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function showError(message) {
+            errorText.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorDiv.classList.add('hidden');
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideError();
+
+            const email = document.getElementById('email').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const password_confirm = document.getElementById('password_confirm').value;
+
+            // Client-side validation
+            if (password !== password_confirm) {
+                showError('Passwords do not match');
+                return;
+            }
+
+            if (password.length < 8) {
+                showError('Password must be at least 8 characters');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating account...';
+
+            try {
+                const response = await fetch('/api/v1/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, username, password, password_confirm }),
+                    credentials: 'same-origin',
+                });
+
+                if (response.ok) {
+                    // Cookies are set by the server, redirect to dashboard
+                    window.location.href = '/';
+                } else {
+                    const data = await response.json();
+                    // Handle validation errors from Pydantic
+                    if (data.detail && Array.isArray(data.detail)) {
+                        const messages = data.detail.map(err => err.msg || err.message || JSON.stringify(err));
+                        showError(messages.join('. '));
+                    } else {
+                        showError(data.detail || 'Registration failed');
+                    }
+                }
+            } catch (err) {
+                showError('Network error. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create account';
+            }
+        });
+    </script>
+</body>
+</html>

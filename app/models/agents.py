@@ -9,6 +9,7 @@ from typing import List, Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
+    ForeignKey,
     Index,
     String,
     Text,
@@ -69,6 +70,22 @@ class Agent(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    # Organization scoping
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Organization this agent belongs to",
+    )
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("teams.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Team this agent belongs to",
     )
 
     # Agent identification

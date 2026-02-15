@@ -1,0 +1,172 @@
+"""Authentication middleware for protecting dashboard and HTML routes."""
+
+import logging
+from typing import Callable
+from uuid import UUID
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, RedirectResponse, Response
+
+from app.services.auth import create_access_token, verify_token
+
+logger = logging.getLogger(__name__)
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """
+    Starlette middleware that protects dashboard (HTML) routes.
+
+    Behavior:
+    - Valid access token cookie: sets request.state user context, proceeds
+    - Expired access + valid refresh: auto-rotates access token, proceeds
+    - No valid tokens + HTML request: redirects to /login
+    - No valid tokens + API request: returns 401 JSON
+    """
+
+    # Exact paths exempt from auth
+    EXEMPT_PATHS = {
+        "/login",
+        "/register",
+        "/forgot-password",
+        "/reset-password",
+        "/health",
+        "/health/ready",
+        "/favicon.ico",
+        "/wizard",
+        "/terms",
+    }
+
+    # Path prefixes exempt from auth
+    EXEMPT_PREFIXES = (
+        "/static/",
+        "/api/v1/auth/",
+        "/api/v1/rules/evaluate",
+        "/api/v1/telegram/",
+        "/api/v1/slack/",
+        "/api/v1/approvals/",
+        "/api/v1/billing/webhook",
+        "/api/docs",
+        "/api/redoc",
+        "/api/openapi.json",
+    )
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Process request through authentication checks."""
+        path = request.url.path
+
+        # Check if path is exempt
+        if self._is_exempt(path):
+            return await call_next(request)
+
+        # Try to authenticate from access token cookie
+        access_token = request.cookies.get("snapper_access_token")
+        refresh_token = request.cookies.get("snapper_refresh_token")
+
+        # Attempt 1: Valid access token
+        if access_token:
+            try:
+                payload = verify_token(access_token)
+                if payload.get("type") == "access":
+                    self._set_request_state(request, payload)
+                    return await call_next(request)
+            except ValueError:
+                # Access token invalid/expired, fall through to refresh
+                pass
+
+        # Attempt 2: Refresh token -> auto-rotate access token
+        if refresh_token:
+            try:
+                refresh_payload = verify_token(refresh_token)
+                if refresh_payload.get("type") == "refresh":
+                    user_id = refresh_payload.get("sub")
+                    if user_id:
+                        # We need org_id and role for the new access token.
+                        # Read from the expired access token if available, or
+                        # use defaults that will be corrected on next /me call.
+                        org_id = None
+                        role = "member"
+                        if access_token:
+                            try:
+                                # Decode without verification to get claims
+                                from jose import jwt as jose_jwt
+
+                                from app.config import get_settings
+
+                                settings = get_settings()
+                                expired_payload = jose_jwt.decode(
+                                    access_token,
+                                    settings.SECRET_KEY,
+                                    algorithms=[settings.JWT_ALGORITHM],
+                                    options={"verify_exp": False},
+                                )
+                                org_id = expired_payload.get("org")
+                                role = expired_payload.get("role", "member")
+                            except Exception:
+                                pass
+
+                        # Create new access token
+                        new_access_token = create_access_token(
+                            UUID(user_id),
+                            UUID(org_id) if org_id else UUID(user_id),
+                            role,
+                        )
+
+                        # Set user context
+                        new_payload = verify_token(new_access_token)
+                        self._set_request_state(request, new_payload)
+
+                        # Process the request
+                        response = await call_next(request)
+
+                        # Set the new access token cookie on the response
+                        from app.config import get_settings
+
+                        settings = get_settings()
+                        response.set_cookie(
+                            key="snapper_access_token",
+                            value=new_access_token,
+                            httponly=True,
+                            secure=not settings.DEBUG,
+                            samesite="lax",
+                            path="/",
+                            max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                        )
+                        return response
+            except ValueError:
+                # Refresh token also invalid/expired
+                pass
+
+        # No valid authentication found
+        return self._unauthenticated_response(request)
+
+    def _is_exempt(self, path: str) -> bool:
+        """Check if the path is exempt from authentication."""
+        if path in self.EXEMPT_PATHS:
+            return True
+
+        for prefix in self.EXEMPT_PREFIXES:
+            if path.startswith(prefix):
+                return True
+
+        return False
+
+    def _set_request_state(self, request: Request, payload: dict) -> None:
+        """Set user context on request.state from JWT payload."""
+        request.state.user_id = payload.get("sub")
+        request.state.org_id = payload.get("org")
+        request.state.user_role = payload.get("role")
+
+    def _unauthenticated_response(self, request: Request) -> Response:
+        """Return appropriate response for unauthenticated requests."""
+        accept = request.headers.get("accept", "")
+
+        # HTML requests get redirected to login
+        if "text/html" in accept and not request.url.path.startswith("/api/"):
+            return RedirectResponse(url="/login", status_code=302)
+
+        # API/JSON requests get 401
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required"},
+        )

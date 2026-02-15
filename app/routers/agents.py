@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.rules import Rule
@@ -32,6 +32,7 @@ router = APIRouter(prefix="/agents", dependencies=[Depends(default_rate_limit)])
 @router.get("", response_model=AgentListResponse)
 async def list_agents(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status_filter: Optional[AgentStatus] = Query(None, alias="status"),
@@ -42,6 +43,10 @@ async def list_agents(
     """List all agents with pagination and filtering."""
     # Build query
     stmt = select(Agent)
+
+    # Org scoping
+    if org_id:
+        stmt = stmt.where(Agent.organization_id == org_id)
 
     if not include_deleted:
         stmt = stmt.where(Agent.is_deleted == False)
@@ -81,6 +86,7 @@ async def list_agents(
 async def create_agent(
     agent_data: AgentCreate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Register a new agent."""
     # Check for existing external_id
@@ -119,6 +125,7 @@ async def create_agent(
         rate_limit_max_requests=agent_data.rate_limit_max_requests,
         rate_limit_window_seconds=agent_data.rate_limit_window_seconds,
         owner_chat_id=agent_data.owner_chat_id,
+        organization_id=org_id,
     )
 
     db.add(agent)

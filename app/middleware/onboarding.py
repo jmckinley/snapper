@@ -73,7 +73,7 @@ class OnboardingMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Check if we need to redirect to wizard
-        if await self._is_first_run():
+        if await self._is_first_run(request):
             # Only redirect HTML page requests, not XHR/fetch
             accept = request.headers.get("accept", "")
             if "text/html" in accept:
@@ -91,8 +91,11 @@ class OnboardingMiddleware(BaseHTTPMiddleware):
                 return True
         return False
 
-    async def _is_first_run(self) -> bool:
+    async def _is_first_run(self, request=None) -> bool:
         """Check if this is a first-run scenario (no agents registered).
+
+        If user is authenticated and has an org context, checks agents
+        within that org. Otherwise checks globally.
 
         Caches the result to avoid hitting the database on every request.
         """
@@ -110,9 +113,18 @@ class OnboardingMiddleware(BaseHTTPMiddleware):
         # Query database
         try:
             async with async_session_maker() as session:
-                result = await session.execute(
-                    select(func.count(Agent.id)).where(Agent.deleted_at.is_(None))
-                )
+                stmt = select(func.count(Agent.id)).where(Agent.deleted_at.is_(None))
+
+                # Scope to org if available
+                org_id = getattr(request.state, "org_id", None) if request else None
+                if org_id:
+                    from uuid import UUID as UUIDType
+                    try:
+                        stmt = stmt.where(Agent.organization_id == UUIDType(str(org_id)))
+                    except (ValueError, AttributeError):
+                        pass
+
+                result = await session.execute(stmt)
                 count = result.scalar() or 0
 
             self._cache_has_agents = count > 0

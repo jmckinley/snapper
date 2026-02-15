@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
 from app.models.rules import Rule, RuleAction, RuleType, RULE_PARAMETER_SCHEMAS
 from app.schemas.rules import (
@@ -588,6 +588,7 @@ RULE_TEMPLATES = {
 @router.get("", response_model=RuleListResponse)
 async def list_rules(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     agent_id: Optional[UUID] = None,
@@ -598,6 +599,12 @@ async def list_rules(
 ):
     """List all rules with pagination and filtering."""
     stmt = select(Rule)
+
+    # Org scoping
+    if org_id:
+        stmt = stmt.where(
+            (Rule.organization_id == org_id) | (Rule.organization_id == None)
+        )
 
     if not include_deleted:
         stmt = stmt.where(Rule.is_deleted == False)
@@ -639,6 +646,7 @@ async def create_rule(
     rule_data: RuleCreate,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Create a new rule."""
     # Validate parameters against schema
@@ -666,6 +674,7 @@ async def create_rule(
         tags=rule_data.tags,
         source=rule_data.source,
         source_reference=rule_data.source_reference,
+        organization_id=org_id,
     )
 
     db.add(rule)

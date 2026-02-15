@@ -1,0 +1,563 @@
+{% extends "base.html" %}
+{% block title %}Billing - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Billing</h1>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+    <!-- Loading State -->
+    <div id="billing-loading" class="space-y-6">
+        <div class="bg-white shadow rounded-lg p-6 animate-pulse">
+            <div class="h-6 w-48 bg-gray-200 rounded mb-4"></div>
+            <div class="h-4 w-64 bg-gray-100 rounded mb-2"></div>
+            <div class="h-4 w-40 bg-gray-100 rounded"></div>
+        </div>
+    </div>
+
+    <!-- Error State -->
+    <div id="billing-error" class="hidden">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-6">
+            <div class="flex items-center">
+                <svg class="h-5 w-5 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="text-sm text-red-700" id="billing-error-message">Failed to load billing information.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content (hidden until loaded) -->
+    <div id="billing-content" class="hidden space-y-8">
+
+        <!-- Current Plan Card -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-5 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-medium text-gray-900">Current Plan</h2>
+                        <p class="text-sm text-gray-500 mt-1">Your organization's active subscription</p>
+                    </div>
+                    <div id="plan-badge" class="flex items-center space-x-3">
+                        <!-- Badge and manage button injected by JS -->
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-5">
+                <div class="flex items-baseline space-x-2">
+                    <span id="plan-name" class="text-2xl font-bold text-gray-900"></span>
+                    <span id="plan-price" class="text-lg text-gray-500"></span>
+                </div>
+                <div id="subscription-status" class="mt-2 text-sm text-gray-500"></div>
+
+                <!-- Plan Features -->
+                <div id="plan-features" class="mt-4 flex flex-wrap gap-2">
+                    <!-- Feature badges injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Usage Section -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-5 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Resource Usage</h2>
+                <p class="text-sm text-gray-500 mt-1">How much of your plan limits you are using</p>
+            </div>
+            <div class="px-6 py-5">
+                <div id="usage-bars" class="space-y-5">
+                    <!-- Usage bars injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Upgrade Buttons (shown only when applicable) -->
+        <div id="upgrade-section" class="hidden">
+            <div class="bg-gradient-to-r from-primary-600 to-primary-700 rounded-lg shadow-lg overflow-hidden">
+                <div class="px-6 py-6">
+                    <h2 class="text-xl font-bold text-white">Upgrade Your Plan</h2>
+                    <p class="text-primary-100 mt-1 text-sm">Unlock more agents, rules, and advanced features</p>
+                    <div id="upgrade-buttons" class="mt-4 flex flex-wrap gap-3">
+                        <!-- Upgrade buttons injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plan Comparison Table -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-5 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Plan Comparison</h2>
+                <p class="text-sm text-gray-500 mt-1">Compare features across all available plans</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feature</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Free</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pro</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Enterprise</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Agents</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-free-agents">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-pro-agents">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-ent-agents">--</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Rules</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-free-rules">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-pro-rules">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-ent-rules">--</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Vault Entries</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-free-vault">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-pro-vault">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-ent-vault">--</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Team Members</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-free-members">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-pro-members">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-ent-members">--</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Teams</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-free-teams">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-pro-teams">--</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 text-center" id="comp-ent-teams">--</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Slack Integration</td>
+                            <td class="px-6 py-4 text-center" id="comp-free-slack">
+                                <svg class="h-5 w-5 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </td>
+                            <td class="px-6 py-4 text-center" id="comp-pro-slack">
+                                <svg class="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            </td>
+                            <td class="px-6 py-4 text-center" id="comp-ent-slack">
+                                <svg class="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">OAuth / SSO</td>
+                            <td class="px-6 py-4 text-center">
+                                <svg class="h-5 w-5 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <svg class="h-5 w-5 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <svg class="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">Audit Export</td>
+                            <td class="px-6 py-4 text-center">
+                                <svg class="h-5 w-5 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <svg class="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <svg class="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            </td>
+                        </tr>
+                        <tr class="bg-gray-50">
+                            <td class="px-6 py-4 text-sm font-bold text-gray-900">Price</td>
+                            <td class="px-6 py-4 text-sm font-bold text-gray-900 text-center">Free</td>
+                            <td class="px-6 py-4 text-sm font-bold text-gray-900 text-center" id="comp-pro-price">--</td>
+                            <td class="px-6 py-4 text-sm font-bold text-gray-900 text-center" id="comp-ent-price">Contact us</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /billing-content -->
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+    let billingData = null;
+
+    // Plan hierarchy for deciding which upgrade buttons to show
+    const PLAN_ORDER = ['free', 'pro', 'enterprise'];
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    function formatLimit(value) {
+        if (value === -1) return 'Unlimited';
+        return value.toLocaleString();
+    }
+
+    function formatCents(cents) {
+        if (!cents || cents === 0) return 'Free';
+        return '$' + (cents / 100).toFixed(2);
+    }
+
+    function usagePercent(used, limit) {
+        if (limit === -1) return 0; // unlimited
+        if (limit === 0) return 100;
+        return Math.min(Math.round((used / limit) * 100), 100);
+    }
+
+    function barColor(percent) {
+        if (percent >= 90) return 'bg-red-500';
+        if (percent >= 70) return 'bg-yellow-500';
+        return 'bg-primary-500';
+    }
+
+    function checkIcon() {
+        return '<svg class="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+    }
+
+    function crossIcon() {
+        return '<svg class="h-5 w-5 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>';
+    }
+
+    function showToast(message, type) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const colors = {
+            success: 'bg-green-500',
+            error: 'bg-red-500',
+            info: 'bg-primary-500',
+        };
+        const toast = document.createElement('div');
+        toast.className = `${colors[type] || colors.info} text-white px-4 py-3 rounded-lg shadow-lg text-sm transition-opacity duration-300`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Render functions
+    // -----------------------------------------------------------------------
+
+    function renderCurrentPlan(data) {
+        const plan = data.plan;
+
+        // Plan name and price
+        document.getElementById('plan-name').textContent = plan.name;
+
+        if (plan.price_monthly_cents > 0) {
+            document.getElementById('plan-price').textContent = formatCents(plan.price_monthly_cents) + '/mo';
+        } else {
+            document.getElementById('plan-price').textContent = '';
+        }
+
+        // Subscription status
+        const statusEl = document.getElementById('subscription-status');
+        if (data.subscription_status) {
+            const statusColors = {
+                active: 'text-green-600',
+                past_due: 'text-yellow-600',
+                canceled: 'text-red-600',
+                trialing: 'text-blue-600',
+            };
+            const color = statusColors[data.subscription_status] || 'text-gray-600';
+            let statusText = data.subscription_status.charAt(0).toUpperCase() + data.subscription_status.slice(1).replace('_', ' ');
+
+            if (data.plan_period_end) {
+                const endDate = new Date(data.plan_period_end);
+                statusText += ' until ' + endDate.toLocaleDateString();
+            }
+
+            statusEl.innerHTML = `<span class="${color} font-medium">${statusText}</span>`;
+        } else if (plan.id === 'free') {
+            statusEl.textContent = 'No active subscription';
+        } else {
+            statusEl.textContent = '';
+        }
+
+        // Plan badge and manage button
+        const badgeEl = document.getElementById('plan-badge');
+        const planColors = {
+            free: 'bg-gray-100 text-gray-800',
+            pro: 'bg-primary-100 text-primary-800',
+            enterprise: 'bg-purple-100 text-purple-800',
+        };
+        const badgeColor = planColors[plan.id] || planColors.free;
+
+        let badgeHTML = `<span class="px-3 py-1 text-sm font-medium ${badgeColor} rounded-full">${plan.name}</span>`;
+
+        // Show "Manage Subscription" button only for paid plans with a Stripe customer
+        if (data.subscription_status && data.subscription_status !== 'canceled') {
+            badgeHTML += `
+                <button onclick="openPortal()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 shadow-sm">
+                    <svg class="h-4 w-4 mr-1.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Manage Subscription
+                </button>`;
+        }
+
+        badgeEl.innerHTML = badgeHTML;
+
+        // Plan features
+        const featuresEl = document.getElementById('plan-features');
+        const features = plan.features || {};
+        const featureLabels = {
+            slack_integration: 'Slack Integration',
+            oauth_login: 'OAuth Login',
+            sso: 'SSO',
+            audit_export: 'Audit Export',
+            priority_support: 'Priority Support',
+            custom_branding: 'Custom Branding',
+        };
+
+        let featuresHTML = '';
+        for (const [key, enabled] of Object.entries(features)) {
+            if (enabled) {
+                const label = featureLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                featuresHTML += `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <svg class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                    ${label}
+                </span>`;
+            }
+        }
+        featuresEl.innerHTML = featuresHTML || '<span class="text-sm text-gray-400">No premium features on this plan</span>';
+    }
+
+    function renderUsage(data) {
+        const usage = data.usage;
+        const plan = data.plan;
+        const container = document.getElementById('usage-bars');
+
+        const resources = [
+            { key: 'agents', label: 'Agents', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+            { key: 'rules', label: 'Rules', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
+            { key: 'vault_entries', label: 'Vault Entries', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
+            { key: 'team_members', label: 'Team Members', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+            { key: 'teams', label: 'Teams', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
+        ];
+
+        let html = '';
+        for (const res of resources) {
+            const stat = usage[res.key];
+            if (!stat) continue;
+
+            const used = stat.used;
+            const limit = stat.limit;
+            const isUnlimited = stat.is_unlimited || limit === -1;
+            const pct = isUnlimited ? 0 : usagePercent(used, limit);
+            const color = barColor(pct);
+            const limitStr = isUnlimited ? 'Unlimited' : limit.toLocaleString();
+
+            html += `
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center space-x-2">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${res.icon}" />
+                            </svg>
+                            <span class="text-sm font-medium text-gray-700">${res.label}</span>
+                        </div>
+                        <span class="text-sm text-gray-500">${used.toLocaleString()} / ${limitStr}</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="${color} h-2.5 rounded-full transition-all duration-500" style="width: ${isUnlimited ? 0 : pct}%"></div>
+                    </div>
+                    ${pct >= 90 && !isUnlimited ? '<p class="text-xs text-red-500 mt-1">Approaching plan limit</p>' : ''}
+                </div>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    function renderUpgradeButtons(data) {
+        const currentPlanId = data.plan.id;
+        const currentIndex = PLAN_ORDER.indexOf(currentPlanId);
+        const section = document.getElementById('upgrade-section');
+        const container = document.getElementById('upgrade-buttons');
+
+        // Nothing to upgrade if already on highest plan
+        if (currentIndex >= PLAN_ORDER.length - 1) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        let html = '';
+        const upgradePlans = PLAN_ORDER.slice(currentIndex + 1);
+
+        for (const planId of upgradePlans) {
+            if (planId === 'enterprise') {
+                html += `
+                    <a href="mailto:sales@snapper.dev?subject=Enterprise%20Plan%20Inquiry" class="inline-flex items-center px-5 py-2.5 border-2 border-white text-white rounded-lg text-sm font-medium hover:bg-white/10 transition-colors">
+                        Contact Sales for Enterprise
+                    </a>`;
+            } else {
+                html += `
+                    <button onclick="startCheckout('${planId}', 'monthly')" class="inline-flex items-center px-5 py-2.5 bg-white text-primary-700 rounded-lg text-sm font-bold hover:bg-primary-50 transition-colors shadow-sm">
+                        Upgrade to ${planId.charAt(0).toUpperCase() + planId.slice(1)} (Monthly)
+                    </button>
+                    <button onclick="startCheckout('${planId}', 'yearly')" class="inline-flex items-center px-5 py-2.5 border-2 border-white text-white rounded-lg text-sm font-medium hover:bg-white/10 transition-colors">
+                        Upgrade to ${planId.charAt(0).toUpperCase() + planId.slice(1)} (Yearly - Save 17%)
+                    </button>`;
+            }
+        }
+
+        container.innerHTML = html;
+        section.classList.remove('hidden');
+    }
+
+    function renderComparisonTable() {
+        // These are the default plan definitions.
+        // In a full implementation we would fetch all plans from the API.
+        // For now, use reasonable defaults that match the seeded plan data.
+        const plans = {
+            free:       { agents: 1, rules: 10, vault: 5, members: 1, teams: 1, price: 'Free' },
+            pro:        { agents: 25, rules: 500, vault: 100, members: 10, teams: 5, price: null },
+            enterprise: { agents: -1, rules: -1, vault: -1, members: -1, teams: -1, price: 'Contact us' },
+        };
+
+        // Override with real data if we have it
+        if (billingData && billingData.plan) {
+            const p = billingData.plan;
+            const pid = p.id;
+            if (plans[pid]) {
+                plans[pid].agents = p.limits.agents;
+                plans[pid].rules = p.limits.rules;
+                plans[pid].vault = p.limits.vault_entries;
+                plans[pid].members = p.limits.team_members;
+                plans[pid].teams = p.limits.teams;
+            }
+            if (pid === 'pro' && p.price_monthly_cents) {
+                plans.pro.price = formatCents(p.price_monthly_cents) + '/mo';
+            }
+        }
+
+        for (const tier of ['free', 'pro', 'ent']) {
+            const key = tier === 'ent' ? 'enterprise' : tier;
+            const p = plans[key];
+            const prefix = `comp-${tier}`;
+
+            const el = (id) => document.getElementById(id);
+            if (el(`${prefix}-agents`)) el(`${prefix}-agents`).textContent = formatLimit(p.agents);
+            if (el(`${prefix}-rules`)) el(`${prefix}-rules`).textContent = formatLimit(p.rules);
+            if (el(`${prefix}-vault`)) el(`${prefix}-vault`).textContent = formatLimit(p.vault);
+            if (el(`${prefix}-members`)) el(`${prefix}-members`).textContent = formatLimit(p.members);
+            if (el(`${prefix}-teams`)) el(`${prefix}-teams`).textContent = formatLimit(p.teams);
+            if (p.price && el(`${prefix}-price`)) el(`${prefix}-price`).textContent = p.price;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Actions
+    // -----------------------------------------------------------------------
+
+    async function startCheckout(planId, interval) {
+        try {
+            const resp = await fetch('/api/v1/billing/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan_id: planId, interval: interval }),
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to start checkout', 'error');
+                return;
+            }
+
+            const data = await resp.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                showToast('No checkout URL returned', 'error');
+            }
+        } catch (e) {
+            console.error('Checkout error:', e);
+            showToast('Failed to start checkout', 'error');
+        }
+    }
+
+    async function openPortal() {
+        try {
+            const resp = await fetch('/api/v1/billing/portal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to open subscription portal', 'error');
+                return;
+            }
+
+            const data = await resp.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                showToast('No portal URL returned', 'error');
+            }
+        } catch (e) {
+            console.error('Portal error:', e);
+            showToast('Failed to open subscription portal', 'error');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Initialization
+    // -----------------------------------------------------------------------
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const resp = await fetch('/api/v1/billing/plan');
+
+            if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}`);
+            }
+
+            billingData = await resp.json();
+
+            // Hide loading, show content
+            document.getElementById('billing-loading').classList.add('hidden');
+            document.getElementById('billing-content').classList.remove('hidden');
+
+            // Render all sections
+            renderCurrentPlan(billingData);
+            renderUsage(billingData);
+            renderUpgradeButtons(billingData);
+            renderComparisonTable();
+
+            // Check for post-checkout success
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('session_id')) {
+                showToast('Subscription updated successfully!', 'success');
+                // Clean up the URL
+                window.history.replaceState({}, document.title, '/billing');
+            }
+        } catch (e) {
+            console.error('Failed to load billing data:', e);
+            document.getElementById('billing-loading').classList.add('hidden');
+            document.getElementById('billing-error').classList.remove('hidden');
+
+            if (e.message && e.message.includes('401')) {
+                document.getElementById('billing-error-message').textContent = 'Please log in to view billing information.';
+            }
+        }
+    });
+</script>
+{% endblock %}

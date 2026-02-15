@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.rule_packs import RULE_PACKS, get_rule_pack
 from app.database import get_db
+from app.dependencies import OptionalOrgIdDep
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 from app.models.rules import Rule, RuleType, RuleAction
 from app.services.traffic_discovery import (
@@ -125,6 +126,7 @@ async def get_traffic_coverage(
 async def create_rule_from_traffic(
     request: CreateRuleFromTrafficRequest,
     db: AsyncSession = Depends(get_db),
+    org_id: OptionalOrgIdDep = None,
 ):
     """Create a rule from a discovered command/tool name.
 
@@ -151,6 +153,7 @@ async def create_rule_from_traffic(
         priority=rule_def["priority"],
         parameters=rule_def["parameters"],
         agent_id=request.agent_id,
+        organization_id=org_id,
         is_active=True,
         source="traffic_discovery",
         source_reference=request.command,
@@ -175,6 +178,7 @@ async def create_rule_from_traffic(
 async def create_rules_for_server(
     request: CreateRulesForServerRequest,
     db: AsyncSession = Depends(get_db),
+    org_id: OptionalOrgIdDep = None,
 ):
     """Create rules for an MCP server.
 
@@ -206,6 +210,7 @@ async def create_rules_for_server(
             priority=rule_def.get("priority", 0),
             parameters=rule_def.get("parameters", {}),
             agent_id=request.agent_id,
+            organization_id=org_id,
             is_active=True,
             source=source,
             source_reference=source_ref,

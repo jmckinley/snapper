@@ -20,6 +20,9 @@ from app.redis_client import redis_client
 
 # Import routers
 from app.routers import agents, approvals, audit, integrations, rules, security, setup, slack, telegram, vault
+from app.routers import auth as auth_router
+from app.routers import organizations as org_router
+from app.routers import billing as billing_router
 
 settings = get_settings()
 
@@ -104,8 +107,10 @@ app.add_middleware(
 from app.middleware.security import SecurityMiddleware
 from app.middleware.rule_enforcement import RuleEnforcementMiddleware
 from app.middleware.onboarding import OnboardingMiddleware
+from app.middleware.auth import AuthMiddleware
 
 app.add_middleware(SecurityMiddleware)
+app.add_middleware(AuthMiddleware)
 app.add_middleware(RuleEnforcementMiddleware)
 app.add_middleware(OnboardingMiddleware)
 
@@ -128,6 +133,9 @@ app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["telegr
 app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["slack"])
 app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["approvals"])
 app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["vault"])
+app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
+app.include_router(org_router.router, prefix=settings.API_V1_PREFIX, tags=["organizations"])
+app.include_router(billing_router.router, prefix=settings.API_V1_PREFIX, tags=["billing"])
 
 
 # Global exception handler
@@ -292,5 +300,70 @@ async def docs_page(request: Request):
     """API documentation page."""
     return templates.TemplateResponse(
         "docs/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+# Auth pages (standalone, no nav auth required)
+@app.get("/login", tags=["auth"])
+async def login_page(request: Request):
+    """Login page."""
+    return templates.TemplateResponse(
+        "auth/login.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/register", tags=["auth"])
+async def register_page(request: Request):
+    """Registration page."""
+    return templates.TemplateResponse(
+        "auth/register.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/forgot-password", tags=["auth"])
+async def forgot_password_page(request: Request):
+    """Forgot password page."""
+    return templates.TemplateResponse(
+        "auth/forgot_password.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/reset-password", tags=["auth"])
+async def reset_password_page(request: Request):
+    """Password reset page."""
+    return templates.TemplateResponse(
+        "auth/reset_password.html",
+        {"request": request, "settings": settings},
+    )
+
+
+# Org management pages
+@app.get("/org/settings", tags=["dashboard"])
+async def org_settings_page(request: Request):
+    """Organization settings page."""
+    return templates.TemplateResponse(
+        "org/settings.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/org/members", tags=["dashboard"])
+async def org_members_page(request: Request):
+    """Organization members page."""
+    return templates.TemplateResponse(
+        "org/members.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/billing", tags=["dashboard"])
+async def billing_page(request: Request):
+    """Billing page."""
+    return templates.TemplateResponse(
+        "org/billing.html",
         {"request": request, "settings": settings},
     )

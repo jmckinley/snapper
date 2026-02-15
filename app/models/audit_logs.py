@@ -7,6 +7,7 @@ from typing import Optional
 
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
     Index,
     String,
     Text,
@@ -100,6 +101,15 @@ class AuditLog(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    # Organization scoping
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Organization this audit log belongs to",
     )
 
     # Event classification
