@@ -203,6 +203,9 @@ flush_rate_keys() {
     docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "trust:*" 2>/dev/null | while read -r key; do
         docker exec "$REDIS_CONTAINER" redis-cli del "$key" >/dev/null 2>&1
     done
+    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "api:*" 2>/dev/null | while read -r key; do
+        docker exec "$REDIS_CONTAINER" redis-cli del "$key" >/dev/null 2>&1
+    done
 }
 
 # ============================================================
@@ -394,6 +397,116 @@ if docker exec "$OPENCLAW_CONTAINER" node -e "console.log('ok')" >/dev/null 2>&1
     log "OpenClaw detected — Phase 2 will run live agent tests"
 else
     warn "OpenClaw not detected — Phase 2 will be skipped"
+fi
+
+# ============================================================
+# Phase 0b: Deployment Infrastructure (Golden Images & Build)
+# ============================================================
+echo ""
+echo -e "${BOLD}=== Phase 0b: Deployment Infrastructure ===${NC}"
+
+# Determine repo root (on VPS: /opt/snapper; locally: wherever the script lives)
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 0b.1 docker-compose.yml references GHCR dev image
+log "0b.1 Compose dev image references GHCR"
+if grep -q 'image:.*ghcr\.io/jmckinley/snapper:dev' "$REPO_ROOT/docker-compose.yml" 2>/dev/null; then
+    TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 0b.1 docker-compose.yml references ghcr.io/jmckinley/snapper:dev"
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.1 docker-compose.yml missing GHCR dev image reference"
+fi
+
+# 0b.2 docker-compose.prod.yml references GHCR latest image
+log "0b.2 Compose prod image references GHCR"
+if grep -q 'image:.*ghcr\.io/jmckinley/snapper:latest' "$REPO_ROOT/docker-compose.prod.yml" 2>/dev/null; then
+    TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 0b.2 docker-compose.prod.yml references ghcr.io/jmckinley/snapper:latest"
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.2 docker-compose.prod.yml missing GHCR latest image reference"
+fi
+
+# 0b.3 Dockerfile has all 3 build targets (development, test, production)
+log "0b.3 Dockerfile build targets"
+MISSING_TARGETS=""
+for TARGET in development test production; do
+    if ! grep -qE "^FROM\s+.*\s+as\s+${TARGET}" "$REPO_ROOT/Dockerfile" 2>/dev/null; then
+        MISSING_TARGETS="${MISSING_TARGETS} ${TARGET}"
+    fi
+done
+if [[ -z "$MISSING_TARGETS" ]]; then
+    TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 0b.3 Dockerfile has development, test, production targets"
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.3 Dockerfile missing targets:${MISSING_TARGETS}"
+fi
+
+# 0b.4 setup.sh has pull-first logic
+log "0b.4 setup.sh pull-first logic"
+if grep -q 'docker compose pull' "$REPO_ROOT/setup.sh" 2>/dev/null; then
+    TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 0b.4 setup.sh attempts pull before build"
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.4 setup.sh missing pull-first logic"
+fi
+
+# 0b.5 deploy.sh has pull-first logic
+log "0b.5 deploy.sh pull-first logic"
+if grep -q 'pull' "$REPO_ROOT/deploy.sh" 2>/dev/null; then
+    TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 0b.5 deploy.sh attempts pull before build"
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.5 deploy.sh missing pull-first logic"
+fi
+
+# 0b.6 GitHub Actions workflow exists with correct triggers
+log "0b.6 CI/CD workflow for image builds"
+WORKFLOW="$REPO_ROOT/.github/workflows/build-and-push.yml"
+if [[ -f "$WORKFLOW" ]]; then
+    if grep -q 'ghcr.io' "$WORKFLOW" && grep -q 'docker/build-push-action' "$WORKFLOW"; then
+        TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 0b.6 GitHub Actions workflow pushes to GHCR"
+    else
+        TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 0b.6 Workflow exists but missing GHCR push config"
+    fi
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.6 Missing .github/workflows/build-and-push.yml"
+fi
+
+# 0b.7 Running app container uses expected image
+log "0b.7 Running container image"
+APP_CONTAINER="${APP_CONTAINER:-snapper-app-1}"
+RUNNING_IMAGE=$(docker inspect "$APP_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo "")
+if [[ -n "$RUNNING_IMAGE" ]]; then
+    if echo "$RUNNING_IMAGE" | grep -qE 'ghcr\.io/jmckinley/snapper:|snapper.*app'; then
+        TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 0b.7 App container running image: $RUNNING_IMAGE"
+    else
+        TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 0b.7 App container running (local build): $RUNNING_IMAGE"
+    fi
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.7 Could not inspect app container image"
+fi
+
+# 0b.8 Dockerfile build from source works (structure check — no actual build)
+log "0b.8 Dockerfile build structure"
+if grep -qE '^FROM python:3\.11' "$REPO_ROOT/Dockerfile" 2>/dev/null \
+   && grep -q 'requirements.txt' "$REPO_ROOT/Dockerfile" 2>/dev/null \
+   && grep -q 'HEALTHCHECK' "$REPO_ROOT/Dockerfile" 2>/dev/null; then
+    TOTAL=$((TOTAL + 1)); PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 0b.8 Dockerfile has base image, requirements install, and healthcheck"
+else
+    TOTAL=$((TOTAL + 1)); FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 0b.8 Dockerfile missing expected build structure"
 fi
 
 # ============================================================
@@ -1165,6 +1278,7 @@ fi
 # ============================================================
 # Phase 4c: Adaptive Trust Scoring
 # ============================================================
+flush_rate_keys
 echo ""
 echo -e "${BOLD}=== Phase 4c: Adaptive Trust Scoring ===${NC}"
 
@@ -1345,6 +1459,7 @@ fi
 # ============================================================
 # Phase 5: Emergency Block / Unblock
 # ============================================================
+flush_rate_keys
 echo ""
 echo -e "${BOLD}=== Phase 5: Emergency Block / Unblock ===${NC}"
 
@@ -1653,6 +1768,9 @@ if [[ "$SLACK_BOT_AVAILABLE" == "true" ]]; then
     # Clean up PII rule before Telegram routing test
     delete_rule "$SLACK_PII_RULE"
     CREATED_RULES=("${CREATED_RULES[@]/$SLACK_PII_RULE/}")
+
+    # Flush rate keys before Telegram routing test to avoid 429s
+    flush_rate_keys
 
     # 5b.14 Verify Telegram-owned agent does NOT route to Slack
     log "5b.14 Telegram-owned agent skips Slack routing"

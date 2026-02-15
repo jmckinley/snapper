@@ -7,7 +7,7 @@ Thank you for your interest in contributing to Snapper. This document covers the
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/snapper.git`
 3. Create a branch: `git checkout -b feature/your-feature`
-4. Start the development environment: `docker compose up -d`
+4. Start the development environment: `docker compose up -d` (pulls pre-built images; use `--build` for local changes)
 5. Make your changes
 6. Run tests: `docker compose exec app pytest tests/ -v`
 7. Push and open a pull request

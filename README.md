@@ -53,6 +53,8 @@ cd snapper
 ./setup.sh
 ```
 
+> **Pre-built images:** `setup.sh` and `deploy.sh` automatically pull pre-built images from GHCR when available. To force a local build instead, use `docker compose up -d --build`.
+
 The setup script validates prerequisites, starts containers, runs migrations, and opens the dashboard in your browser. The setup wizard walks you through agent registration, security profile selection, and notification setup (Telegram/Slack).
 
 **Quick setup with the CLI** (if Snapper is already running):
@@ -101,7 +103,8 @@ Result: Snapper at `https://your-domain/` or `https://your-ip:8443`
 ```bash
 cd /opt/snapper
 git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm app alembic upgrade head
 ```
 
@@ -645,8 +648,9 @@ SNAPPER_URL=http://localhost:8000 bash scripts/e2e_live_test.sh
 E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_live_test.sh
 ```
 
-Live E2E tests cover (39 tests across 7 phases):
+Live E2E tests cover (47 tests across 8 phases):
 - **Phase 0:** Environment verification (health, Redis, learning mode, agent, audit)
+- **Phase 0b:** Deployment infrastructure (GHCR image refs, Dockerfile targets, pull-first logic, CI/CD workflow)
 - **Phase 1:** All 15 rule type evaluators via API (18 tests)
 - **Phase 2:** Live OpenClaw agent tasks through snapper-guard plugin (5 tests, optional)
 - **Phase 3:** Approval workflow (create, poll, approve, deny)
@@ -683,9 +687,9 @@ Integration E2E tests cover (109 tests across 11 phases):
 |-------|-------|-------------|
 | Unit tests | 588 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery |
 | E2E tests (Playwright) | 120 | Browser-based UI testing (skipped without browser) |
-| Live E2E integration | 39 | API-level rule engine, approvals, PII vault, emergency block, audit (skips OpenClaw if unavailable) |
+| Live E2E integration | 47 | API-level rule engine, approvals, PII vault, emergency block, audit, deployment infra (skips OpenClaw if unavailable) |
 | Live E2E integrations | 109 | Traffic discovery, templates, custom MCP, legacy rules, coverage analysis |
-| **Total** | **856** | Full coverage across unit, UI, and live integration layers |
+| **Total** | **864** | Full coverage across unit, UI, and live integration layers |
 
 ## Common Commands
 

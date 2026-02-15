@@ -111,6 +111,11 @@ ALLOWED_ORIGINS=https://your-server-ip:8443
 
 3. **Start services:**
 ```bash
+# Pull pre-built images (fastest)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Or build locally from source
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
@@ -302,9 +307,12 @@ docker compose exec app alembic upgrade head
 ```bash
 cd /opt/snapper
 git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app alembic upgrade head
 ```
+
+> To build from source instead of pulling pre-built images, replace `pull` + `up -d` with `up -d --build`.
 
 ## Troubleshooting
 
