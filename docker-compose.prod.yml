@@ -19,11 +19,9 @@ services:
     ports: !reset []
 
   caddy:
-    # With SNAPPER_DOMAIN: serves on :80/:443 (Let's Encrypt)
-    # Without: serves on :8443 (self-signed)
+    # Only expose :8443 in prod — system Caddy owns :80/:443 for OpenClaw.
+    # If SNAPPER_DOMAIN is set, add 80:80 and 443:443 manually or use deploy.sh.
     ports: !override
-      - "80:80"
-      - "443:443"
       - "${HTTPS_PORT:-8443}:8443"
 
   celery-worker:
