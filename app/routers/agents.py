@@ -1,5 +1,6 @@
 """Agent management API endpoints."""
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
+from app.middleware.metrics import set_active_agents
+from app.services.event_publisher import publish_from_audit_log
 from app.services.quota import QuotaChecker
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
@@ -152,7 +155,14 @@ async def create_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
+
+    # Update active agents gauge
+    count_result = await db.execute(
+        select(func.count(Agent.id)).where(Agent.deleted_at.is_(None), Agent.status == AgentStatus.ACTIVE)
+    )
+    set_active_agents(count_result.scalar() or 0)
 
     logger.info(f"Agent created: {agent.id} ({agent.name})")
     return AgentResponse.model_validate(agent)
@@ -220,6 +230,7 @@ async def update_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.info(f"Agent updated: {agent.id}")
@@ -259,6 +270,14 @@ async def delete_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
+
+    # Update active agents gauge
+    count_result = await db.execute(
+        select(func.count(Agent.id)).where(Agent.deleted_at.is_(None), Agent.status == AgentStatus.ACTIVE)
+    )
+    set_active_agents(count_result.scalar() or 0)
+
     logger.info(f"Agent deleted: {agent_id}")
 
 
@@ -414,6 +433,7 @@ async def suspend_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     return AgentResponse.model_validate(agent)
@@ -449,6 +469,7 @@ async def activate_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     return AgentResponse.model_validate(agent)
@@ -485,6 +506,7 @@ async def quarantine_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.warning(f"Agent quarantined: {agent_id} - {reason}")
@@ -535,6 +557,7 @@ async def regenerate_api_key(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.info(f"API key regenerated for agent: {agent_id}")
@@ -676,6 +699,7 @@ async def purge_agent_pii(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     logger.info(f"PII purge completed for agent {agent_id}: {len(purge_results['actions_taken'])} actions taken")
 
@@ -739,6 +763,7 @@ async def whitelist_ip(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {
         "status": "success",
@@ -921,6 +946,7 @@ async def reset_agent_trust(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.info(f"Trust score reset for agent {agent_id}: {old_trust} -> 1.0")
@@ -967,6 +993,7 @@ async def toggle_agent_trust(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     return {

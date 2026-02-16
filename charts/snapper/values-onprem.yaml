@@ -1,0 +1,38 @@
+# On-premises deployment profile
+# Usage: helm install snapper charts/snapper -f charts/snapper/values-onprem.yaml
+
+# Use bundled PostgreSQL and Redis
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      size: 50Gi
+      storageClass: ""  # Use default storage class
+
+redis:
+  enabled: true
+  master:
+    persistence:
+      size: 5Gi
+
+# NodePort or LoadBalancer for on-prem
+service:
+  type: NodePort
+
+# No cloud ingress — use on-prem LB or NodePort
+ingress:
+  enabled: false
+
+# Conservative scaling for on-prem hardware
+autoscaling:
+  enabled: false
+replicaCount: 2
+
+config:
+  selfHosted: true
+  denyByDefault: true
+  learningMode: false
+  metricsEnabled: true
+  siemOutput: syslog
+  siemSyslogHost: ""  # Set to your syslog server
+  siemSyslogPort: 514

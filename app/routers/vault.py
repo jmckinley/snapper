@@ -1,5 +1,6 @@
 """PII Vault REST API endpoints."""
 
+import asyncio
 import logging
 from typing import List, Optional
 from uuid import UUID
@@ -12,7 +13,9 @@ from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_r
 from app.services.quota import QuotaChecker
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
+from app.middleware.metrics import record_pii_operation
 from app.services import pii_vault
+from app.services.event_publisher import publish_from_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +169,8 @@ async def create_vault_entry(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
+    record_pii_operation("create")
 
     return VaultEntryResponse(
         id=str(entry.id),
@@ -258,6 +263,8 @@ async def delete_vault_entry(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
+    record_pii_operation("delete")
 
     return {"status": "deleted", "entry_id": entry_id}
 

@@ -683,3 +683,96 @@ Webhook payload:
   }
 }
 ```
+
+---
+
+## Authentication (SSO)
+
+### SAML 2.0
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/saml/metadata/{org_slug}` | SP metadata XML |
+| `GET` | `/auth/saml/login/{org_slug}` | Initiate SAML login |
+| `POST` | `/auth/saml/acs/{org_slug}` | Assertion Consumer Service (callback) |
+
+### OIDC
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/oidc/login/{org_slug}` | Redirect to IdP |
+| `GET` | `/auth/oidc/callback/{org_slug}` | Handle IdP callback |
+
+---
+
+## SCIM 2.0
+
+Base path: `/scim/v2`
+
+Authentication: `Authorization: Bearer <scim_token>`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/Users` | List users (supports `filter`, `startIndex`, `count`) |
+| `GET` | `/Users/{id}` | Get user |
+| `POST` | `/Users` | Create user |
+| `PUT` | `/Users/{id}` | Replace user |
+| `PATCH` | `/Users/{id}` | Update user |
+| `DELETE` | `/Users/{id}` | Deactivate user |
+
+Filter examples:
+- `?filter=userName eq "user@example.com"`
+- `?startIndex=1&count=10`
+
+---
+
+## Policy Export/Import
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/rules/export` | Export rules (JSON or YAML) |
+| `POST` | `/api/v1/rules/import` | Import rules |
+| `POST` | `/api/v1/rules/sync` | Sync from YAML (GitOps) |
+
+Export request:
+```json
+{
+  "format": "yaml",
+  "agent_id": "uuid (optional)",
+  "include_global": true
+}
+```
+
+Import request:
+```json
+{
+  "rules": [...],
+  "overwrite_existing": false,
+  "dry_run": true
+}
+```
+
+---
+
+## Metrics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/metrics` | Prometheus-format metrics |
+
+Returns text/plain with counters, histograms, and gauges for HTTP requests, rule evaluations, PII operations, and active agents.
+
+---
+
+## Organizations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/orgs` | List user's organizations |
+| `POST` | `/api/v1/orgs` | Create organization |
+| `GET` | `/api/v1/orgs/{id}` | Get organization details |
+| `PUT` | `/api/v1/orgs/{id}` | Update organization |
+| `GET` | `/api/v1/orgs/{id}/members` | List members |
+| `POST` | `/api/v1/orgs/{id}/invite` | Invite member by email |
+| `PUT` | `/api/v1/orgs/{id}/members/{user_id}` | Update member role |
+| `DELETE` | `/api/v1/orgs/{id}/members/{user_id}` | Remove member |

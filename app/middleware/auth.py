@@ -52,6 +52,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     EXEMPT_PREFIXES = (
         "/static/",
         "/api/v1/rules/evaluate",
+        "/api/v1/setup/",
         "/api/v1/telegram/",
         "/api/v1/slack/",
         "/api/v1/approvals/",
@@ -59,6 +60,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/docs",
         "/api/redoc",
         "/api/openapi.json",
+        "/auth/saml/",
+        "/auth/oidc/",
+        "/scim/v2/",
+        "/metrics",
     )
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:

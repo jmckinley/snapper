@@ -29,7 +29,42 @@ Snapper is an Agent Application Firewall — it inspects and enforces policy on 
 | **Cursor** | preToolUse hook (hooks.json) | Yes |
 | **Windsurf** | pre_run_command / pre_write_code hooks | Yes |
 | **Cline** | Auto-discovered script in hooks dir | Yes |
+| **OpenAI API** | Python SDK wrapper (`snapper-sdk[openai]`) | Yes |
+| **Anthropic API** | Python SDK wrapper (`snapper-sdk[anthropic]`) | Yes |
+| **Gemini API** | Python SDK wrapper (`snapper-sdk[gemini]`) | Yes |
+| **Browser Extension** | Chrome/Firefox extension (Manifest V3) | Yes |
 | **Custom** | Manual config snippet | No |
+
+### Enterprise Features
+
+| Feature | Description |
+|---------|-------------|
+| **Kubernetes** | Helm chart with 4 deployment profiles |
+| **SSO** | SAML 2.0 + OIDC (Okta, Entra ID, Google) |
+| **SCIM** | Automated user provisioning |
+| **SIEM** | CEF/syslog + webhook events |
+| **Observability** | Prometheus metrics + Grafana dashboard |
+| **Policy-as-Code** | YAML export/import for GitOps workflows |
+| **Multi-tenant** | Organizations, teams, role-based access |
+
+See [Enterprise Deployment Guide](docs/ENTERPRISE.md) for details.
+
+### AI Provider Integration
+
+Protect any AI application with drop-in SDK wrappers:
+
+```python
+# pip install snapper-sdk[openai]
+from snapper.openai_wrapper import SnapperOpenAI
+
+client = SnapperOpenAI(snapper_url="https://snapper.example.com", agent_id="myapp")
+response = client.chat.completions.create(model="gpt-4", messages=[...], tools=[...])
+# Tool calls automatically evaluated against Snapper policy
+```
+
+Or protect browser-based AI usage with the [Snapper Browser Extension](docs/AI_PROVIDERS.md#browser-extension) for ChatGPT, Claude.ai, and Gemini.
+
+See [AI Provider Integration Guide](docs/AI_PROVIDERS.md) for all providers.
 
 ## Prerequisites
 

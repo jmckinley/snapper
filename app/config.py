@@ -125,6 +125,22 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
 
+    # SIEM Integration
+    SIEM_OUTPUT: str = "none"  # none | syslog | webhook | splunk | both | all
+    SIEM_SYSLOG_HOST: Optional[str] = None
+    SIEM_SYSLOG_PORT: int = 514
+    SIEM_SYSLOG_PROTOCOL: str = "udp"  # udp | tcp
+    SIEM_WEBHOOK_URL: Optional[str] = None
+    SIEM_WEBHOOK_SECRET: Optional[str] = None
+    SIEM_SPLUNK_HEC_URL: Optional[str] = None
+    SIEM_SPLUNK_HEC_TOKEN: Optional[str] = None
+    SIEM_SPLUNK_INDEX: str = "main"
+    SIEM_SPLUNK_SOURCETYPE: str = "snapper:security"
+    SIEM_SPLUNK_VERIFY_SSL: bool = True
+
+    # Prometheus Metrics
+    METRICS_ENABLED: bool = True
+
     @property
     def allowed_origins_list(self) -> List[str]:
         """Get allowed origins as a list."""

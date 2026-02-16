@@ -211,6 +211,23 @@ class AuditLog(Base):
     def __repr__(self) -> str:
         return f"<AuditLog(id={self.id}, action={self.action}, severity={self.severity})>"
 
+    def to_cef(self) -> str:
+        """Format this audit log entry as a CEF string for SIEM integration."""
+        from app.services.event_publisher import format_cef
+
+        return format_cef(
+            action=self.action if isinstance(self.action, str) else self.action.value,
+            severity=self.severity if isinstance(self.severity, str) else self.severity.value,
+            message=self.message or "",
+            agent_id=str(self.agent_id) if self.agent_id else None,
+            rule_id=str(self.rule_id) if self.rule_id else None,
+            ip_address=self.ip_address,
+            user_id=str(self.user_id) if self.user_id else None,
+            request_id=self.request_id,
+            details=self.details,
+            timestamp=self.created_at,
+        )
+
 
 class PolicyViolation(Base):
     """

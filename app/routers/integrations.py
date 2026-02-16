@@ -4,6 +4,7 @@ Discovery-first approach: rules come from live traffic detection or manual
 "Add MCP Server" input. No template catalog browsing.
 """
 
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -386,6 +387,11 @@ async def disable_server_rules(
     db.add(audit_entry)
 
     await db.commit()
+    try:
+        from app.services.event_publisher import publish_from_audit_log
+        asyncio.ensure_future(publish_from_audit_log(audit_entry))
+    except Exception:
+        pass
 
     try:
         from app.redis_client import redis_client

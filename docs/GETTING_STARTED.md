@@ -394,12 +394,58 @@ docker rmi snapper-app snapper-celery-worker snapper-celery-beat
 rm -rf /opt/snapper
 ```
 
+## Kubernetes Deployment
+
+For production Kubernetes deployments, use the included Helm chart:
+
+```bash
+helm install snapper ./charts/snapper \
+  --namespace snapper --create-namespace \
+  -f values-production.yaml
+```
+
+See [Enterprise Deployment Guide](ENTERPRISE.md) for Helm values, deployment profiles, and secrets management.
+
+## Enterprise Configuration
+
+Enterprise features are configured via environment variables:
+
+| Feature | Key Variables |
+|---------|--------------|
+| SSO (SAML) | `saml_idp_entity_id`, `saml_idp_sso_url`, `saml_idp_x509_cert` (in org settings) |
+| SSO (OIDC) | `oidc_issuer`, `oidc_client_id`, `oidc_client_secret` (in org settings) |
+| SIEM | `SIEM_ENABLED`, `SYSLOG_HOST`, `SYSLOG_PORT` |
+| Metrics | Prometheus scrape at `GET /metrics` |
+
+## AI Provider Quick Start
+
+Protect AI API applications with a 3-line change:
+
+```python
+# pip install snapper-sdk[openai]
+from snapper.openai_wrapper import SnapperOpenAI
+client = SnapperOpenAI(snapper_url="http://localhost:8000", agent_id="myapp")
+# Use client exactly like openai.OpenAI — tool calls auto-evaluated
+```
+
+See [AI Provider Integration Guide](AI_PROVIDERS.md) for Anthropic, Gemini, and browser extension setup.
+
+## Browser Extension Quick Start
+
+1. Load the extension from `extension/` directory in Chrome (`chrome://extensions` > Developer mode > Load unpacked)
+2. Click the Snapper icon > Settings > enter your Snapper URL and API key
+3. Navigate to ChatGPT, Claude.ai, or Gemini — tool calls are now protected
+
+See [AI Provider Integration Guide](AI_PROVIDERS.md#browser-extension) for enterprise deployment via Chrome policy.
+
 ## What's Next
 
 - [Telegram Setup](TELEGRAM_SETUP.md) — Approval notifications on your phone
 - [Slack Setup](SLACK_SETUP.md) — Approval notifications in Slack
 - [User Guide](USER_GUIDE.md) — Rules, PII vault, approval workflows, integrations, agent setup for all types
 - [Security Guide](SECURITY.md) — Encryption, PII detection, rate limiting, infrastructure hardening
+- [Enterprise Deployment](ENTERPRISE.md) — Kubernetes, SSO, SIEM, SCIM, observability
+- [AI Provider Integration](AI_PROVIDERS.md) — SDK wrappers and browser extension
 - [OpenClaw Integration Guide](OPENCLAW_INTEGRATION.md) — Plugin vs shell hook details (OpenClaw-specific)
 - [API Reference](API.md) — REST API documentation
 - [Interactive API Docs](http://localhost:8000/api/docs) — Swagger UI

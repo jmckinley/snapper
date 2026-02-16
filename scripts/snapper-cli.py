@@ -117,6 +117,45 @@ def detect_cline():
     return None
 
 
+def detect_openai():
+    """Detect OpenAI API usage (env var or package)."""
+    if os.environ.get("OPENAI_API_KEY"):
+        return Path("OPENAI_API_KEY set")
+    try:
+        import importlib.util
+        if importlib.util.find_spec("openai"):
+            return Path("openai package installed")
+    except Exception:
+        pass
+    return None
+
+
+def detect_anthropic():
+    """Detect Anthropic API usage (env var or package)."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return Path("ANTHROPIC_API_KEY set")
+    try:
+        import importlib.util
+        if importlib.util.find_spec("anthropic"):
+            return Path("anthropic package installed")
+    except Exception:
+        pass
+    return None
+
+
+def detect_gemini():
+    """Detect Google Gemini API usage (env var or package)."""
+    if os.environ.get("GOOGLE_API_KEY"):
+        return Path("GOOGLE_API_KEY set")
+    try:
+        import importlib.util
+        if importlib.util.find_spec("google.generativeai"):
+            return Path("google-generativeai package installed")
+    except Exception:
+        pass
+    return None
+
+
 # All supported agent types with their detection functions and labels
 AGENT_TYPES = {
     "openclaw": {"detect": detect_openclaw, "label": "OpenClaw"},
@@ -124,6 +163,9 @@ AGENT_TYPES = {
     "cursor": {"detect": detect_cursor, "label": "Cursor"},
     "windsurf": {"detect": detect_windsurf, "label": "Windsurf"},
     "cline": {"detect": detect_cline, "label": "Cline"},
+    "openai": {"detect": detect_openai, "label": "OpenAI / ChatGPT"},
+    "anthropic": {"detect": detect_anthropic, "label": "Anthropic Claude API"},
+    "gemini": {"detect": detect_gemini, "label": "Google Gemini"},
 }
 
 
@@ -1104,7 +1146,7 @@ Examples:
     )
     init_parser.add_argument(
         "--agent", "-a",
-        choices=["openclaw", "claude-code", "cursor", "windsurf", "cline", "custom"],
+        choices=["openclaw", "claude-code", "cursor", "windsurf", "cline", "openai", "anthropic", "gemini", "browser-extension", "custom"],
         default=None,
         help="Agent type (auto-detected if not specified)",
     )

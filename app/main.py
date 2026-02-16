@@ -23,6 +23,10 @@ from app.routers import agents, approvals, audit, integrations, rules, security,
 from app.routers import auth as auth_router
 from app.routers import organizations as org_router
 from app.routers import billing as billing_router
+from app.routers import saml as saml_router
+from app.routers import oidc as oidc_router
+from app.routers import scim as scim_router
+from app.routers import webhooks as webhooks_router
 
 settings = get_settings()
 
@@ -59,6 +63,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Starting Slack bot (Socket Mode)...")
         from app.routers.slack import start_slack_bot
         await start_slack_bot()
+
+    # Set initial active agents gauge
+    try:
+        from app.middleware.metrics import set_active_agents
+        from app.database import get_db_context
+        from app.models.agents import Agent, AgentStatus
+        from sqlalchemy import select, func
+        async with get_db_context() as db:
+            count_result = await db.execute(
+                select(func.count(Agent.id)).where(Agent.deleted_at.is_(None), Agent.status == AgentStatus.ACTIVE)
+            )
+            set_active_agents(count_result.scalar() or 0)
+        logger.info("Active agents gauge initialized")
+    except Exception as e:
+        logger.warning(f"Could not initialize active agents gauge: {e}")
 
     logger.info("Snapper started successfully")
 
@@ -108,11 +127,14 @@ from app.middleware.security import SecurityMiddleware
 from app.middleware.rule_enforcement import RuleEnforcementMiddleware
 from app.middleware.onboarding import OnboardingMiddleware
 from app.middleware.auth import AuthMiddleware
+from app.middleware.metrics import MetricsMiddleware
 
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(RuleEnforcementMiddleware)
 app.add_middleware(OnboardingMiddleware)
+if settings.METRICS_ENABLED:
+    app.add_middleware(MetricsMiddleware)
 
 
 # Mount static files
@@ -136,6 +158,10 @@ app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["vault"])
 app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
 app.include_router(org_router.router, prefix=settings.API_V1_PREFIX, tags=["organizations"])
 app.include_router(billing_router.router, prefix=settings.API_V1_PREFIX, tags=["billing"])
+app.include_router(saml_router.router, tags=["saml"])
+app.include_router(oidc_router.router, tags=["oidc"])
+app.include_router(scim_router.router, tags=["scim"])
+app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=["webhooks"])
 
 
 # Global exception handler
@@ -161,6 +187,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 async def health_check():
     """Basic health check endpoint."""
     return {"status": "healthy", "version": settings.APP_VERSION}
+
+
+@app.get("/metrics", tags=["monitoring"])
+async def metrics_endpoint():
+    """Prometheus metrics scrape target."""
+    from app.middleware.metrics import get_metrics_response
+    return get_metrics_response()
 
 
 @app.get("/health/ready", tags=["health"])

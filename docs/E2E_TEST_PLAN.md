@@ -433,6 +433,13 @@ The script creates temporary test agents and rules, validates results, and clean
 - [ ] Group E: Network Egress (4 tests)
 - [ ] Group F: Rate Limiting (3 tests)
 - [ ] Group G: Audit & Logging (4 tests)
+- [ ] Group H: Enterprise SSO (6 tests)
+- [ ] Group I: SIEM Integration (5 tests)
+- [ ] Group J: Prometheus Metrics (4 tests)
+- [ ] Group K: Policy-as-Code (5 tests)
+- [ ] Group L: SCIM Provisioning (5 tests)
+- [ ] Group M: AI Provider SDK (6 tests)
+- [ ] Group N: Browser Extension (4 tests)
 - [ ] Chaos Tests (9 tests)
 
 ### Sign-off
@@ -441,6 +448,80 @@ The script creates temporary test agents and rules, validates results, and clean
 - [ ] No security bypasses found
 - [ ] Performance targets met
 - [ ] Documentation updated
+
+---
+
+## Enterprise & Provider Test Groups
+
+### Test Group H: Enterprise SSO
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| H1 | `GET /auth/saml/metadata/{org}` | Returns valid XML with SP entity ID and ACS URL |
+| H2 | `GET /auth/oidc/login/{org}` | Redirects to IdP authorization endpoint with correct `client_id`, `state`, `nonce` |
+| H3 | `POST /auth/oidc/callback` with valid code | Exchanges code for tokens, creates session, sets cookies |
+| H4 | `POST /auth/saml/acs/{org}` with valid assertion | Processes SAML response, creates session |
+| H5 | SSO user auto-provisioned into org | JIT-provisioned user has org membership with default role |
+| H6 | `GET /auth/oidc/login/{org}` with no OIDC config | Returns 400 "OIDC not configured" |
+
+### Test Group I: SIEM Integration
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| I1 | Rule denial generates CEF event | CEF string contains event class 103, severity 5, agent ID |
+| I2 | Webhook delivery sends HMAC signature | `X-Snapper-Signature` header contains `sha256=<hex>`, verifiable with shared secret |
+| I3 | Webhook retries on 5xx response | `deliver_with_retry` retries up to `MAX_RETRIES` with exponential backoff |
+| I4 | Syslog output follows RFC 5424 | Message starts with `<priority>1 <ISO timestamp> snapper snapper - - -` followed by CEF |
+| I5 | Event filter respects webhook config | Webhook with `event_filters: ["request_denied"]` only receives denial events |
+
+### Test Group J: Prometheus Metrics
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| J1 | `GET /metrics` returns Prometheus text | Response has `text/plain; version=0.0.4` content type, contains `snapper_` prefixed metrics |
+| J2 | Rule evaluation counters increment | After 3 evaluations, `snapper_rule_evaluations_total` counter is 3 |
+| J3 | Request latency histogram populated | `snapper_request_duration_seconds_bucket` has non-zero values |
+| J4 | Active agents gauge accurate | `snapper_active_agents` matches actual agent count |
+
+### Test Group K: Policy-as-Code
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| K1 | `POST /api/v1/rules/export` | Returns YAML with `version: "1"` and all rules for specified agent |
+| K2 | `POST /api/v1/rules/sync` with valid YAML | Creates rules matching YAML definitions |
+| K3 | Export → import roundtrip | Exported YAML, when re-imported, produces identical rule set |
+| K4 | `POST /api/v1/rules/sync?dry_run=true` | Returns changes preview without modifying database |
+| K5 | Import with conflicting rule names | Existing rules updated, not duplicated |
+
+### Test Group L: SCIM 2.0 Provisioning
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| L1 | `POST /scim/v2/Users` | Creates user + org membership, returns 201 with SCIM resource |
+| L2 | `GET /scim/v2/Users?count=10` | Returns paginated SCIM ListResponse with `totalResults` and `itemsPerPage` |
+| L3 | `GET /scim/v2/Users?filter=userName eq "user@test.com"` | Returns filtered user list |
+| L4 | `PATCH /scim/v2/Users/{id}` with `active: false` | Deactivates user via PatchOp |
+| L5 | Request with invalid bearer token | Returns 401 with SCIM error schema |
+
+### Test Group M: AI Provider SDK
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| M1 | Register OpenAI agent via CLI | `snapper-cli.py init --agent openai` creates agent with correct type |
+| M2 | Register Anthropic agent via CLI | `snapper-cli.py init --agent anthropic` creates agent with correct type |
+| M3 | Register Gemini agent via CLI | `snapper-cli.py init --agent gemini` creates agent with correct type |
+| M4 | SDK evaluate allowed tool call | `SnapperClient.evaluate()` returns `allow` for safe tool calls |
+| M5 | SDK evaluate denied tool call | `SnapperClient.evaluate()` raises `SnapperDenied` for blocked tools |
+| M6 | SDK approval workflow | `evaluate()` returns `require_approval`, polls status until approved |
+
+### Test Group N: Browser Extension
+
+| # | Test | Expected Behavior |
+|---|------|-------------------|
+| N1 | Register browser-extension agent | POST to `/api/v1/agents` with `agent_type: browser-extension` succeeds |
+| N2 | ChatGPT code execution evaluated | Evaluate payload with `request_type: command` from browser agent returns decision |
+| N3 | PII in user input detected | PII scanner regex matches credit cards, SSN, API keys in text input |
+| N4 | Deny shows overlay | Content script injects red overlay div with rule name and reason |
 
 ---
 

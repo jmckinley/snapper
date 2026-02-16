@@ -1,5 +1,6 @@
 """Security research and threat intelligence API endpoints."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -625,6 +626,14 @@ async def mitigate_vulnerability(
         issue.mitigation_notes = "Reviewed and acknowledged — no auto-mitigation rule applicable."
 
     await db.commit()
+
+    # Publish SIEM events for any audit logs created
+    try:
+        from app.services.event_publisher import publish_from_audit_log as _publish
+        if audit_log:
+            asyncio.ensure_future(_publish(audit_log))
+    except Exception:
+        pass
 
     return {
         "status": "mitigated",

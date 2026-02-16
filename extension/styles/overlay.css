@@ -1,0 +1,188 @@
+/* Snapper Browser Extension — Overlay Styles */
+
+/* Modal overlay (PII warning) */
+.snapper-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.snapper-modal {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 480px;
+  width: 90%;
+  overflow: hidden;
+}
+
+.snapper-modal-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+}
+
+.snapper-modal-header.snapper-warning {
+  background: #f59e0b;
+}
+
+.snapper-modal-header.snapper-deny {
+  background: #ef4444;
+}
+
+.snapper-modal-body {
+  padding: 20px;
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.snapper-modal-body p {
+  margin: 0 0 12px 0;
+}
+
+.snapper-modal-note {
+  color: #6b7280;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.snapper-finding {
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.snapper-finding-preview {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.snapper-modal-actions {
+  padding: 12px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.snapper-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.snapper-btn-secondary {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.snapper-btn-secondary:hover {
+  background: #d1d5db;
+}
+
+.snapper-btn-warning {
+  background: #f59e0b;
+  color: white;
+}
+
+.snapper-btn-warning:hover {
+  background: #d97706;
+}
+
+.snapper-icon {
+  font-size: 18px;
+}
+
+/* Inline deny overlay (tool output) */
+.snapper-inline-deny {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(239, 68, 68, 0.95);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px;
+  border-radius: 8px;
+  z-index: 10;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.snapper-inline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.snapper-inline-details {
+  font-size: 12px;
+  opacity: 0.9;
+  line-height: 1.6;
+}
+
+.snapper-inline-details code {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* Inline approval banner */
+.snapper-inline-approval {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(234, 179, 8, 0.95);
+  color: #1f2937;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px;
+  border-radius: 8px;
+  z-index: 10;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.snapper-approval-note {
+  margin-top: 4px;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* Pulse animation for waiting icon */
+@keyframes snapper-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.snapper-pulse {
+  animation: snapper-pulse 1.5s ease-in-out infinite;
+}

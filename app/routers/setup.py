@@ -296,6 +296,22 @@ async def quick_register_agent(
         external_id = f"cline-{hostname}"
         name = request.name or f"Cline on {hostname}"
         description = f"Cline coding agent on {hostname}"
+    elif request.agent_type == "openai":
+        external_id = f"openai-{hostname}"
+        name = request.name or f"OpenAI Agent on {hostname}"
+        description = f"OpenAI API agent protected by Snapper SDK"
+    elif request.agent_type == "anthropic":
+        external_id = f"anthropic-{hostname}"
+        name = request.name or f"Anthropic Agent on {hostname}"
+        description = f"Anthropic API agent protected by Snapper SDK"
+    elif request.agent_type == "gemini":
+        external_id = f"gemini-{hostname}"
+        name = request.name or f"Gemini Agent on {hostname}"
+        description = f"Google Gemini API agent protected by Snapper SDK"
+    elif request.agent_type == "browser-extension":
+        external_id = f"browser-ext-{hostname}"
+        name = request.name or "Browser Extension"
+        description = "Snapper browser extension for AI chat security"
     else:
         external_id = f"snapper-{request.host}-{request.port}"
         name = request.name or f"AI agent @ {request.host}:{request.port}"
@@ -547,6 +563,138 @@ async def install_config(request: InstallConfigRequest):
 
 
 # ============================================================================
+# SSO Configuration
+# ============================================================================
+
+
+class ConfigureSSORequest(BaseModel):
+    """Request to configure SSO for an organization."""
+
+    org_name: str
+    org_slug: str
+    sso_type: str = "oidc"  # oidc | saml
+    # OIDC fields
+    oidc_issuer: Optional[str] = None
+    oidc_client_id: Optional[str] = None
+    oidc_client_secret: Optional[str] = None
+    oidc_scopes: str = "openid email profile"
+    oidc_provider: str = "okta"
+    # SAML fields
+    saml_idp_entity_id: Optional[str] = None
+    saml_idp_sso_url: Optional[str] = None
+    saml_idp_x509_cert: Optional[str] = None
+    saml_idp_slo_url: Optional[str] = None
+    # SCIM
+    enable_scim: bool = False
+
+
+@router.post("/configure-sso")
+async def configure_sso(
+    request: ConfigureSSORequest,
+    req: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Configure SSO (OIDC/SAML) for an organization.
+
+    Localhost-only endpoint for initial SSO setup. Creates the organization
+    if it doesn't exist and stores IdP configuration in org settings.
+    """
+    # Localhost-only gate (same as quick-register)
+    client_host = req.client.host if req.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        from app.config import get_settings as _gs
+        if not _gs().SELF_HOSTED:
+            raise HTTPException(
+                status_code=403,
+                detail="SSO configuration is only available from localhost",
+            )
+
+    from app.models.organizations import Organization
+
+    # Find or create organization
+    result = await db.execute(
+        select(Organization).where(Organization.slug == request.org_slug)
+    )
+    org = result.scalar_one_or_none()
+
+    if not org:
+        org = Organization(
+            name=request.org_name,
+            slug=request.org_slug,
+            settings={},
+        )
+        db.add(org)
+        await db.flush()
+
+    # Build SSO config
+    sso_settings = dict(org.settings or {})
+
+    if request.sso_type == "oidc":
+        if not all([request.oidc_issuer, request.oidc_client_id, request.oidc_client_secret]):
+            raise HTTPException(
+                status_code=400,
+                detail="OIDC requires oidc_issuer, oidc_client_id, and oidc_client_secret",
+            )
+        sso_settings["oidc_issuer"] = request.oidc_issuer
+        sso_settings["oidc_client_id"] = request.oidc_client_id
+        sso_settings["oidc_client_secret"] = request.oidc_client_secret
+        sso_settings["oidc_scopes"] = request.oidc_scopes
+        sso_settings["oidc_provider"] = request.oidc_provider
+    elif request.sso_type == "saml":
+        if not all([request.saml_idp_entity_id, request.saml_idp_sso_url, request.saml_idp_x509_cert]):
+            raise HTTPException(
+                status_code=400,
+                detail="SAML requires saml_idp_entity_id, saml_idp_sso_url, and saml_idp_x509_cert",
+            )
+        sso_settings["saml_idp_entity_id"] = request.saml_idp_entity_id
+        sso_settings["saml_idp_sso_url"] = request.saml_idp_sso_url
+        sso_settings["saml_idp_x509_cert"] = request.saml_idp_x509_cert
+        if request.saml_idp_slo_url:
+            sso_settings["saml_idp_slo_url"] = request.saml_idp_slo_url
+    else:
+        raise HTTPException(status_code=400, detail="sso_type must be 'oidc' or 'saml'")
+
+    # Generate SCIM bearer token if requested
+    scim_token = None
+    if request.enable_scim:
+        import secrets
+        scim_token = secrets.token_urlsafe(32)
+        sso_settings["scim_bearer_token"] = scim_token
+
+    org.settings = sso_settings
+    await db.commit()
+
+    # Build response with Okta-side instructions
+    response = {
+        "status": "configured",
+        "org_id": str(org.id),
+        "org_slug": org.slug,
+        "sso_type": request.sso_type,
+    }
+
+    if request.sso_type == "oidc":
+        response["instructions"] = {
+            "redirect_uri": f"https://YOUR_SNAPPER_HOST/auth/oidc/callback",
+            "sign_out_redirect": f"https://YOUR_SNAPPER_HOST/auth/oidc/logout/{org.slug}",
+            "login_url": f"https://YOUR_SNAPPER_HOST/auth/oidc/login/{org.slug}",
+        }
+    elif request.sso_type == "saml":
+        response["instructions"] = {
+            "acs_url": f"https://YOUR_SNAPPER_HOST/auth/saml/acs/{org.slug}",
+            "entity_id": f"https://YOUR_SNAPPER_HOST/auth/saml/metadata/{org.slug}",
+            "login_url": f"https://YOUR_SNAPPER_HOST/auth/saml/login/{org.slug}",
+        }
+
+    if scim_token:
+        response["scim"] = {
+            "base_url": f"https://YOUR_SNAPPER_HOST/scim/v2",
+            "bearer_token": scim_token,
+        }
+
+    return response
+
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 
@@ -695,6 +843,65 @@ def _generate_config_snippet(
             f"# 2. Copy hook to ~/.cline/hooks/pre_tool_use\n"
             f"# Cline auto-discovers executable scripts in the hooks directory\n"
             f"# chmod +x ~/.cline/hooks/pre_tool_use"
+        )
+    elif agent_type == "openai":
+        return (
+            f"# pip install snapper-sdk[openai]\n"
+            f"\n"
+            f"from snapper.openai_wrapper import SnapperOpenAI\n"
+            f"\n"
+            f"client = SnapperOpenAI(\n"
+            f'    snapper_url="{rules_manager_url}",\n'
+            f'    snapper_api_key="{api_key}",\n'
+            f'    agent_id="{agent_id}",\n'
+            f")\n"
+            f"response = client.chat.completions.create(\n"
+            f'    model="gpt-4",\n'
+            f"    messages=[...],\n"
+            f"    tools=[...],\n"
+            f")"
+        )
+    elif agent_type == "anthropic":
+        return (
+            f"# pip install snapper-sdk[anthropic]\n"
+            f"\n"
+            f"from snapper.anthropic_wrapper import SnapperAnthropic\n"
+            f"\n"
+            f"client = SnapperAnthropic(\n"
+            f'    snapper_url="{rules_manager_url}",\n'
+            f'    snapper_api_key="{api_key}",\n'
+            f'    agent_id="{agent_id}",\n'
+            f")\n"
+            f"response = client.messages.create(\n"
+            f'    model="claude-sonnet-4-5-20250929",\n'
+            f"    messages=[...],\n"
+            f"    tools=[...],\n"
+            f")"
+        )
+    elif agent_type == "gemini":
+        return (
+            f"# pip install snapper-sdk[gemini]\n"
+            f"\n"
+            f"from snapper.gemini_wrapper import SnapperGemini\n"
+            f"\n"
+            f"model = SnapperGemini(\n"
+            f'    model_name="gemini-pro",\n'
+            f'    snapper_url="{rules_manager_url}",\n'
+            f'    snapper_api_key="{api_key}",\n'
+            f'    agent_id="{agent_id}",\n'
+            f")\n"
+            f'response = model.generate_content("Hello", tools=[...])'
+        )
+    elif agent_type == "browser-extension":
+        return json.dumps(
+            {
+                "snapper_url": rules_manager_url,
+                "snapper_api_key": api_key,
+                "agent_id": agent_id,
+                "fail_mode": "closed",
+                "pii_scanning": True,
+            },
+            indent=2,
         )
     else:
         return (

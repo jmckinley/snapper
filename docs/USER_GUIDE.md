@@ -813,3 +813,106 @@ Check the agent's `owner_chat_id`:
 - Must start with `U` (e.g., `U0ACYA78DSR`) for Slack DM routing
 - Numeric values route to Telegram instead
 - Update via dashboard (edit agent) or API
+
+---
+
+## AI Provider Setup
+
+### OpenAI SDK
+
+```bash
+pip install snapper-sdk[openai]
+```
+
+```python
+from snapper.openai_wrapper import SnapperOpenAI
+
+client = SnapperOpenAI(
+    snapper_url="https://snapper.example.com",
+    snapper_api_key="snp_xxx",
+    agent_id="myapp-openai",
+)
+# Use exactly like openai.OpenAI — tool calls auto-evaluated
+```
+
+### Anthropic SDK
+
+```bash
+pip install snapper-sdk[anthropic]
+```
+
+```python
+from snapper.anthropic_wrapper import SnapperAnthropic
+
+client = SnapperAnthropic(
+    snapper_url="https://snapper.example.com",
+    snapper_api_key="snp_xxx",
+    agent_id="myapp-anthropic",
+)
+# Use exactly like anthropic.Anthropic — tool_use blocks auto-evaluated
+```
+
+### Gemini SDK
+
+```bash
+pip install snapper-sdk[gemini]
+```
+
+```python
+from snapper.gemini_wrapper import SnapperGemini
+
+model = SnapperGemini(
+    model_name="gemini-pro",
+    snapper_url="https://snapper.example.com",
+    snapper_api_key="snp_xxx",
+    agent_id="myapp-gemini",
+)
+# Use exactly like GenerativeModel — function_call parts auto-evaluated
+```
+
+See [AI Provider Integration Guide](AI_PROVIDERS.md) for detailed examples and error handling.
+
+## Browser Extension Setup
+
+1. Load the extension from `extension/` directory:
+   - Chrome: `chrome://extensions` > Developer mode > Load unpacked
+   - Firefox: `about:debugging#/runtime/this-firefox` > Load Temporary Add-on
+
+2. Click the Snapper icon > Settings:
+   - Enter your Snapper URL
+   - Enter your API key
+   - Click "Test Connection" to verify
+
+3. Navigate to ChatGPT, Claude.ai, or Gemini — tool calls are now protected
+
+For enterprise deployment via Chrome policy, see [AI Providers Guide](AI_PROVIDERS.md#enterprise-deployment).
+
+## Enterprise Features Overview
+
+### Organizations
+
+Create and manage organizations at `/org/settings`:
+- Invite members by email
+- Assign roles: Owner, Admin, Member, Viewer
+- All agents, rules, and data are scoped to your organization
+
+### SSO (Single Sign-On)
+
+Configure SAML 2.0 or OIDC in organization settings:
+- Supports Okta, Entra ID (Azure AD), Google Workspace
+- JIT provisioning: users auto-created on first login
+- See [Enterprise Guide](ENTERPRISE.md#sso-configuration) for IdP setup
+
+### SIEM Integration
+
+Send security events to your SIEM via syslog or webhooks:
+- CEF format compatible with Splunk, QRadar, Sentinel
+- Webhook events with HMAC signature verification
+- See [Enterprise Guide](ENTERPRISE.md#siem-integration) for setup
+
+### Policy-as-Code
+
+Export/import rules as YAML for GitOps:
+- `POST /api/v1/rules/export` — export current rules
+- `POST /api/v1/rules/import` — import rules (with dry-run)
+- See [Enterprise Guide](ENTERPRISE.md#policy-as-code) for CI/CD workflow

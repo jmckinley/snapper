@@ -811,3 +811,114 @@ If an attacker gains Redis access, they can clear rate limits, approve pending r
 | SECRET_KEY immutable | All vault entries lost forever | **High** |
 | Database connections local | Plaintext credentials on network | **Medium** |
 | Redis unauthenticated internal | Rate limit/approval bypass | **Medium** |
+
+---
+
+## SIEM Integration
+
+Snapper publishes security events in CEF (Common Event Format) for SIEM consumption.
+
+### CEF Format
+
+Events follow the CEF standard: `CEF:0|Snapper|AAF|version|event_id|name|severity|extensions`
+
+### Syslog Configuration
+
+```env
+SIEM_ENABLED=true
+SYSLOG_HOST=siem.corp.example.com
+SYSLOG_PORT=514
+SYSLOG_PROTOCOL=udp
+```
+
+### Webhook HMAC Verification
+
+Webhook payloads include `X-Snapper-Signature` header with `sha256=<hex-digest>`. Verify using:
+
+```python
+import hmac, hashlib
+expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+assert hmac.compare_digest(expected, signature)
+```
+
+See [Enterprise Guide](ENTERPRISE.md#siem-integration) for Splunk, QRadar, and Sentinel setup.
+
+## SSO Security
+
+### JIT Provisioning
+
+- Users are auto-created on first SSO login with `member` role
+- Email is the unique identifier (normalized to lowercase)
+- Deactivated users are re-activated on next SSO login
+
+### Session Lifetime
+
+- Access tokens: 30 minutes (configurable via `ACCESS_TOKEN_EXPIRE_MINUTES`)
+- Refresh tokens: 7 days
+- SSO sessions follow the IdP session lifetime
+
+### Attribute Mapping
+
+| SAML Attribute | OIDC Claim | Snapper Field |
+|---------------|------------|--------------|
+| `email` | `email` | `user.email` |
+| `firstName` | `given_name` | `user.full_name` (first part) |
+| `lastName` | `family_name` | `user.full_name` (last part) |
+
+## SCIM Provisioning
+
+### Bearer Token Security
+
+- SCIM endpoints require `Authorization: Bearer <token>` header
+- Token is configured per-organization in settings (`scim_bearer_token`)
+- Token should be rotated regularly (recommend 90 days)
+
+### User Lifecycle
+
+| SCIM Operation | Snapper Action |
+|---------------|---------------|
+| Create User | Create user + add to org |
+| Update User | Update email/name |
+| Deactivate | Soft-delete user |
+| Delete | Hard-delete user |
+
+## Multi-Tenant Security
+
+### Organization Isolation
+
+- All database queries include `organization_id` filter
+- Agents, rules, audit logs, and vault entries are org-scoped
+- Cross-org data access is impossible through the API
+- System-wide rules are read-only for non-admin users
+
+### Data Scoping
+
+| Resource | Scoped By | Enforcement |
+|----------|-----------|------------|
+| Agents | `organization_id` | Database query filter |
+| Rules | `organization_id` | Database query filter |
+| Audit Logs | `organization_id` | Database query filter |
+| PII Vault | `organization_id` + `owner_chat_id` | Database + ownership check |
+| Users | `OrganizationMembership` | Join table |
+
+## Browser Extension Security
+
+### Extension Permissions Model
+
+The browser extension requests minimal permissions:
+- `activeTab` — Access only the current tab (not all tabs)
+- `storage` — Store configuration locally
+- Host permissions limited to AI chat sites only
+
+### No Raw PII in Extension Context
+
+- PII scanning happens client-side (patterns only, no data sent)
+- Extension sends tool call metadata to Snapper, not user content
+- Vault tokens are resolved server-side, never in the browser
+
+### Managed Storage
+
+Enterprise admins can lock extension settings via Chrome policy:
+- Users cannot change Snapper URL or API key
+- Fail mode enforced to `closed`
+- PII scanning always enabled

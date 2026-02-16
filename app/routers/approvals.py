@@ -1,5 +1,6 @@
 """Approval workflow API endpoints."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
@@ -284,6 +285,11 @@ async def check_approval_status(
                         )
                         audit_db.add(audit_log)
                         await audit_db.commit()
+                        try:
+                            from app.services.event_publisher import publish_from_audit_log
+                            asyncio.ensure_future(publish_from_audit_log(audit_log))
+                        except Exception:
+                            pass
             except Exception as e:
                 logger.error(f"Failed to resolve vault tokens for approval {approval_id}: {e}")
 
@@ -333,6 +339,12 @@ async def decide_approval(
 
     new_status = "approved" if request.decision == "approve" else "denied"
     await update_approval_status(redis, approval_id, new_status, request.decided_by)
+
+    try:
+        from app.middleware.metrics import record_approval_decision
+        record_approval_decision(new_status)
+    except Exception:
+        pass
 
     return ApprovalStatusResponse(
         id=approval_id,

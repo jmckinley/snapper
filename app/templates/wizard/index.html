@@ -174,6 +174,50 @@
                             <p class="text-xs text-gray-500">Autonomous coding agent for VS Code</p>
                         </button>
 
+                        <button type="button" onclick="selectAgentType('openai')" data-type="openai"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">OpenAI</span>
+                            </div>
+                            <p class="text-xs text-gray-500">Python SDK wrapper for GPT API tool calls</p>
+                        </button>
+
+                        <button type="button" onclick="selectAgentType('anthropic')" data-type="anthropic"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">Anthropic</span>
+                            </div>
+                            <p class="text-xs text-gray-500">Python SDK wrapper for Claude API tool use</p>
+                        </button>
+
+                        <button type="button" onclick="selectAgentType('gemini')" data-type="gemini"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">Gemini</span>
+                            </div>
+                            <p class="text-xs text-gray-500">Python SDK wrapper for Gemini function calls</p>
+                        </button>
+
+                        <button type="button" onclick="selectAgentType('browser-extension')" data-type="browser-extension"
+                                class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <div class="flex items-center mb-2">
+                                <svg class="w-6 h-6 text-indigo-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
+                                </svg>
+                                <span class="font-semibold text-gray-900">Browser Extension</span>
+                            </div>
+                            <p class="text-xs text-gray-500">Chrome/Firefox extension for ChatGPT, Claude, Gemini</p>
+                        </button>
+
                         <button type="button" onclick="selectAgentType('custom')" data-type="custom"
                                 class="agent-type-card p-4 border-2 border-gray-200 rounded-lg text-left hover:border-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500">
                             <div class="flex items-center mb-2">
@@ -512,6 +556,10 @@
             'cursor': 'Cursor',
             'windsurf': 'Windsurf',
             'cline': 'Cline',
+            'openai': 'OpenAI Agent',
+            'anthropic': 'Anthropic Agent',
+            'gemini': 'Gemini Agent',
+            'browser-extension': 'Browser Extension',
             'custom': 'My Agent',
         };
 
@@ -754,7 +802,7 @@
         snippetSection.classList.remove('hidden');
 
         // Try auto-install for known agent types
-        const knownAgentTypes = ['openclaw', 'claude-code', 'cursor', 'windsurf', 'cline'];
+        const knownAgentTypes = ['openclaw', 'claude-code', 'cursor', 'windsurf', 'cline', 'openai', 'anthropic', 'gemini', 'browser-extension'];
         if (knownAgentTypes.includes(selectedAgentType)) {
             try {
                 const response = await fetch('/api/v1/setup/install-config', {
@@ -794,7 +842,9 @@
                         // Update next steps
                         const agentNames = {
                             'openclaw': 'OpenClaw', 'claude-code': 'Claude Code',
-                            'cursor': 'Cursor', 'windsurf': 'Windsurf', 'cline': 'Cline/VS Code'
+                            'cursor': 'Cursor', 'windsurf': 'Windsurf', 'cline': 'Cline/VS Code',
+                            'openai': 'OpenAI Agent', 'anthropic': 'Anthropic Agent',
+                            'gemini': 'Gemini Agent', 'browser-extension': 'Browser Extension'
                         };
                         const agentName = agentNames[selectedAgentType] || selectedAgentType;
                         nextStepsList.innerHTML = `
@@ -821,6 +871,10 @@
                             'cursor': 'Add this to your Cursor config:',
                             'windsurf': 'Add this to your Windsurf config:',
                             'cline': 'Add this to your Cline config:',
+                            'openai': 'Add this to your Python application:',
+                            'anthropic': 'Add this to your Python application:',
+                            'gemini': 'Add this to your Python application:',
+                            'browser-extension': 'Configure extension with these settings:',
                         };
                         snippetHeading.textContent = headings[selectedAgentType] || 'Add this configuration manually:';
 
