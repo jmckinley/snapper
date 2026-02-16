@@ -100,7 +100,7 @@ async def get_traffic_insights(
     return _insights_to_dict(insights)
 
 
-@router.get("/traffic/coverage")
+@router.get("/traffic/coverage", openapi_extra={"x-internal": True})
 async def get_traffic_coverage(
     command: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
@@ -260,7 +260,7 @@ async def list_known_servers():
 # Active packs & disable endpoints (new)
 # ---------------------------------------------------------------------------
 
-@router.get("/active-packs")
+@router.get("/active-packs", openapi_extra={"x-internal": True})
 async def get_active_packs(
     db: AsyncSession = Depends(get_db),
     agent_id: Optional[UUID] = None,
@@ -326,7 +326,7 @@ async def get_active_packs(
     return list(groups.values())
 
 
-@router.post("/traffic/disable-server-rules")
+@router.post("/traffic/disable-server-rules", openapi_extra={"x-internal": True})
 async def disable_server_rules(
     request: DisableServerRulesRequest,
     db: AsyncSession = Depends(get_db),

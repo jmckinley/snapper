@@ -257,7 +257,7 @@ async def list_audit_logs(
     )
 
 
-@router.get("/logs/stream")
+@router.get("/logs/stream", openapi_extra={"x-internal": True})
 async def stream_audit_logs(
     db: DbSessionDep,
     agent_id: Optional[UUID] = None,
@@ -368,7 +368,7 @@ async def list_violations(
     )
 
 
-@router.post("/violations/{violation_id}/resolve", response_model=ViolationResponse)
+@router.post("/violations/{violation_id}/resolve", response_model=ViolationResponse, openapi_extra={"x-internal": True})
 async def resolve_violation(
     violation_id: UUID,
     request: ViolationResolve,
@@ -449,7 +449,7 @@ async def list_alerts(
     )
 
 
-@router.post("/alerts/{alert_id}/acknowledge", response_model=AlertResponse)
+@router.post("/alerts/{alert_id}/acknowledge", response_model=AlertResponse, openapi_extra={"x-internal": True})
 async def acknowledge_alert(
     alert_id: UUID,
     request: AlertAcknowledge,
@@ -474,7 +474,7 @@ async def acknowledge_alert(
     return AlertResponse.model_validate(alert)
 
 
-@router.get("/reports/compliance", response_model=ComplianceReportResponse)
+@router.get("/reports/compliance", response_model=ComplianceReportResponse, openapi_extra={"x-internal": True})
 async def get_compliance_report(
     db: DbSessionDep,
     start_date: Optional[datetime] = None,

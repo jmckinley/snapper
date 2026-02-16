@@ -1,5 +1,7 @@
 # API Documentation
 
+> **Looking for the stable public API reference?** See [PUBLIC-API.md](PUBLIC-API.md) for the v1.0 public API surface (~35 endpoints) with versioning, rate limit headers, and SDK examples.
+
 Snapper provides a RESTful API for managing agents, rules, and evaluating requests.
 
 **Base URL:** `http://localhost:8000/api/v1`

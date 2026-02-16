@@ -1303,7 +1303,7 @@ class EvaluateResponse(BaseModel):
     resolved_data: Optional[Dict[str, Any]] = None  # Inline-resolved vault tokens (auto mode)
 
 
-@router.post("/evaluate", response_model=EvaluateResponse)
+@router.post("/evaluate", response_model=EvaluateResponse, tags=["Core"])
 async def evaluate_request(
     request: EvaluateRequest,
     fastapi_request: Request,

@@ -336,7 +336,7 @@ async def get_agent_status(
     )
 
 
-@router.post("/bulk", response_model=BulkAgentResponse)
+@router.post("/bulk", response_model=BulkAgentResponse, openapi_extra={"x-internal": True})
 async def bulk_create_agents(
     bulk_data: BulkAgentCreate,
     db: DbSessionDep,
@@ -475,7 +475,7 @@ async def activate_agent(
     return AgentResponse.model_validate(agent)
 
 
-@router.post("/{agent_id}/quarantine", response_model=AgentResponse)
+@router.post("/{agent_id}/quarantine", response_model=AgentResponse, openapi_extra={"x-internal": True})
 async def quarantine_agent(
     agent_id: UUID,
     db: DbSessionDep,
@@ -571,7 +571,7 @@ async def regenerate_api_key(
     }
 
 
-@router.post("/{agent_id}/purge-pii")
+@router.post("/{agent_id}/purge-pii", openapi_extra={"x-internal": True})
 async def purge_agent_pii(
     agent_id: UUID,
     db: DbSessionDep,
@@ -711,7 +711,7 @@ async def purge_agent_pii(
     }
 
 
-@router.post("/{agent_id}/whitelist-ip")
+@router.post("/{agent_id}/whitelist-ip", openapi_extra={"x-internal": True})
 async def whitelist_ip(
     agent_id: UUID,
     ip_address: str,
@@ -809,7 +809,7 @@ async def list_whitelisted_ips(
     }
 
 
-@router.post("/verify-key")
+@router.post("/verify-key", openapi_extra={"x-internal": True})
 async def verify_api_key(
     db: DbSessionDep,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -848,7 +848,7 @@ async def verify_api_key(
     }
 
 
-@router.post("/cleanup-test")
+@router.post("/cleanup-test", openapi_extra={"x-internal": True})
 async def cleanup_test_agents(
     db: DbSessionDep,
     confirm: bool = Query(False),

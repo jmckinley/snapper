@@ -109,6 +109,25 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
+    openapi_tags=[
+        # Public API tags (listed first)
+        {"name": "Core", "description": "Evaluate requests and check approval status — the primary hook integration points."},
+        {"name": "Agents", "description": "Agent lifecycle management: create, update, suspend, trust scoring."},
+        {"name": "Rules", "description": "Policy-as-code: CRUD, import/export, validate, templates."},
+        {"name": "Vault", "description": "PII vault: encrypted storage with tokenized references."},
+        {"name": "Audit", "description": "Audit logs, stats, violations, and alerts."},
+        {"name": "Webhooks", "description": "Webhook configuration for event notifications."},
+        {"name": "Integrations", "description": "Traffic discovery, MCP server detection, and rule pack management."},
+        # Internal tags
+        {"name": "Auth", "description": "Internal: User authentication and session management."},
+        {"name": "Organizations", "description": "Internal: Organization and team management."},
+        {"name": "Billing", "description": "Internal: Subscription and usage billing."},
+        {"name": "Telegram", "description": "Internal: Telegram bot webhook and commands."},
+        {"name": "Slack", "description": "Internal: Slack bot Socket Mode integration."},
+        {"name": "SSO", "description": "Internal: SAML, OIDC, and SCIM provisioning."},
+        {"name": "Security Research", "description": "Internal: Security vulnerability research and threat feeds."},
+        {"name": "Setup", "description": "Internal: First-run wizard and agent auto-discovery."},
+    ],
 )
 
 # Configure CORS
@@ -118,7 +137,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-RateLimit-Remaining", "Retry-After"],
+    expose_headers=["X-Request-ID", "X-API-Version", "X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
 )
 
 
@@ -128,11 +147,13 @@ from app.middleware.rule_enforcement import RuleEnforcementMiddleware
 from app.middleware.onboarding import OnboardingMiddleware
 from app.middleware.auth import AuthMiddleware
 from app.middleware.metrics import MetricsMiddleware
+from app.middleware.api_version import APIVersionMiddleware
 
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(RuleEnforcementMiddleware)
 app.add_middleware(OnboardingMiddleware)
+app.add_middleware(APIVersionMiddleware)
 if settings.METRICS_ENABLED:
     app.add_middleware(MetricsMiddleware)
 
@@ -145,23 +166,23 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 # Include API routers
-app.include_router(agents.router, prefix=settings.API_V1_PREFIX, tags=["agents"])
-app.include_router(rules.router, prefix=settings.API_V1_PREFIX, tags=["rules"])
-app.include_router(integrations.router, prefix=settings.API_V1_PREFIX, tags=["integrations"])
-app.include_router(security.router, prefix=settings.API_V1_PREFIX, tags=["security"])
-app.include_router(audit.router, prefix=settings.API_V1_PREFIX, tags=["audit"])
-app.include_router(setup.router, tags=["setup"])
-app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
-app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["slack"])
-app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["approvals"])
-app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["vault"])
-app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX, tags=["auth"])
-app.include_router(org_router.router, prefix=settings.API_V1_PREFIX, tags=["organizations"])
-app.include_router(billing_router.router, prefix=settings.API_V1_PREFIX, tags=["billing"])
-app.include_router(saml_router.router, tags=["saml"])
-app.include_router(oidc_router.router, tags=["oidc"])
-app.include_router(scim_router.router, tags=["scim"])
-app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=["webhooks"])
+app.include_router(agents.router, prefix=settings.API_V1_PREFIX, tags=["Agents"])
+app.include_router(rules.router, prefix=settings.API_V1_PREFIX, tags=["Rules"])
+app.include_router(integrations.router, prefix=settings.API_V1_PREFIX, tags=["Integrations"])
+app.include_router(security.router, prefix=settings.API_V1_PREFIX, tags=["Security Research"])
+app.include_router(audit.router, prefix=settings.API_V1_PREFIX, tags=["Audit"])
+app.include_router(setup.router, tags=["Setup"])
+app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["Telegram"])
+app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["Slack"])
+app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
+app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["Vault"])
+app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX, tags=["Auth"])
+app.include_router(org_router.router, prefix=settings.API_V1_PREFIX, tags=["Organizations"])
+app.include_router(billing_router.router, prefix=settings.API_V1_PREFIX, tags=["Billing"])
+app.include_router(saml_router.router, tags=["SSO"])
+app.include_router(oidc_router.router, tags=["SSO"])
+app.include_router(scim_router.router, tags=["SSO"])
+app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=["Webhooks"])
 
 
 # Global exception handler

@@ -142,6 +142,7 @@ async def update_approval_status(
     "/{approval_id}/status",
     response_model=ApprovalStatusResponse,
     dependencies=[Depends(approval_status_rate_limit)],
+    tags=["Core"],
 )
 async def check_approval_status(
     approval_id: str,
@@ -305,6 +306,7 @@ async def check_approval_status(
     "/{approval_id}/decide",
     response_model=ApprovalStatusResponse,
     dependencies=[Depends(approval_decide_rate_limit)],
+    openapi_extra={"x-internal": True},
 )
 async def decide_approval(
     approval_id: str,
@@ -353,7 +355,7 @@ async def decide_approval(
     )
 
 
-@router.get("/pending")
+@router.get("/pending", openapi_extra={"x-internal": True})
 async def list_pending_approvals(redis: RedisDep):
     """List all pending approval requests."""
     # Scan for all approval keys

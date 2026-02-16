@@ -141,6 +141,7 @@ class RateLimiter:
         # Add rate limit headers to response (via request state)
         request.state.rate_limit_remaining = remaining
         request.state.rate_limit_reset = retry_after
+        request.state.rate_limit_limit = self.max_requests
 
         if not allowed:
             raise HTTPException(
