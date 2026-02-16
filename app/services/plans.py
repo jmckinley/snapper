@@ -21,8 +21,6 @@ from app.models.rules import Rule
 
 logger = logging.getLogger(__name__)
 
-settings = get_settings()
-
 
 async def get_plan(db: AsyncSession, plan_id: str) -> Plan:
     """
@@ -103,7 +101,7 @@ async def check_quota(
 
     A limit of -1 means unlimited. If SELF_HOSTED is True, all checks are skipped.
     """
-    if settings.SELF_HOSTED:
+    if get_settings().SELF_HOSTED:
         return
 
     # Fetch the organization to get plan_id

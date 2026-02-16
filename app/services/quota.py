@@ -9,8 +9,6 @@ from app.config import get_settings
 from app.database import get_db
 from app.services.plans import check_quota
 
-settings = get_settings()
-
 
 class QuotaChecker:
     """
@@ -31,6 +29,7 @@ class QuotaChecker:
     async def __call__(
         self, request: Request, db: AsyncSession = Depends(get_db)
     ) -> None:
+        settings = get_settings()
         if settings.SELF_HOSTED:
             return  # No limits in self-hosted mode
 

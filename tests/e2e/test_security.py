@@ -32,19 +32,19 @@ class TestSecurityPage:
 class TestAuditPage:
     """Tests for the audit log page."""
 
-    def test_audit_page_loads(self, page: Page, base_url: str):
+    def test_audit_page_loads(self, authenticated_page: Page, base_url: str):
         """Audit page loads correctly."""
-        page.goto(f"{base_url}/audit")
-        page.wait_for_selector("text=Audit", timeout=10000)
-        expect(page.locator("h1")).to_contain_text("Audit")
+        authenticated_page.goto(f"{base_url}/audit")
+        authenticated_page.wait_for_selector("h1", timeout=10000)
+        expect(authenticated_page.locator("h1")).to_contain_text("Audit")
 
-    def test_audit_page_has_logs_section(self, page: Page, base_url: str):
+    def test_audit_page_has_logs_section(self, authenticated_page: Page, base_url: str):
         """Audit page shows logs section."""
-        page.goto(f"{base_url}/audit")
-        page.wait_for_load_state("networkidle")
+        authenticated_page.goto(f"{base_url}/audit")
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Should show logs, violations, or alerts tabs/sections
-        page_content = page.content()
+        page_content = authenticated_page.content()
         assert "log" in page_content.lower() or "activity" in page_content.lower()
 
 

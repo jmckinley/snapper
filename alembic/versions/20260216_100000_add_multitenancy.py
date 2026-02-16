@@ -3,7 +3,7 @@
 Adds organization_id columns to agents, rules, pii_vault_entries, audit_logs, users.
 Seeds free/pro/enterprise plans.
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: aa16bb27cc38
 Revises: f6a7b8c9d0e1
 Create Date: 2026-02-16 10:00:00.000000
 
@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
+revision: str = "aa16bb27cc38"
 down_revision: Union[str, None] = "f6a7b8c9d0e1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

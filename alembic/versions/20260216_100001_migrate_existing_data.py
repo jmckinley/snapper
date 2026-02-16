@@ -3,8 +3,8 @@
 Creates a "Default Organization" on enterprise plan and assigns all
 orphaned agents, rules, vault entries, and audit logs to it.
 
-Revision ID: b2c3d4e5f6a7
-Revises: a1b2c3d4e5f6
+Revision ID: bb27cc38dd49
+Revises: aa16bb27cc38
 Create Date: 2026-02-16 10:00:01.000000
 
 """
@@ -16,8 +16,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "b2c3d4e5f6a7"
-down_revision: Union[str, None] = "a1b2c3d4e5f6"
+revision: str = "bb27cc38dd49"
+down_revision: Union[str, None] = "aa16bb27cc38"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

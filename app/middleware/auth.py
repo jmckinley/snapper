@@ -18,6 +18,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     Starlette middleware that protects dashboard (HTML) routes.
 
     Behavior:
+    - SELF_HOSTED mode: pass through (no auth required)
     - Valid access token cookie: sets request.state user context, proceeds
     - Expired access + valid refresh: auto-rotates access token, proceeds
     - No valid tokens + HTML request: redirects to /login
@@ -37,10 +38,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/terms",
     }
 
+    # Specific auth API paths exempt from auth (but NOT /me and /switch-org)
+    EXEMPT_AUTH_PATHS = {
+        "/api/v1/auth/register",
+        "/api/v1/auth/login",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/refresh",
+        "/api/v1/auth/forgot-password",
+        "/api/v1/auth/reset-password",
+    }
+
     # Path prefixes exempt from auth
     EXEMPT_PREFIXES = (
         "/static/",
-        "/api/v1/auth/",
         "/api/v1/rules/evaluate",
         "/api/v1/telegram/",
         "/api/v1/slack/",
@@ -53,6 +63,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request through authentication checks."""
+        from app.config import get_settings
+
+        settings = get_settings()
+
+        # In self-hosted mode, skip authentication entirely
+        if settings.SELF_HOSTED:
+            return await call_next(request)
+
         path = request.url.path
 
         # Check if path is exempt
@@ -91,9 +109,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                 # Decode without verification to get claims
                                 from jose import jwt as jose_jwt
 
-                                from app.config import get_settings
-
-                                settings = get_settings()
                                 expired_payload = jose_jwt.decode(
                                     access_token,
                                     settings.SECRET_KEY,
@@ -120,9 +135,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         response = await call_next(request)
 
                         # Set the new access token cookie on the response
-                        from app.config import get_settings
-
-                        settings = get_settings()
                         response.set_cookie(
                             key="snapper_access_token",
                             value=new_access_token,
@@ -143,6 +155,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def _is_exempt(self, path: str) -> bool:
         """Check if the path is exempt from authentication."""
         if path in self.EXEMPT_PATHS:
+            return True
+
+        if path in self.EXEMPT_AUTH_PATHS:
             return True
 
         for prefix in self.EXEMPT_PREFIXES:

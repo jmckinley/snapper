@@ -5,26 +5,39 @@ Run with:
     E2E_BASE_URL=http://localhost:8000 pytest tests/e2e/test_wizard.py -v
 """
 
-import os
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from .conftest import _api_request
+from .conftest import _auth_api_request
 
-BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 
 def _delete_agent_by_external_id(ext_id: str):
     """Delete an agent by external_id to allow re-registration in wizard tests."""
-    agents = _api_request("GET", "/api/v1/agents?page_size=100")
+    agents = _auth_api_request("GET", "/api/v1/agents?page_size=100")
     if not agents or "items" not in agents:
         return
     for agent in agents["items"]:
         if agent.get("external_id") == ext_id:
-            _api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+            _auth_api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_all_agents_for_quota():
+    """Delete ALL agents before each wizard test to stay within free plan quota.
+
+    Uses cleanup-test endpoint first (hard-deletes wizard agents globally,
+    including from other test-user orgs), then deletes remaining org agents.
+    """
+    _auth_api_request("POST", "/api/v1/agents/cleanup-test?confirm=true")
+    agents = _auth_api_request("GET", "/api/v1/agents?page_size=100")
+    if agents and "items" in agents:
+        for agent in agents["items"]:
+            _auth_api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -33,9 +46,9 @@ def screenshot_dir():
 
 
 @pytest.fixture
-def wizard_page(page: Page) -> Page:
-    page.goto(f"{BASE_URL}/wizard", wait_until="networkidle")
-    return page
+def wizard_page(authenticated_page: Page, base_url: str) -> Page:
+    authenticated_page.goto(f"{base_url}/wizard", wait_until="networkidle")
+    return authenticated_page
 
 
 class TestWizardStep1:

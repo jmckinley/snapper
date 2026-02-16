@@ -853,9 +853,13 @@ async def cleanup_test_agents(
         "Delete Test",
         "Duplicate Test",
     )
+    # Also match wizard agent names (created by setup wizard E2E tests)
+    wizard_names = ("OpenClaw", "Claude Code", "Cursor", "Windsurf", "Cline")
+    wizard_conditions = [Agent.name == n for n in wizard_names]
 
-    # Find agents matching any test prefix
+    # Find agents matching any test prefix or wizard name
     conditions = [Agent.name.ilike(f"{p}%") for p in test_prefixes]
+    conditions.extend(wizard_conditions)
     stmt = select(Agent).where(or_(*conditions))
     result = await db.execute(stmt)
     agents = list(result.scalars().all())

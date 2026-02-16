@@ -35,6 +35,16 @@ from app.services.auth import create_user
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _enable_auth_middleware(monkeypatch):
+    """Override SELF_HOSTED=false so the auth middleware enforces auth."""
+    monkeypatch.setenv("SELF_HOSTED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def seed_plans(db_session: AsyncSession):
     """Seed the plans table with a free tier."""
@@ -983,3 +993,254 @@ class TestSwitchOrgChangesData:
         names_beta = [a["name"] for a in resp_beta.json()["items"]]
         assert "Beta Agent" in names_beta
         assert "Alpha Agent" not in names_beta
+
+
+# ---------------------------------------------------------------------------
+# 10. Vault org scoping
+# ---------------------------------------------------------------------------
+
+
+class TestVaultOrgScoping:
+    @pytest.mark.asyncio
+    async def test_vault_list_own_org_only(self, client, db_session, seed_plans):
+        """User A sees only vault entries in their org (same owner_chat_id, different org)."""
+        from app.models.pii_vault import PIIVaultEntry
+
+        data_a, access_a, refresh_a = await _register_and_get_cookies(
+            client, "vault_a@example.com", "vault_a"
+        )
+        org_a_id = UUID(data_a["default_organization_id"])
+
+        data_b, access_b, refresh_b = await _register_and_get_cookies(
+            client, "vault_b@example.com", "vault_b"
+        )
+        org_b_id = UUID(data_b["default_organization_id"])
+
+        # Both entries share the same owner_chat_id but belong to different orgs
+        shared_owner = "shared-owner-123"
+        entry_a = PIIVaultEntry(
+            id=uuid4(),
+            label="A's Secret",
+            token=f"{{{{SNAPPER_VAULT:{uuid4().hex[:32]}}}}}",
+            encrypted_value=b"encrypted_a",
+            masked_value="a***@example.com",
+            category="email",
+            owner_chat_id=shared_owner,
+            organization_id=org_a_id,
+        )
+        entry_b = PIIVaultEntry(
+            id=uuid4(),
+            label="B's Secret",
+            token=f"{{{{SNAPPER_VAULT:{uuid4().hex[:32]}}}}}",
+            encrypted_value=b"encrypted_b",
+            masked_value="b***@example.com",
+            category="email",
+            owner_chat_id=shared_owner,
+            organization_id=org_b_id,
+        )
+        db_session.add_all([entry_a, entry_b])
+        await db_session.commit()
+
+        # User A queries vault — should see only their org's entry
+        client.cookies.set("snapper_access_token", access_a)
+        client.cookies.set("snapper_refresh_token", refresh_a)
+        resp_a = await client.get(
+            "/api/v1/vault/entries",
+            params={"owner_chat_id": shared_owner},
+        )
+        assert resp_a.status_code == 200
+        labels_a = [e["label"] for e in resp_a.json()]
+        assert "A's Secret" in labels_a
+        assert "B's Secret" not in labels_a
+
+    @pytest.mark.asyncio
+    async def test_vault_cross_org_invisible(self, client, db_session, seed_plans):
+        """User B cannot see vault entries belonging to user A's org."""
+        from app.models.pii_vault import PIIVaultEntry
+
+        data_a, access_a, refresh_a = await _register_and_get_cookies(
+            client, "vxorg_a@example.com", "vxorg_a"
+        )
+        org_a_id = UUID(data_a["default_organization_id"])
+
+        data_b, access_b, refresh_b = await _register_and_get_cookies(
+            client, "vxorg_b@example.com", "vxorg_b"
+        )
+
+        shared_owner = "shared-owner-456"
+        entry = PIIVaultEntry(
+            id=uuid4(),
+            label="Only A",
+            token=f"{{{{SNAPPER_VAULT:{uuid4().hex[:32]}}}}}",
+            encrypted_value=b"secret",
+            masked_value="***custom***",
+            category="custom",
+            owner_chat_id=shared_owner,
+            organization_id=org_a_id,
+        )
+        db_session.add(entry)
+        await db_session.commit()
+
+        # User B queries — should not see User A's entry
+        client.cookies.set("snapper_access_token", access_b)
+        client.cookies.set("snapper_refresh_token", refresh_b)
+        resp_b = await client.get(
+            "/api/v1/vault/entries",
+            params={"owner_chat_id": shared_owner},
+        )
+        assert resp_b.status_code == 200
+        labels = [e["label"] for e in resp_b.json()]
+        assert "Only A" not in labels
+
+
+# ---------------------------------------------------------------------------
+# 11. Quota enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestQuotaBlocksEndpoints:
+    @pytest.mark.asyncio
+    async def test_create_agent_under_quota_succeeds(self, client, seed_plans):
+        """Free plan allows creating 1 agent."""
+        data, access, refresh = await _register_and_get_cookies(
+            client, "quota_ok@example.com", "quota_ok"
+        )
+        client.cookies.set("snapper_access_token", access)
+        client.cookies.set("snapper_refresh_token", refresh)
+
+        resp = await client.post(
+            "/api/v1/agents",
+            json={
+                "name": "Quota OK Agent",
+                "external_id": f"quota-ok-{uuid4().hex[:8]}",
+                "description": "Under quota",
+            },
+        )
+        assert resp.status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_create_agent_over_quota_402(self, client, db_session, seed_plans):
+        """Free plan (max 1 agent) returns 402 on 2nd agent."""
+        data, access, refresh = await _register_and_get_cookies(
+            client, "quota_over@example.com", "quota_over"
+        )
+        org_id = UUID(data["default_organization_id"])
+
+        client.cookies.set("snapper_access_token", access)
+        client.cookies.set("snapper_refresh_token", refresh)
+
+        # First agent (within quota)
+        resp1 = await client.post(
+            "/api/v1/agents",
+            json={
+                "name": "First Agent",
+                "external_id": f"first-{uuid4().hex[:8]}",
+            },
+        )
+        assert resp1.status_code == 201
+
+        # Second agent (should exceed quota)
+        resp2 = await client.post(
+            "/api/v1/agents",
+            json={
+                "name": "Second Agent",
+                "external_id": f"second-{uuid4().hex[:8]}",
+            },
+        )
+        assert resp2.status_code == 402
+        body = resp2.json()
+        assert "error" in body or "detail" in body
+
+    @pytest.mark.asyncio
+    async def test_quota_402_response_format(self, client, db_session, seed_plans):
+        """402 response should include quota details."""
+        data, access, refresh = await _register_and_get_cookies(
+            client, "quota_fmt@example.com", "quota_fmt"
+        )
+        client.cookies.set("snapper_access_token", access)
+        client.cookies.set("snapper_refresh_token", refresh)
+
+        # Fill the quota
+        await client.post(
+            "/api/v1/agents",
+            json={
+                "name": "Fill Agent",
+                "external_id": f"fill-{uuid4().hex[:8]}",
+            },
+        )
+
+        # Exceed
+        resp = await client.post(
+            "/api/v1/agents",
+            json={
+                "name": "Over Agent",
+                "external_id": f"over-{uuid4().hex[:8]}",
+            },
+        )
+        assert resp.status_code == 402
+        body = resp.json()
+        # detail is a dict with {error, resource, used, limit}
+        detail = body.get("detail", {})
+        if isinstance(detail, dict):
+            assert detail.get("error") == "quota_exceeded"
+            assert "resource" in detail
+            assert "used" in detail
+            assert "limit" in detail
+        else:
+            # Fallback: detail may be a string
+            assert "limit" in str(detail).lower() or "quota" in str(detail).lower()
+
+
+# ---------------------------------------------------------------------------
+# 12. Org management endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestOrgManagementEndpoints:
+    @pytest.mark.asyncio
+    async def test_list_organizations(self, client, seed_plans):
+        """GET /organizations returns at least the auto-created org."""
+        data, access, refresh = await _register_and_get_cookies(
+            client, "orglist@example.com", "orglist"
+        )
+        client.cookies.set("snapper_access_token", access)
+        client.cookies.set("snapper_refresh_token", refresh)
+
+        resp = await client.get("/api/v1/organizations")
+        assert resp.status_code == 200
+        orgs = resp.json()
+        assert len(orgs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_update_organization(self, client, seed_plans):
+        """PATCH /organizations/{id} updates the org name."""
+        data, access, refresh = await _register_and_get_cookies(
+            client, "orgpatch@example.com", "orgpatch"
+        )
+        org_id = data["default_organization_id"]
+        client.cookies.set("snapper_access_token", access)
+        client.cookies.set("snapper_refresh_token", refresh)
+
+        resp = await client.patch(
+            f"/api/v1/organizations/{org_id}",
+            json={"name": "Updated Org Name"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Updated Org Name"
+
+    @pytest.mark.asyncio
+    async def test_get_org_usage(self, client, seed_plans):
+        """GET /organizations/{id}/usage returns usage data."""
+        data, access, refresh = await _register_and_get_cookies(
+            client, "orgusage@example.com", "orgusage"
+        )
+        org_id = data["default_organization_id"]
+        client.cookies.set("snapper_access_token", access)
+        client.cookies.set("snapper_refresh_token", refresh)
+
+        resp = await client.get(f"/api/v1/organizations/{org_id}/usage")
+        assert resp.status_code == 200
+        usage = resp.json()
+        assert "agents" in usage
+        assert "rules" in usage
+        assert "vault_entries" in usage

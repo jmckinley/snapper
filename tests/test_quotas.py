@@ -23,6 +23,16 @@ from app.models.rules import Rule, RuleAction, RuleType
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _disable_self_hosted(monkeypatch):
+    """Override SELF_HOSTED=false so quota checks actually enforce."""
+    monkeypatch.setenv("SELF_HOSTED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def seed_plans(db_session: AsyncSession):
     """Seed the three standard plans: free, pro, enterprise."""
@@ -261,8 +271,9 @@ class TestCheckQuota:
                 owner_chat_id="test-chat",
                 label=f"Entry {i}",
                 category=PIICategory.EMAIL,
-                vault_token=f"{{{{SNAPPER_VAULT:{uuid4().hex[:32]}}}}}",
+                token=f"{{{{SNAPPER_VAULT:{uuid4().hex[:32]}}}}}",
                 encrypted_value=b"encrypted",
+                masked_value=f"e***{i}@example.com",
                 organization_id=org_with_plan.id,
                 is_deleted=False,
             )

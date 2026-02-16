@@ -22,6 +22,7 @@ from app.models.organizations import (
     Plan,
     Team,
 )
+from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.users import User
 from app.services.auth import (
     authenticate_user,
@@ -39,6 +40,16 @@ from app.services.auth import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _enable_auth_middleware(monkeypatch):
+    """Override SELF_HOSTED=false so the auth middleware enforces auth."""
+    monkeypatch.setenv("SELF_HOSTED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture
@@ -789,3 +800,266 @@ class TestPasswordResetEndpoints:
             },
         )
         assert login_resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# 14. Auth middleware behavior
+# ---------------------------------------------------------------------------
+
+
+class TestAuthMiddlewareBehavior:
+    @pytest.mark.asyncio
+    async def test_exempt_path_login_accessible(self, client, seed_plans):
+        """GET /login should be accessible without auth."""
+        resp = await client.get(
+            "/login",
+            headers={"accept": "text/html"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_exempt_prefix_evaluate_accessible(self, client, seed_plans):
+        """POST /api/v1/rules/evaluate should be exempt from auth."""
+        resp = await client.post(
+            "/api/v1/rules/evaluate",
+            json={
+                "agent_id": "test-agent",
+                "tool_name": "test_tool",
+                "tool_input": "echo hello",
+            },
+        )
+        # Should NOT be 401 — it's an exempt path
+        assert resp.status_code != 401
+
+    @pytest.mark.asyncio
+    async def test_protected_html_redirects_to_login(self, client, db_session, seed_plans):
+        """GET / without auth + Accept: text/html should redirect to /login."""
+        # Create an agent so the onboarding middleware doesn't redirect to /wizard
+        agent = Agent(
+            id=uuid4(),
+            name="dummy-agent-for-redirect-test",
+            external_id="dummy-redirect",
+            status=AgentStatus.ACTIVE,
+            trust_level=TrustLevel.STANDARD,
+        )
+        db_session.add(agent)
+        await db_session.commit()
+
+        resp = await client.get(
+            "/",
+            headers={"accept": "text/html"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "/login" in resp.headers.get("location", "")
+
+    @pytest.mark.asyncio
+    async def test_protected_api_returns_401(self, client, seed_plans):
+        """GET /api/v1/agents without auth should return 401 JSON."""
+        resp = await client.get(
+            "/api/v1/agents",
+            headers={"accept": "application/json"},
+        )
+        assert resp.status_code == 401
+        assert "detail" in resp.json()
+
+    @pytest.mark.asyncio
+    async def test_auto_refresh_expired_access(self, client, seed_plans):
+        """Expired access token + valid refresh token should auto-rotate."""
+        from datetime import datetime, timedelta, timezone
+        from jose import jwt as jose_jwt
+        from app.config import get_settings
+
+        # Register to get valid tokens
+        reg_resp = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "autorefresh@example.com",
+                "username": "autorefresh",
+                "password": "SecurePass1!",
+                "password_confirm": "SecurePass1!",
+            },
+        )
+        refresh_token = reg_resp.cookies.get("snapper_refresh_token")
+
+        # Create an expired access token
+        settings = get_settings()
+        expired_payload = {
+            "sub": reg_resp.json()["id"],
+            "org": reg_resp.json()["default_organization_id"],
+            "role": "owner",
+            "exp": datetime.now(timezone.utc) - timedelta(seconds=10),
+            "type": "access",
+        }
+        expired_access = jose_jwt.encode(
+            expired_payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+        )
+
+        client.cookies.set("snapper_access_token", expired_access)
+        client.cookies.set("snapper_refresh_token", refresh_token)
+
+        # The middleware should auto-refresh and return 200
+        resp = await client.get("/api/v1/auth/me")
+        assert resp.status_code == 200
+        assert resp.json()["user"]["email"] == "autorefresh@example.com"
+
+    @pytest.mark.asyncio
+    async def test_both_tokens_invalid(self, client, seed_plans):
+        """Garbage cookies should return 401."""
+        client.cookies.set("snapper_access_token", "garbage-token")
+        client.cookies.set("snapper_refresh_token", "also-garbage")
+
+        resp = await client.get(
+            "/api/v1/auth/me",
+            headers={"accept": "application/json"},
+        )
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 15. Cookie security attributes
+# ---------------------------------------------------------------------------
+
+
+class TestCookieSecurityAttributes:
+    @pytest.mark.asyncio
+    async def test_register_sets_httponly_cookies(self, client, seed_plans):
+        """Registration response cookies should be httponly."""
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "cookietest@example.com",
+                "username": "cookietest",
+                "password": "SecurePass1!",
+                "password_confirm": "SecurePass1!",
+            },
+        )
+        assert resp.status_code == 200
+        cookie_headers = resp.headers.get_list("set-cookie")
+        cookie_text = " ".join(cookie_headers).lower()
+        assert "httponly" in cookie_text
+
+    @pytest.mark.asyncio
+    async def test_login_cookies_samesite_lax(self, client, seed_plans):
+        """Login response cookies should have samesite=lax."""
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "samesite@example.com",
+                "username": "samesite",
+                "password": "SecurePass1!",
+                "password_confirm": "SecurePass1!",
+            },
+        )
+        resp = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "samesite@example.com",
+                "password": "SecurePass1!",
+            },
+        )
+        assert resp.status_code == 200
+        cookie_headers = resp.headers.get_list("set-cookie")
+        cookie_text = " ".join(cookie_headers).lower()
+        assert "samesite=lax" in cookie_text
+
+    @pytest.mark.asyncio
+    async def test_login_cookies_path_root(self, client, seed_plans):
+        """Login response cookies should have path=/."""
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "pathtest@example.com",
+                "username": "pathtest",
+                "password": "SecurePass1!",
+                "password_confirm": "SecurePass1!",
+            },
+        )
+        resp = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "pathtest@example.com",
+                "password": "SecurePass1!",
+            },
+        )
+        cookie_headers = resp.headers.get_list("set-cookie")
+        cookie_text = " ".join(cookie_headers).lower()
+        assert "path=/" in cookie_text
+
+
+# ---------------------------------------------------------------------------
+# 16. Forgot password + email integration
+# ---------------------------------------------------------------------------
+
+
+class TestForgotPasswordEmailIntegration:
+    @pytest.mark.asyncio
+    async def test_forgot_password_calls_email_service(
+        self, client, seed_plans, monkeypatch
+    ):
+        """Forgot password should call send_password_reset for existing users."""
+        # Register
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "emailcall@example.com",
+                "username": "emailcall",
+                "password": "SecurePass1!",
+                "password_confirm": "SecurePass1!",
+            },
+        )
+
+        called_with = {}
+
+        def mock_send(to, token, base_url=""):
+            called_with["to"] = to
+            called_with["token"] = token
+            return False  # SMTP not configured
+
+        monkeypatch.setattr("app.services.email.send_password_reset", mock_send)
+
+        resp = await client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "emailcall@example.com"},
+        )
+        assert resp.status_code == 200
+        assert called_with.get("to") == "emailcall@example.com"
+
+    @pytest.mark.asyncio
+    async def test_forgot_password_works_without_smtp(self, client, seed_plans):
+        """Forgot password returns 200 even without SMTP configured."""
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "nosmtp@example.com",
+                "username": "nosmtp",
+                "password": "SecurePass1!",
+                "password_confirm": "SecurePass1!",
+            },
+        )
+        resp = await client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "nosmtp@example.com"},
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_email_skips_email(
+        self, client, seed_plans, monkeypatch
+    ):
+        """Forgot password for nonexistent email should not call email service."""
+        called = {"count": 0}
+
+        def mock_send(to, token, base_url=""):
+            called["count"] += 1
+            return False
+
+        monkeypatch.setattr("app.services.email.send_password_reset", mock_send)
+
+        resp = await client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "nonexistent@example.com"},
+        )
+        assert resp.status_code == 200
+        assert called["count"] == 0

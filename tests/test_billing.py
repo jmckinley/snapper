@@ -19,6 +19,16 @@ from app.models.organizations import Organization, Plan
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _enable_auth_middleware(monkeypatch):
+    """Override SELF_HOSTED=false so the auth middleware enforces auth."""
+    monkeypatch.setenv("SELF_HOSTED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def seed_plans(db_session: AsyncSession):
     """Seed the standard plans required by the billing router."""
@@ -352,4 +362,98 @@ class TestStripeBillingService:
         await db_session.flush()
 
         # Should complete without raising
+        await sync_subscription_status(db=db_session, org_id=org.id)
+
+
+# ---------------------------------------------------------------------------
+# Tests -- Webhook event handler functions
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookEventHandlers:
+    """Tests for internal webhook handler functions in stripe_billing.py."""
+
+    @pytest.mark.asyncio
+    async def test_checkout_completed_missing_org_noop(self, db_session, seed_plans):
+        """handle_checkout_completed with missing org metadata should not crash."""
+        from app.services.stripe_billing import _handle_checkout_completed
+
+        event = {
+            "metadata": {},
+            "customer": "cus_fake",
+            "subscription": "sub_fake",
+        }
+        # Should not raise even with missing org_id
+        await _handle_checkout_completed(db_session, event)
+
+    @pytest.mark.asyncio
+    async def test_checkout_completed_bad_org_noop(self, db_session, seed_plans):
+        """handle_checkout_completed with nonexistent org should not crash."""
+        from app.services.stripe_billing import _handle_checkout_completed
+
+        event = {
+            "metadata": {"org_id": str(uuid4()), "plan_id": "pro"},
+            "customer": "cus_fake",
+            "subscription": "sub_fake",
+        }
+        # Should complete without raising — org not found is logged and returned
+        await _handle_checkout_completed(db_session, event)
+
+    @pytest.mark.asyncio
+    async def test_subscription_deleted_no_customer_noop(self, db_session, seed_plans):
+        """Subscription deleted with unknown customer should not crash."""
+        from app.services.stripe_billing import _handle_subscription_deleted
+
+        event = {"customer": "cus_nonexistent"}
+        await _handle_subscription_deleted(db_session, event)
+
+    @pytest.mark.asyncio
+    async def test_payment_failed_no_customer_noop(self, db_session, seed_plans):
+        """Payment failed with unknown customer should not crash."""
+        from app.services.stripe_billing import _handle_payment_failed
+
+        event = {
+            "customer": "cus_nonexistent",
+            "id": "in_fake",
+        }
+        await _handle_payment_failed(db_session, event)
+
+
+# ---------------------------------------------------------------------------
+# Tests -- Sync subscription noop variants
+# ---------------------------------------------------------------------------
+
+
+class TestSyncSubscriptionStatus:
+    @pytest.mark.asyncio
+    async def test_sync_noop_without_stripe(self, db_session, seed_plans):
+        """sync_subscription_status is a no-op when Stripe is not configured."""
+        from app.services.stripe_billing import sync_subscription_status
+
+        org = Organization(
+            id=uuid4(),
+            name="Sync Noop Org",
+            slug=f"sync-noop-{uuid4().hex[:8]}",
+            plan_id="free",
+            is_active=True,
+        )
+        db_session.add(org)
+        await db_session.flush()
+        await sync_subscription_status(db=db_session, org_id=org.id)
+
+    @pytest.mark.asyncio
+    async def test_sync_noop_without_subscription_id(self, db_session, seed_plans):
+        """sync_subscription_status is a no-op when org has no subscription_id."""
+        from app.services.stripe_billing import sync_subscription_status
+
+        org = Organization(
+            id=uuid4(),
+            name="No Sub Org",
+            slug=f"no-sub-{uuid4().hex[:8]}",
+            plan_id="free",
+            is_active=True,
+            stripe_subscription_id=None,
+        )
+        db_session.add(org)
+        await db_session.flush()
         await sync_subscription_status(db=db_session, org_id=org.id)

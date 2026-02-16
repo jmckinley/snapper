@@ -40,6 +40,8 @@ os.environ["ALLOWED_ORIGINS"] = "http://testserver"
 os.environ["ALLOWED_HOSTS"] = "testserver,localhost"
 os.environ["REQUIRE_API_KEY"] = "false"
 os.environ["REQUIRE_VAULT_AUTH"] = "false"
+os.environ["DEBUG"] = "true"  # Disable 'Secure' flag on cookies so http://testserver works
+os.environ["SELF_HOSTED"] = "true"  # Bypass auth middleware for legacy tests
 
 from app.config import get_settings
 

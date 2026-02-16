@@ -19,6 +19,11 @@ EXCLUDED_PATHS = {
     # Setup and wizard paths
     "/wizard",
     "/api/v1/setup",
+    # Auth pages (must be accessible on first run)
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
     # Static assets
     "/static",
     # Health checks
