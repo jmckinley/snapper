@@ -200,6 +200,10 @@ class RoleChecker:
         self.required_permission = required_permission
 
     async def __call__(self, request: Request, db: AsyncSession = Depends(get_db)):
+        # Skip RBAC when no user session (API key auth, unauthenticated requests)
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            return None
         user = await get_current_user(request, db)
         effective = getattr(user, "_effective_permissions", set())
         if user.is_admin or self.required_permission in effective:
