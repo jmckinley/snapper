@@ -5,8 +5,8 @@ api_key_rotated_at to agents;
 encryption_key_version to pii_vault_entries;
 external_id to teams.
 
-Revision ID: bb27cc38dd49
-Revises: aa16bb27cc38
+Revision ID: cc38dd49ee50
+Revises: bb27cc38dd49
 Create Date: 2026-02-17 10:00:00.000000
 
 """
@@ -18,8 +18,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "bb27cc38dd49"
-down_revision: Union[str, None] = "aa16bb27cc38"
+revision: str = "cc38dd49ee50"
+down_revision: Union[str, None] = "bb27cc38dd49"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
