@@ -33,9 +33,9 @@ class RegisterRequest(BaseModel):
             raise ValueError("Username must be at least 3 characters")
         if len(v) > 50:
             raise ValueError("Username must be at most 50 characters")
-        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+        if not re.match(r"^[a-zA-Z0-9_.@+%-]+$", v):
             raise ValueError(
-                "Username can only contain letters, numbers, underscores, and hyphens"
+                "Username can only contain letters, numbers, underscores, hyphens, dots, and @"
             )
         return v
 
