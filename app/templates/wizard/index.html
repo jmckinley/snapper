@@ -753,35 +753,54 @@
     async function saveNotifications() {
         const telegramEnabled = document.getElementById('notify-telegram').checked;
         const slackEnabled = document.getElementById('notify-slack').checked;
+        const emailEnabled = document.getElementById('notify-email').checked;
+
+        const token = telegramEnabled ? document.getElementById('wizard-telegram-token').value : null;
+        const chatId = telegramEnabled ? document.getElementById('wizard-telegram-chat').value : null;
+        const webhook = slackEnabled ? document.getElementById('wizard-slack-webhook').value : null;
 
         let envLines = [];
+        if (token) envLines.push(`TELEGRAM_BOT_TOKEN=${token}`);
+        if (chatId) envLines.push(`TELEGRAM_CHAT_ID=${chatId}`);
+        if (webhook) envLines.push(`SLACK_WEBHOOK_URL=${webhook}`);
 
-        if (telegramEnabled) {
-            const token = document.getElementById('wizard-telegram-token').value;
-            const chatId = document.getElementById('wizard-telegram-chat').value;
-            if (token) envLines.push(`TELEGRAM_BOT_TOKEN=${token}`);
-            if (chatId) envLines.push(`TELEGRAM_CHAT_ID=${chatId}`);
-
-            if (token && chatId) {
-                try {
-                    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: chatId,
-                            text: '\ud83d\udc22 *Snapper Connected!*\n\nYou will receive security alerts here.',
-                            parse_mode: 'Markdown'
-                        })
-                    });
-                } catch (e) {
-                    console.warn('Telegram test error:', e);
-                }
+        // Persist to backend
+        try {
+            const resp = await fetch('/api/v1/setup/save-notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    telegram_enabled: telegramEnabled,
+                    telegram_bot_token: token || null,
+                    telegram_chat_id: chatId || null,
+                    slack_enabled: slackEnabled,
+                    slack_webhook_url: webhook || null,
+                    email_enabled: emailEnabled
+                })
+            });
+            if (!resp.ok) {
+                const err = await resp.json();
+                console.warn('Save notifications error:', err.detail || err);
             }
+        } catch (e) {
+            console.warn('Save notifications fetch error:', e);
         }
 
-        if (slackEnabled) {
-            const webhook = document.getElementById('wizard-slack-webhook').value;
-            if (webhook) envLines.push(`SLACK_WEBHOOK_URL=${webhook}`);
+        // Send Telegram test message if configured
+        if (telegramEnabled && token && chatId) {
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: '\ud83d\udc22 *Snapper Connected!*\n\nYou will receive security alerts here.',
+                        parse_mode: 'Markdown'
+                    })
+                });
+            } catch (e) {
+                console.warn('Telegram test error:', e);
+            }
         }
 
         window.notificationEnvConfig = envLines.join('\n');

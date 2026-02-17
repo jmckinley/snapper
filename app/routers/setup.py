@@ -66,6 +66,17 @@ class QuickRegisterRequest(BaseModel):
     security_profile: str = "recommended"  # strict, recommended, permissive
 
 
+class SaveNotificationsRequest(BaseModel):
+    """Request to save notification channel configuration."""
+
+    telegram_enabled: bool = False
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    slack_enabled: bool = False
+    slack_webhook_url: Optional[str] = None
+    email_enabled: bool = False
+
+
 class InstallConfigRequest(BaseModel):
     """Request to install agent config to disk."""
 
@@ -692,6 +703,88 @@ async def configure_sso(
         }
 
     return response
+
+
+# ============================================================================
+# Notification Configuration
+# ============================================================================
+
+
+@router.post("/save-notifications")
+async def save_notifications(
+    request: SaveNotificationsRequest,
+    req: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Save notification channel configuration for the organization.
+
+    Stores Telegram, Slack, and email notification settings in the
+    organization's settings JSONB column. Falls back to first org
+    for self-hosted / localhost setups.
+    """
+    # Validate: if channel enabled, require its credentials
+    if request.telegram_enabled:
+        if not request.telegram_bot_token or not request.telegram_chat_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Telegram requires both bot_token and chat_id when enabled",
+            )
+    if request.slack_enabled:
+        if not request.slack_webhook_url:
+            raise HTTPException(
+                status_code=400,
+                detail="Slack requires webhook_url when enabled",
+            )
+
+    from app.models.organizations import Organization
+
+    # Resolve org: auth middleware sets org_id, or fall back to first org
+    org = None
+    org_id = getattr(req.state, "org_id", None) if hasattr(req, "state") else None
+    if org_id:
+        result = await db.execute(
+            select(Organization).where(Organization.id == org_id)
+        )
+        org = result.scalar_one_or_none()
+
+    if not org:
+        # Self-hosted fallback: use first org in DB
+        result = await db.execute(
+            select(Organization).where(Organization.deleted_at.is_(None)).limit(1)
+        )
+        org = result.scalar_one_or_none()
+
+    if not org:
+        # No org exists yet — create a default one for self-hosted
+        org = Organization(
+            name="Default",
+            slug="default",
+            settings={},
+        )
+        db.add(org)
+        await db.flush()
+
+    # Merge notification config into existing settings (preserve SSO/SCIM keys)
+    settings = dict(org.settings or {})
+
+    enabled_channels = []
+    if request.telegram_enabled:
+        enabled_channels.append("telegram")
+    if request.slack_enabled:
+        enabled_channels.append("slack")
+    if request.email_enabled:
+        enabled_channels.append("email")
+
+    settings["notification_channels"] = enabled_channels
+    settings["telegram_bot_token"] = request.telegram_bot_token if request.telegram_enabled else None
+    settings["telegram_chat_id"] = request.telegram_chat_id if request.telegram_enabled else None
+    settings["slack_webhook_url"] = request.slack_webhook_url if request.slack_enabled else None
+    settings["email_enabled"] = request.email_enabled
+
+    org.settings = settings
+    await db.commit()
+
+    return {"status": "saved", "channels": enabled_channels}
 
 
 # ============================================================================

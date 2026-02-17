@@ -337,6 +337,55 @@ async def send_to_splunk_hec(payload: Dict[str, Any]) -> bool:
         return False
 
 
+async def get_org_notification_config(
+    org_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Load notification config from an organization's settings.
+
+    Returns org-scoped values for telegram/slack/email, falling back
+    to global env vars when org settings are empty or org_id is None.
+    """
+    settings = get_settings()
+    result: Dict[str, Any] = {
+        "telegram_bot_token": settings.TELEGRAM_BOT_TOKEN,
+        "telegram_chat_id": settings.TELEGRAM_CHAT_ID,
+        "slack_webhook_url": settings.SLACK_WEBHOOK_URL,
+        "email_enabled": bool(settings.SMTP_HOST),
+        "notification_channels": [],
+    }
+
+    if not org_id:
+        return result
+
+    try:
+        from app.database import get_db_context
+        from app.models.organizations import Organization
+
+        async with get_db_context() as db:
+            from sqlalchemy import select
+            row = await db.execute(
+                select(Organization).where(Organization.id == org_id)
+            )
+            org = row.scalar_one_or_none()
+            if org and org.settings:
+                s = org.settings
+                channels = s.get("notification_channels", [])
+                if channels:
+                    result["notification_channels"] = channels
+                if s.get("telegram_bot_token"):
+                    result["telegram_bot_token"] = s["telegram_bot_token"]
+                if s.get("telegram_chat_id"):
+                    result["telegram_chat_id"] = s["telegram_chat_id"]
+                if s.get("slack_webhook_url"):
+                    result["slack_webhook_url"] = s["slack_webhook_url"]
+                if "email_enabled" in s:
+                    result["email_enabled"] = s["email_enabled"]
+    except Exception as e:
+        logger.warning(f"Failed to load org notification config: {e}")
+
+    return result
+
+
 async def publish_event(
     action: str,
     severity: str,
