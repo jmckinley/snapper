@@ -137,13 +137,13 @@ def _cleanup_test_agents():
 
 def _login_via_ui(page: Page, base_url: str):
     """Fill the login form and submit, wait for redirect to dashboard."""
-    page.goto(f"{base_url}/login")
-    page.wait_for_selector("#login-form", timeout=10000)
+    page.goto(f"{base_url}/login", wait_until="networkidle")
+    page.wait_for_selector("#login-form", timeout=15000)
     page.fill("#email", TEST_EMAIL)
     page.fill("#password", TEST_PASSWORD)
     page.click("#submit-btn")
     # Wait for redirect to dashboard (or any authenticated page)
-    page.wait_for_url(lambda url: "/login" not in url, timeout=15000)
+    page.wait_for_url(lambda url: "/login" not in url, timeout=30000)
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -73,14 +73,18 @@ class TestWizardStep2AgentType:
         wizard_page.wait_for_selector("#step2", state="visible")
         return wizard_page
 
-    def test_six_agent_cards_visible(self, step2_page: Page):
+    def test_agent_cards_visible(self, step2_page: Page):
         cards = step2_page.locator(".agent-type-card")
-        expect(cards).to_have_count(6)
+        expect(cards).to_have_count(10)
         expect(step2_page.locator('[data-type="openclaw"]')).to_be_visible()
         expect(step2_page.locator('[data-type="claude-code"]')).to_be_visible()
         expect(step2_page.locator('[data-type="cursor"]')).to_be_visible()
         expect(step2_page.locator('[data-type="windsurf"]')).to_be_visible()
         expect(step2_page.locator('[data-type="cline"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="openai"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="anthropic"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="gemini"]')).to_be_visible()
+        expect(step2_page.locator('[data-type="browser-extension"]')).to_be_visible()
         expect(step2_page.locator('[data-type="custom"]')).to_be_visible()
 
     def test_register_button_starts_disabled(self, step2_page: Page):
