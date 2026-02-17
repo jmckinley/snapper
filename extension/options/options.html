@@ -252,6 +252,26 @@
         <span class="toggle-slider"></span>
       </label>
     </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Copilot</div>
+        <div class="toggle-desc">copilot.microsoft.com</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="copilot_enabled" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Grok</div>
+        <div class="toggle-desc">grok.com</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="grok_enabled" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
   </div>
 
   <div class="section">
@@ -259,12 +279,19 @@
     <div class="toggle-row">
       <div>
         <div class="toggle-label">Scan user input for PII</div>
-        <div class="toggle-desc">Warn before sending sensitive data to AI services</div>
+        <div class="toggle-desc">Warn or block before sending sensitive data to AI services</div>
       </div>
       <label class="toggle">
         <input type="checkbox" id="pii_scanning" checked>
         <span class="toggle-slider"></span>
       </label>
+    </div>
+    <div class="field" style="margin-top: 12px;">
+      <label>PII Action</label>
+      <select id="pii_blocking_mode">
+        <option value="warn">Warn (allow bypass with "Send Anyway")</option>
+        <option value="block">Block (prevent send, no bypass)</option>
+      </select>
     </div>
   </div>
 

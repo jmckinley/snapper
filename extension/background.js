@@ -25,6 +25,7 @@ async function getConfig() {
       "agent_id",
       "fail_mode",
       "pii_scanning",
+      "pii_blocking_mode",
     ]);
     if (managed.snapper_url) {
       return {
@@ -33,6 +34,7 @@ async function getConfig() {
         agentId: managed.agent_id || "browser-extension",
         failMode: managed.fail_mode || "closed",
         piiScanning: managed.pii_scanning !== false,
+        piiBlockingMode: managed.pii_blocking_mode || "warn",
         managed: true,
       };
     }
@@ -47,6 +49,7 @@ async function getConfig() {
     "agent_id",
     "fail_mode",
     "pii_scanning",
+    "pii_blocking_mode",
   ]);
 
   return {
@@ -55,6 +58,7 @@ async function getConfig() {
     agentId: local.agent_id || "browser-extension",
     failMode: local.fail_mode || "closed",
     piiScanning: local.pii_scanning !== false,
+    piiBlockingMode: local.pii_blocking_mode || "warn",
     managed: false,
   };
 }

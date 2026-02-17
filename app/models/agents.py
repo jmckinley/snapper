@@ -119,6 +119,11 @@ class Agent(Base):
         nullable=True,
         comment="Last time the API key was used",
     )
+    api_key_rotated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Last time the API key was rotated",
+    )
 
     # Status and trust
     status: Mapped[AgentStatus] = mapped_column(

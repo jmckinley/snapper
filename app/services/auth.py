@@ -189,9 +189,12 @@ async def authenticate_user(
     """
     Authenticate a user by email and password.
 
-    Updates last_login_at on success.
-    Raises ValueError if credentials are invalid.
+    Checks account lockout, increments failed attempts on bad password,
+    locks account after MAX_LOGIN_ATTEMPTS failures (30-min lockout),
+    and resets on success. Updates last_login_at on success.
+    Raises ValueError if credentials are invalid or account is locked.
     """
+    settings = get_settings()
     stmt = select(User).where(
         User.email == email.lower().strip(),
         User.deleted_at.is_(None),
@@ -202,13 +205,30 @@ async def authenticate_user(
     if not user:
         raise ValueError("Invalid email or password")
 
+    # Check account lockout
+    if user.is_locked:
+        raise ValueError("Account is locked due to too many failed login attempts")
+
     if not verify_password(password, user.password_hash):
+        # Increment failed attempts
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(
+                minutes=settings.LOCKOUT_DURATION_MINUTES
+            )
+            logger.warning(
+                f"Account locked for user {user.id} ({user.email}) "
+                f"after {user.failed_login_attempts} failed attempts"
+            )
+        await db.flush()
         raise ValueError("Invalid email or password")
 
     if not user.is_active:
         raise ValueError("Account is disabled")
 
-    # Update last login
+    # Reset failed attempts on success
+    user.failed_login_attempts = 0
+    user.locked_until = None
     user.last_login_at = datetime.now(timezone.utc)
     await db.flush()
 

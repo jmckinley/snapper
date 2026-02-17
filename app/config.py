@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     PII_VAULT_TOKEN_TTL_SECONDS: int = 30  # Resolved value Redis TTL (one-time retrieval)
     REQUIRE_VAULT_AUTH: bool = False  # Require API key or internal source for vault writes
 
+    # Account lockout
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_DURATION_MINUTES: int = 30
+
+    # Audit retention
+    AUDIT_RETENTION_DAYS: int = 90
+
     # Authentication (JWT)
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

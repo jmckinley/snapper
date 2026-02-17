@@ -64,8 +64,27 @@ class AuditAction(str, Enum):
     # User actions
     USER_LOGIN = "user_login"
     USER_LOGOUT = "user_logout"
+    USER_REGISTERED = "user_registered"
+    USER_LOGIN_FAILED = "user_login_failed"
+    USER_LOCKED = "user_locked"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
+
+    # Organization actions
+    ORG_CREATED = "org_created"
+    ORG_UPDATED = "org_updated"
+    ORG_DELETED = "org_deleted"
+    ORG_MEMBER_INVITED = "org_member_invited"
+    ORG_MEMBER_REMOVED = "org_member_removed"
+    ORG_SWITCHED = "org_switched"
+
+    # Key management
+    API_KEY_ROTATED = "api_key_rotated"
+    VAULT_KEY_ROTATED = "vault_key_rotated"
+
+    # MFA
+    MFA_ENABLED = "mfa_enabled"
+    MFA_DISABLED = "mfa_disabled"
 
     # PII Vault events
     PII_VAULT_CREATED = "pii_vault_created"

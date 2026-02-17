@@ -92,16 +92,44 @@ function scanForPII(text) {
   return findings;
 }
 
+// PII blocking mode: "warn" (default) or "block" (no bypass)
+let snapperPIIBlockingMode = "warn";
+
+// Load blocking mode from storage
+(function loadPIIMode() {
+  try {
+    chrome.storage.managed.get(["pii_blocking_mode"], (result) => {
+      if (result && result.pii_blocking_mode) {
+        snapperPIIBlockingMode = result.pii_blocking_mode;
+      }
+    });
+  } catch (e) {
+    // Managed storage not available
+  }
+  try {
+    chrome.storage.local.get(["pii_blocking_mode"], (result) => {
+      if (result && result.pii_blocking_mode && snapperPIIBlockingMode === "warn") {
+        snapperPIIBlockingMode = result.pii_blocking_mode;
+      }
+    });
+  } catch (e) {
+    // Storage not available
+  }
+})();
+
 /**
  * Show PII warning modal before user submits input.
+ * In "block" mode, no "Send Anyway" button is shown.
  * @param {Array} findings - PII scan results.
- * @param {Function} onProceed - Called if user chooses to proceed.
+ * @param {Function} onProceed - Called if user chooses to proceed (warn mode only).
  * @param {Function} onCancel - Called if user cancels.
  */
 function showPIIWarning(findings, onProceed, onCancel) {
   // Remove existing warning if any
   const existing = document.getElementById("snapper-pii-warning");
   if (existing) existing.remove();
+
+  const isBlocking = snapperPIIBlockingMode === "block";
 
   const overlay = document.createElement("div");
   overlay.id = "snapper-pii-warning";
@@ -117,20 +145,32 @@ function showPIIWarning(findings, onProceed, onCancel) {
     )
     .join("");
 
+  const headerText = isBlocking
+    ? "Snapper: PII Detected — Message Blocked"
+    : "Snapper: PII Detected in Input";
+
+  const noteText = isBlocking
+    ? "PII detected — message blocked by policy. Remove sensitive data before sending."
+    : "This data will be sent to the AI service. Consider using Snapper vault tokens instead.";
+
+  const actionsHtml = isBlocking
+    ? `<button id="snapper-pii-cancel" class="snapper-btn snapper-btn-secondary">OK</button>`
+    : `<button id="snapper-pii-cancel" class="snapper-btn snapper-btn-secondary">Cancel</button>
+       <button id="snapper-pii-proceed" class="snapper-btn snapper-btn-warning">Send Anyway</button>`;
+
   overlay.innerHTML = `
     <div class="snapper-modal">
       <div class="snapper-modal-header snapper-warning">
         <span class="snapper-icon">&#9888;</span>
-        <span>Snapper: PII Detected in Input</span>
+        <span>${headerText}</span>
       </div>
       <div class="snapper-modal-body">
         <p>The following sensitive data was detected in your message:</p>
         ${findingsList}
-        <p class="snapper-modal-note">This data will be sent to the AI service. Consider using Snapper vault tokens instead.</p>
+        <p class="snapper-modal-note">${noteText}</p>
       </div>
       <div class="snapper-modal-actions">
-        <button id="snapper-pii-cancel" class="snapper-btn snapper-btn-secondary">Cancel</button>
-        <button id="snapper-pii-proceed" class="snapper-btn snapper-btn-warning">Send Anyway</button>
+        ${actionsHtml}
       </div>
     </div>
   `;
@@ -142,10 +182,15 @@ function showPIIWarning(findings, onProceed, onCancel) {
     if (onCancel) onCancel();
   });
 
-  document.getElementById("snapper-pii-proceed").addEventListener("click", () => {
-    overlay.remove();
-    if (onProceed) onProceed();
-  });
+  if (!isBlocking) {
+    const proceedBtn = document.getElementById("snapper-pii-proceed");
+    if (proceedBtn) {
+      proceedBtn.addEventListener("click", () => {
+        overlay.remove();
+        if (onProceed) onProceed();
+      });
+    }
+  }
 }
 
 /**

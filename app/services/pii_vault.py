@@ -34,36 +34,63 @@ VAULT_LABEL_REGEX = re.compile(
 )
 
 
-def get_encryption_key() -> bytes:
+def get_encryption_key(version: int = 1) -> bytes:
     """
     Derive a Fernet-compatible encryption key from SECRET_KEY using HKDF.
 
     This ensures the vault encryption is tied to the application secret
     but uses a separate derived key for defense-in-depth.
+    Version parameter allows key rotation.
     """
     secret_bytes = settings.SECRET_KEY.encode("utf-8")
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
         salt=b"snapper-pii-vault-v1",
-        info=b"pii-vault-encryption-key",
+        info=f"pii-vault-encryption-key-v{version}".encode("utf-8"),
     )
     derived = hkdf.derive(secret_bytes)
     return base64.urlsafe_b64encode(derived)
 
 
-def encrypt_value(plaintext: str) -> bytes:
+def encrypt_value(plaintext: str, key_version: int = 1) -> bytes:
     """Encrypt a plaintext value using Fernet (AES-128-CBC + HMAC)."""
-    key = get_encryption_key()
+    key = get_encryption_key(key_version)
     f = Fernet(key)
     return f.encrypt(plaintext.encode("utf-8"))
 
 
-def decrypt_value(ciphertext: bytes) -> str:
+def decrypt_value(ciphertext: bytes, key_version: int = 1) -> str:
     """Decrypt a Fernet-encrypted value back to plaintext."""
-    key = get_encryption_key()
+    key = get_encryption_key(key_version)
     f = Fernet(key)
     return f.decrypt(ciphertext).decode("utf-8")
+
+
+async def rotate_vault_key(db: AsyncSession, new_version: int) -> int:
+    """
+    Re-encrypt all vault entries with a new key version.
+
+    Returns count of re-encrypted entries.
+    """
+    stmt = select(PIIVaultEntry).where(PIIVaultEntry.is_deleted == False)
+    result = await db.execute(stmt)
+    entries = result.scalars().all()
+
+    count = 0
+    for entry in entries:
+        old_version = getattr(entry, "encryption_key_version", 1) or 1
+        if old_version == new_version:
+            continue
+        try:
+            plaintext = decrypt_value(entry.encrypted_value, old_version)
+            entry.encrypted_value = encrypt_value(plaintext, new_version)
+            entry.encryption_key_version = new_version
+            count += 1
+        except Exception as e:
+            logger.error(f"Failed to re-encrypt entry {entry.id}: {e}")
+    await db.flush()
+    return count
 
 
 def generate_token() -> str:

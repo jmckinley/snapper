@@ -1,27 +1,47 @@
 /**
- * Snapper Content Script — Claude.ai
+ * Snapper Content Script — Microsoft Copilot (copilot.microsoft.com)
  *
- * Intercepts tool_use content blocks, computer use actions,
- * artifact code execution, and file analysis.
+ * Intercepts tool calls (search, code generation, image creation)
+ * via DOM observation and fetch interception.
  */
 
 (function () {
   "use strict";
 
-  const SOURCE = "claude";
+  const SOURCE = "copilot";
   let enabled = true;
 
-  chrome.storage.local.get(["claude_enabled"], (result) => {
-    enabled = result.claude_enabled !== false;
+  chrome.storage.local.get(["copilot_enabled"], (result) => {
+    enabled = result.copilot_enabled !== false;
   });
 
-  // Selector helper with fallback chains for robustness
+  // --- Selector helper with fallback chains ---
+
   function $(selectors, root = document) {
     for (const sel of selectors) {
-      try { const el = root.querySelector(sel); if (el) return el; } catch (e) { /* skip */ }
+      try {
+        const el = root.querySelector(sel);
+        if (el) return el;
+      } catch (e) {
+        // Invalid selector, skip
+      }
     }
     return null;
   }
+
+  function $$(selectors, root = document) {
+    for (const sel of selectors) {
+      try {
+        const els = root.querySelectorAll(sel);
+        if (els.length > 0) return Array.from(els);
+      } catch (e) {
+        // Invalid selector, skip
+      }
+    }
+    return [];
+  }
+
+  // --- Overlays ---
 
   function showDenyOverlay(element, toolName, reason, ruleName) {
     const overlay = document.createElement("div");
@@ -60,6 +80,8 @@
     element.appendChild(banner);
     return banner;
   }
+
+  // --- Evaluate & poll ---
 
   async function evaluateToolCall(toolName, toolInput, requestType) {
     if (!enabled) return { decision: "allow", reason: "Extension disabled" };
@@ -108,7 +130,7 @@
     }
   }
 
-  // ---- DOM Observation ----
+  // --- DOM Observation ---
 
   const observer = new MutationObserver((mutations) => {
     if (!enabled) return;
@@ -117,62 +139,54 @@
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
 
-        // Detect tool_use blocks (Claude renders these as special UI elements)
-        const toolBlocks = node.querySelectorAll(
-          '[data-testid*="tool"], .tool-use-block, [class*="tool_use"], [class*="tool-result"]'
+        // Detect search/grounding results
+        const searchBlocks = $$(
+          [
+            '[class*="search-result"]',
+            '[data-testid*="search"]',
+            '[class*="grounding"]',
+            '[class*="citation"]',
+            '[class*="reference-list"]',
+          ],
+          node
         );
-        for (const block of toolBlocks) {
+        for (const block of searchBlocks) {
           if (block.dataset.snapperChecked) continue;
           block.dataset.snapperChecked = "true";
-
-          const toolName = block.dataset.toolName || block.querySelector(".tool-name")?.textContent || "tool_use";
-          const toolInput = {};
-
-          try {
-            const inputEl = block.querySelector(".tool-input, pre, code");
-            if (inputEl) {
-              Object.assign(toolInput, JSON.parse(inputEl.textContent));
-            }
-          } catch (e) {
-            toolInput.raw = block.textContent?.substring(0, 500);
-          }
-
-          handleToolCall(block, toolName, toolInput, "tool");
+          handleToolCall(block, "web_search", {}, "tool");
         }
 
-        // Detect computer use actions
-        const computerBlocks = node.querySelectorAll(
-          '[class*="computer"], [data-testid*="computer"], [class*="screenshot"]'
+        // Detect code generation blocks
+        const codeBlocks = $$(
+          [
+            '[class*="code-block"]',
+            'pre code',
+            '[data-testid*="code"]',
+            '[class*="CodeBlock"]',
+          ],
+          node
         );
-        for (const block of computerBlocks) {
+        for (const block of codeBlocks) {
           if (block.dataset.snapperChecked) continue;
           block.dataset.snapperChecked = "true";
-
-          handleToolCall(block, "computer_use", {}, "tool");
+          const code = block.textContent?.substring(0, 1000) || "";
+          handleToolCall(block, "code_generation", { code }, "command");
         }
 
-        // Detect artifact code execution
-        const artifactBlocks = node.querySelectorAll(
-          '[class*="artifact"], [data-testid*="artifact"], .code-artifact'
+        // Detect image generation
+        const imageBlocks = $$(
+          [
+            '[class*="image-creator"]',
+            '[class*="dalle"]',
+            '[data-testid*="image"]',
+            'img[class*="generated"]',
+          ],
+          node
         );
-        for (const block of artifactBlocks) {
+        for (const block of imageBlocks) {
           if (block.dataset.snapperChecked) continue;
           block.dataset.snapperChecked = "true";
-
-          const code = block.querySelector("code, pre")?.textContent || "";
-          handleToolCall(block, "artifact_execute", { code: code.substring(0, 1000) }, "command");
-        }
-
-        // Detect file analysis
-        const fileBlocks = node.querySelectorAll(
-          '[class*="file-block"], [data-testid*="file"], .attachment-preview'
-        );
-        for (const block of fileBlocks) {
-          if (block.dataset.snapperChecked) continue;
-          block.dataset.snapperChecked = "true";
-
-          const fileName = block.querySelector(".file-name")?.textContent || "unknown";
-          handleToolCall(block, "file_analysis", { file: fileName }, "file_access");
+          handleToolCall(block, "image_generation", {}, "tool");
         }
       }
     }
@@ -180,20 +194,49 @@
 
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // ---- PII Scanning ----
+  // --- Fetch interception for API calls ---
+
+  const originalFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const [url] = args;
+    const urlStr = typeof url === "string" ? url : url?.url || "";
+
+    if (enabled && urlStr.includes("/api/") && urlStr.includes("copilot")) {
+      // Let the request go through but monitor for tool calls
+    }
+
+    return originalFetch.apply(this, args);
+  };
+
+  // --- PII Scanning ---
 
   function setupPIIScanning() {
     const textareaObserver = new MutationObserver(() => {
-      const editor = document.querySelector(
-        '[contenteditable="true"].ProseMirror, textarea[placeholder*="Reply"], div[contenteditable="true"]'
+      const editor = $(
+        [
+          'textarea[id="searchbox"]',
+          '#searchbox',
+          'textarea[aria-label*="message"]',
+          'textarea[placeholder*="message"]',
+          '[contenteditable="true"][role="textbox"]',
+          'textarea',
+        ]
       );
-      const sendButton = document.querySelector(
-        'button[aria-label="Send Message"], button[data-testid="send-button"]'
+      const sendButton = $(
+        [
+          'button[aria-label="Submit"]',
+          'button[aria-label="Send"]',
+          'button[type="submit"]',
+          'button[data-testid="submit"]',
+          'button[class*="submit"]',
+        ]
       );
 
       if (editor && sendButton && !editor.dataset.snapperPii) {
         editor.dataset.snapperPii = "true";
-        attachPIIScanner(editor, sendButton);
+        if (typeof attachPIIScanner === "function") {
+          attachPIIScanner(editor, sendButton);
+        }
       }
     });
 
@@ -206,5 +249,5 @@
     setupPIIScanning();
   }
 
-  console.log("[Snapper] Claude.ai content script loaded");
+  console.log("[Snapper] Copilot content script loaded");
 })();

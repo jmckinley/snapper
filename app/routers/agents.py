@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_agents
 from app.middleware.metrics import set_active_agents
 from app.services.event_publisher import publish_from_audit_log
 from app.services.quota import QuotaChecker
@@ -237,7 +237,11 @@ async def update_agent(
     return AgentResponse.model_validate(agent)
 
 
-@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_delete_agents)],
+)
 async def delete_agent(
     agent_id: UUID,
     db: DbSessionDep,
@@ -539,18 +543,20 @@ async def regenerate_api_key(
             detail=f"Agent {agent_id} not found",
         )
 
+    from datetime import datetime as dt, timezone as tz
     old_key_prefix = agent.api_key[:12] + "..."  # Log prefix only
 
     # Generate new key
     agent.api_key = generate_api_key()
     agent.api_key_last_used = None  # Reset last used
+    agent.api_key_rotated_at = dt.now(tz.utc)
 
     # Audit log
     audit_log = AuditLog(
-        action=AuditAction.AGENT_UPDATED,
+        action=AuditAction.API_KEY_ROTATED,
         severity=AuditSeverity.WARNING,
         agent_id=agent.id,
-        message=f"API key regenerated for agent '{agent.name}'",
+        message=f"API key rotated for agent '{agent.name}'",
         old_value={"api_key_prefix": old_key_prefix},
         new_value={"api_key_prefix": agent.api_key[:12] + "..."},
     )

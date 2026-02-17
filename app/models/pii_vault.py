@@ -118,6 +118,12 @@ class PIIVaultEntry(Base):
         nullable=False,
         comment="Fernet-encrypted PII value",
     )
+    encryption_key_version: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False,
+        comment="Version of encryption key used",
+    )
 
     # Masked display value (safe to show in UI/Telegram)
     masked_value: Mapped[str] = mapped_column(

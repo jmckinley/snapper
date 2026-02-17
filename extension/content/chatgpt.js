@@ -16,6 +16,14 @@
     enabled = result.chatgpt_enabled !== false;
   });
 
+  // Selector helper with fallback chains for robustness
+  function $(selectors, root = document) {
+    for (const sel of selectors) {
+      try { const el = root.querySelector(sel); if (el) return el; } catch (e) { /* skip */ }
+    }
+    return null;
+  }
+
   /**
    * Show deny overlay on a tool output element.
    */

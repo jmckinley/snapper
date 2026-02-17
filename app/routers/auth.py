@@ -1,6 +1,8 @@
 """Authentication router for user registration, login, and session management."""
 
+import hashlib
 import logging
+import secrets
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -10,11 +12,17 @@ from sqlalchemy.orm import joinedload
 
 from app.config import get_settings
 from app.database import get_db
+from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.organizations import Organization, OrganizationMembership
 from app.models.users import User
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
+    MFALoginRequest,
+    MFALoginResponse,
+    MFASetupResponse,
+    MFAVerifyRequest,
+    MFAVerifySetupResponse,
     OrgMembershipInfo,
     RegisterRequest,
     ResetPasswordRequest,
@@ -33,6 +41,32 @@ from app.services.auth import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _create_audit_log(
+    action: AuditAction,
+    message: str,
+    request: Request,
+    user_id: UUID = None,
+    org_id: UUID = None,
+    severity: AuditSeverity = AuditSeverity.INFO,
+    details: dict = None,
+) -> AuditLog:
+    """Create an audit log entry with request context."""
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent", "")[:500]
+    return AuditLog(
+        action=action,
+        severity=severity,
+        message=message,
+        user_id=user_id,
+        organization_id=org_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        endpoint=str(request.url.path),
+        method=request.method,
+        details=details or {},
+    )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -209,11 +243,18 @@ async def register(
     # Set cookies
     _set_auth_cookies(response, access_token, refresh_token)
 
+    # Audit log
+    db.add(_create_audit_log(
+        AuditAction.USER_REGISTERED,
+        f"User registered: {user.email}",
+        request, user_id=user.id, org_id=org_id,
+    ))
+
     logger.info(f"User registered: {user.email} ({user.id})")
     return UserResponse.model_validate(user)
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/login")
 async def login(
     request: Request,
     response: Response,
@@ -223,15 +264,37 @@ async def login(
     """
     Authenticate user and create session.
 
-    Validates credentials, creates JWT tokens, and sets httponly cookies.
+    Validates credentials. If MFA is enabled, returns a temporary MFA token
+    instead of full session tokens. Otherwise creates JWT tokens and sets cookies.
     """
     try:
         user = await authenticate_user(db, body.email, body.password)
     except ValueError as e:
+        # Audit failed login
+        db.add(_create_audit_log(
+            AuditAction.USER_LOGIN_FAILED,
+            f"Login failed for {body.email}: {e}",
+            request, severity=AuditSeverity.WARNING,
+            details={"email": body.email},
+        ))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
         )
+
+    # If MFA is enabled, issue a temporary MFA token instead
+    if user.totp_enabled:
+        settings = get_settings()
+        from datetime import datetime, timedelta, timezone
+        from jose import jwt
+        expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+        mfa_payload = {
+            "sub": str(user.id),
+            "exp": expire,
+            "type": "mfa_challenge",
+        }
+        mfa_token = jwt.encode(mfa_payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+        return MFALoginResponse(requires_mfa=True, mfa_token=mfa_token)
 
     # Get default org membership
     memberships = await _get_user_org_memberships(db, user.id)
@@ -252,16 +315,32 @@ async def login(
     # Set cookies
     _set_auth_cookies(response, access_token, refresh_token)
 
+    # Audit log
+    db.add(_create_audit_log(
+        AuditAction.USER_LOGIN,
+        f"User logged in: {user.email}",
+        request, user_id=user.id, org_id=org_id,
+    ))
+
     logger.info(f"User logged in: {user.email} ({user.id})")
     return UserResponse.model_validate(user)
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     """
     Log out the current user by clearing authentication cookies.
     """
     _delete_auth_cookies(response)
+
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        db.add(_create_audit_log(
+            AuditAction.USER_LOGOUT,
+            "User logged out",
+            request, user_id=UUID(user_id),
+        ))
+
     return {"message": "Logged out"}
 
 
@@ -446,7 +525,245 @@ async def switch_org(
         max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
+    # Audit log
+    db.add(_create_audit_log(
+        AuditAction.ORG_SWITCHED,
+        f"Switched to organization {body.organization_id}",
+        request, user_id=user.id, org_id=body.organization_id,
+    ))
+
     return {
         "message": "Switched organization",
         "organization_id": str(body.organization_id),
     }
+
+
+# ---------------------------------------------------------------------------
+# MFA / TOTP endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/mfa/setup", response_model=MFASetupResponse)
+async def mfa_setup(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Generate a TOTP secret and return the provisioning URI + QR code.
+
+    The secret is stored but MFA is not yet enabled until verify-setup is called.
+    """
+    user = await _get_current_user(request, db)
+
+    if user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is already enabled. Disable it first to re-setup.",
+        )
+
+    import pyotp
+    import qrcode
+    import io
+    import base64
+
+    secret = pyotp.random_base32()
+    user.totp_secret = secret
+    await db.flush()
+
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=user.email,
+        issuer_name="Snapper",
+    )
+
+    # Generate QR code as base64 PNG
+    qr = qrcode.QRCode(version=1, box_size=6, border=2)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    return MFASetupResponse(
+        provisioning_uri=provisioning_uri,
+        qr_code_base64=qr_base64,
+        secret=secret,
+    )
+
+
+@router.post("/mfa/verify-setup", response_model=MFAVerifySetupResponse)
+async def mfa_verify_setup(
+    request: Request,
+    body: MFAVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verify the first TOTP code to enable MFA.
+
+    Returns backup codes that should be saved securely.
+    """
+    user = await _get_current_user(request, db)
+
+    if user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is already enabled",
+        )
+
+    if not user.totp_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /auth/mfa/setup first",
+        )
+
+    import pyotp
+    totp = pyotp.TOTP(user.totp_secret)
+    if not totp.verify(body.code, valid_window=1):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid TOTP code",
+        )
+
+    # Generate backup codes
+    backup_codes = [secrets.token_hex(4) for _ in range(8)]
+    hashed_codes = [hashlib.sha256(c.encode()).hexdigest() for c in backup_codes]
+
+    user.totp_enabled = True
+    user.totp_backup_codes = hashed_codes
+    await db.flush()
+
+    # Audit log
+    db.add(_create_audit_log(
+        AuditAction.MFA_ENABLED,
+        f"MFA enabled for {user.email}",
+        request, user_id=user.id,
+    ))
+
+    return MFAVerifySetupResponse(enabled=True, backup_codes=backup_codes)
+
+
+@router.post("/mfa/verify")
+async def mfa_verify(
+    request: Request,
+    response: Response,
+    body: MFALoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Complete MFA verification during login flow.
+
+    Accepts the temporary MFA token + TOTP code, returns full session on success.
+    """
+    settings = get_settings()
+
+    try:
+        payload = verify_token(body.mfa_token)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
+
+    if payload.get("type") != "mfa_challenge":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA token type",
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA token",
+        )
+
+    stmt = select(User).where(User.id == UUID(user_id), User.deleted_at.is_(None))
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user or not user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or MFA not enabled",
+        )
+
+    # Try TOTP code
+    import pyotp
+    totp = pyotp.TOTP(user.totp_secret)
+    code_valid = totp.verify(body.code, valid_window=1)
+
+    # Try backup code if TOTP fails
+    if not code_valid and user.totp_backup_codes:
+        code_hash = hashlib.sha256(body.code.encode()).hexdigest()
+        if code_hash in user.totp_backup_codes:
+            code_valid = True
+            # Remove used backup code
+            user.totp_backup_codes = [c for c in user.totp_backup_codes if c != code_hash]
+
+    if not code_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid TOTP code",
+        )
+
+    # Get default org membership and issue full session
+    memberships = await _get_user_org_memberships(db, user.id)
+    default_membership = next(
+        (m for m in memberships if m.org_id == user.default_organization_id), None
+    )
+    if not default_membership and memberships:
+        default_membership = memberships[0]
+
+    org_id = default_membership.org_id if default_membership else user.default_organization_id
+    role = default_membership.role if default_membership else "member"
+
+    access_token = create_access_token(user.id, org_id, role)
+    refresh_token = create_refresh_token(user.id)
+    _set_auth_cookies(response, access_token, refresh_token)
+
+    # Audit log
+    db.add(_create_audit_log(
+        AuditAction.USER_LOGIN,
+        f"User logged in with MFA: {user.email}",
+        request, user_id=user.id, org_id=org_id,
+    ))
+
+    return UserResponse.model_validate(user)
+
+
+@router.post("/mfa/disable")
+async def mfa_disable(
+    request: Request,
+    body: MFAVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Disable MFA. Requires a valid TOTP code for confirmation.
+    """
+    user = await _get_current_user(request, db)
+
+    if not user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is not enabled",
+        )
+
+    import pyotp
+    totp = pyotp.TOTP(user.totp_secret)
+    if not totp.verify(body.code, valid_window=1):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid TOTP code",
+        )
+
+    user.totp_enabled = False
+    user.totp_secret = None
+    user.totp_backup_codes = None
+    await db.flush()
+
+    # Audit log
+    db.add(_create_audit_log(
+        AuditAction.MFA_DISABLED,
+        f"MFA disabled for {user.email}",
+        request, user_id=user.id, severity=AuditSeverity.WARNING,
+    ))
+
+    return {"message": "MFA has been disabled"}

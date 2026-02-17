@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.organizations import Organization, OrganizationMembership, OrgRole
+from app.models.organizations import Organization, OrganizationMembership, OrgRole, Team
 from app.models.users import User
 from app.services.auth import hash_password
 
@@ -446,4 +446,224 @@ async def delete_user(
     await db.flush()
 
     logger.info(f"SCIM deprovisioned user {user.id} from org {org.id}")
+    return JSONResponse(status_code=204, content=None)
+
+
+# --- Groups ---
+
+def team_to_scim_group(team: Team, members: list = None) -> Dict[str, Any]:
+    """Convert a Team to SCIM 2.0 Group resource."""
+    resource: Dict[str, Any] = {
+        "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+        "id": str(team.id),
+        "displayName": team.name,
+        "meta": {
+            "resourceType": "Group",
+            "created": team.created_at.isoformat() if team.created_at else None,
+        },
+    }
+    if team.external_id:
+        resource["externalId"] = team.external_id
+    if members is not None:
+        resource["members"] = members
+    return resource
+
+
+@router.get("/Groups")
+async def list_groups(
+    startIndex: int = Query(1, ge=1),
+    count: int = Query(100, ge=1, le=1000),
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """List groups (teams) in the organization (SCIM 2.0)."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    org = await verify_scim_token(db, authorization[7:])
+
+    base_stmt = select(Team).where(Team.organization_id == org.id)
+
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    stmt = base_stmt.offset(startIndex - 1).limit(count)
+    result = await db.execute(stmt)
+    teams = result.scalars().all()
+
+    resources = [team_to_scim_group(t) for t in teams]
+    return scim_list_response(resources, total, startIndex, len(resources))
+
+
+@router.get("/Groups/{group_id}")
+async def get_group(
+    group_id: str,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single group by ID (SCIM 2.0)."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    org = await verify_scim_token(db, authorization[7:])
+
+    try:
+        gid = uuid.UUID(group_id)
+    except ValueError:
+        return scim_error(400, "Invalid group ID format")
+
+    stmt = select(Team).where(Team.id == gid, Team.organization_id == org.id)
+    team = (await db.execute(stmt)).scalar_one_or_none()
+    if not team:
+        return scim_error(404, "Group not found")
+
+    # Get members
+    mem_stmt = (
+        select(OrganizationMembership.user_id, User.email)
+        .join(User, User.id == OrganizationMembership.user_id)
+        .where(OrganizationMembership.organization_id == org.id)
+    )
+    mem_result = await db.execute(mem_stmt)
+    members = [{"value": str(r.user_id), "display": r.email} for r in mem_result.all()]
+
+    return team_to_scim_group(team, members)
+
+
+@router.post("/Groups", status_code=201)
+async def create_group(
+    request: Request,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a group (team) via SCIM provisioning."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    org = await verify_scim_token(db, authorization[7:])
+
+    body = await request.json()
+    display_name = body.get("displayName", "")
+    if not display_name:
+        return scim_error(400, "displayName is required", "invalidValue")
+
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower().strip()).strip("-") or "group"
+
+    # Ensure slug uniqueness within org
+    existing = await db.execute(
+        select(Team).where(Team.organization_id == org.id, Team.slug == slug)
+    )
+    if existing.scalar_one_or_none():
+        slug = f"{slug}-{uuid.uuid4().hex[:6]}"
+
+    team = Team(
+        id=uuid.uuid4(),
+        organization_id=org.id,
+        name=display_name,
+        slug=slug,
+        external_id=body.get("externalId"),
+    )
+    db.add(team)
+    await db.flush()
+
+    logger.info(f"SCIM created group {team.id} ({display_name}) in org {org.id}")
+    return JSONResponse(status_code=201, content=team_to_scim_group(team, []))
+
+
+@router.put("/Groups/{group_id}")
+async def replace_group(
+    group_id: str,
+    request: Request,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace (update) a group via SCIM."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    org = await verify_scim_token(db, authorization[7:])
+
+    try:
+        gid = uuid.UUID(group_id)
+    except ValueError:
+        return scim_error(400, "Invalid group ID format")
+
+    stmt = select(Team).where(Team.id == gid, Team.organization_id == org.id)
+    team = (await db.execute(stmt)).scalar_one_or_none()
+    if not team:
+        return scim_error(404, "Group not found")
+
+    body = await request.json()
+    if "displayName" in body:
+        team.name = body["displayName"]
+    if "externalId" in body:
+        team.external_id = body["externalId"]
+
+    await db.flush()
+    return team_to_scim_group(team)
+
+
+@router.patch("/Groups/{group_id}")
+async def patch_group(
+    group_id: str,
+    request: Request,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Patch a group via SCIM (member add/remove, name changes)."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    org = await verify_scim_token(db, authorization[7:])
+
+    try:
+        gid = uuid.UUID(group_id)
+    except ValueError:
+        return scim_error(400, "Invalid group ID format")
+
+    stmt = select(Team).where(Team.id == gid, Team.organization_id == org.id)
+    team = (await db.execute(stmt)).scalar_one_or_none()
+    if not team:
+        return scim_error(404, "Group not found")
+
+    body = await request.json()
+    operations = body.get("Operations", [])
+    for op in operations:
+        op_type = op.get("op", "").lower()
+        path = op.get("path", "")
+        value = op.get("value")
+
+        if op_type == "replace":
+            if path == "displayName" or (not path and isinstance(value, dict) and "displayName" in value):
+                team.name = value if isinstance(value, str) else value.get("displayName")
+            if path == "externalId" or (not path and isinstance(value, dict) and "externalId" in value):
+                team.external_id = value if isinstance(value, str) else value.get("externalId")
+
+    await db.flush()
+    return team_to_scim_group(team)
+
+
+@router.delete("/Groups/{group_id}", status_code=204)
+async def delete_group(
+    group_id: str,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a group (team)."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    org = await verify_scim_token(db, authorization[7:])
+
+    try:
+        gid = uuid.UUID(group_id)
+    except ValueError:
+        return scim_error(400, "Invalid group ID format")
+
+    stmt = select(Team).where(Team.id == gid, Team.organization_id == org.id)
+    team = (await db.execute(stmt)).scalar_one_or_none()
+    if not team:
+        return scim_error(404, "Group not found")
+
+    if team.is_default:
+        return scim_error(400, "Cannot delete the default team")
+
+    await db.delete(team)
+    await db.flush()
+
+    logger.info(f"SCIM deleted group {gid} from org {org.id}")
     return JSONResponse(status_code=204, content=None)

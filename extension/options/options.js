@@ -10,7 +10,10 @@ const FIELDS = [
   "chatgpt_enabled",
   "claude_enabled",
   "gemini_enabled",
+  "copilot_enabled",
+  "grok_enabled",
   "pii_scanning",
+  "pii_blocking_mode",
 ];
 
 document.addEventListener("DOMContentLoaded", async () => {

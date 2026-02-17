@@ -237,3 +237,280 @@ class TestManagedConfig:
         }
         fail_mode = config.get("fail_mode", "closed")
         assert fail_mode == "closed"
+
+
+# ============================================================================
+# Enterprise Hardening: Manifest Tests
+# ============================================================================
+
+
+class TestManifest:
+    """Test manifest.json includes Copilot, Grok, and PII blocking config."""
+
+    @pytest.fixture(autouse=True)
+    def load_manifest(self):
+        import os
+
+        manifest_path = os.path.join(
+            os.path.dirname(__file__), "..", "extension", "manifest.json"
+        )
+        with open(manifest_path) as f:
+            self.manifest = json.load(f)
+
+    def test_copilot_host_permission(self):
+        """Manifest should include copilot.microsoft.com host permission."""
+        assert "*://copilot.microsoft.com/*" in self.manifest["host_permissions"]
+
+    def test_grok_host_permission(self):
+        """Manifest should include grok.com host permission."""
+        assert "*://grok.com/*" in self.manifest["host_permissions"]
+
+    def test_copilot_content_script(self):
+        """Manifest should have content script entry for Copilot."""
+        copilot_scripts = [
+            cs
+            for cs in self.manifest["content_scripts"]
+            if "*://copilot.microsoft.com/*" in cs["matches"]
+        ]
+        assert len(copilot_scripts) == 1
+        assert "content/copilot.js" in copilot_scripts[0]["js"]
+        assert "content/pii-scanner.js" in copilot_scripts[0]["js"]
+
+    def test_grok_content_script(self):
+        """Manifest should have content script entry for Grok."""
+        grok_scripts = [
+            cs
+            for cs in self.manifest["content_scripts"]
+            if "*://grok.com/*" in cs["matches"]
+        ]
+        assert len(grok_scripts) == 1
+        assert "content/grok.js" in grok_scripts[0]["js"]
+        assert "content/pii-scanner.js" in grok_scripts[0]["js"]
+
+    def test_all_content_scripts_include_pii_scanner(self):
+        """Every content script entry should include pii-scanner.js."""
+        for cs in self.manifest["content_scripts"]:
+            assert "content/pii-scanner.js" in cs["js"], (
+                f"Missing pii-scanner.js for {cs['matches']}"
+            )
+
+    def test_pii_blocking_mode_in_managed_schema(self):
+        """Managed schema should include pii_blocking_mode with warn/block enum."""
+        schema = self.manifest["storage"]["managed_schema"]
+        assert "pii_blocking_mode" in schema["properties"]
+        pii_prop = schema["properties"]["pii_blocking_mode"]
+        assert pii_prop["type"] == "string"
+        assert set(pii_prop["enum"]) == {"warn", "block"}
+
+    def test_five_content_script_entries(self):
+        """Manifest should have 5 content script entries (ChatGPT, Claude, Gemini, Copilot, Grok)."""
+        assert len(self.manifest["content_scripts"]) == 5
+
+
+# ============================================================================
+# Enterprise Hardening: Content Script File Tests
+# ============================================================================
+
+
+class TestContentScripts:
+    """Test Copilot and Grok content scripts exist and have correct structure."""
+
+    def _read_script(self, name):
+        import os
+
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "extension", "content", name
+        )
+        with open(path) as f:
+            return f.read()
+
+    def test_copilot_script_exists(self):
+        """copilot.js should exist."""
+        content = self._read_script("copilot.js")
+        assert len(content) > 0
+
+    def test_grok_script_exists(self):
+        """grok.js should exist."""
+        content = self._read_script("grok.js")
+        assert len(content) > 0
+
+    def test_copilot_source_constant(self):
+        """copilot.js should define SOURCE = "copilot"."""
+        content = self._read_script("copilot.js")
+        assert 'SOURCE = "copilot"' in content
+
+    def test_grok_source_constant(self):
+        """grok.js should define SOURCE = "grok"."""
+        content = self._read_script("grok.js")
+        assert 'SOURCE = "grok"' in content
+
+    def test_copilot_uses_iife(self):
+        """copilot.js should use IIFE pattern."""
+        content = self._read_script("copilot.js")
+        assert "(function" in content
+        assert "})();" in content
+
+    def test_grok_uses_iife(self):
+        """grok.js should use IIFE pattern."""
+        content = self._read_script("grok.js")
+        assert "(function" in content
+        assert "})();" in content
+
+
+# ============================================================================
+# Enterprise Hardening: PII Blocking Mode Tests
+# ============================================================================
+
+
+class TestPIIBlockingMode:
+    """Test PII scanner blocking mode (warn vs block)."""
+
+    def _read_pii_scanner(self):
+        import os
+
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "extension", "content", "pii-scanner.js"
+        )
+        with open(path) as f:
+            return f.read()
+
+    def test_blocking_mode_variable_exists(self):
+        """pii-scanner.js should define snapperPIIBlockingMode."""
+        content = self._read_pii_scanner()
+        assert "snapperPIIBlockingMode" in content
+
+    def test_default_mode_is_warn(self):
+        """Default PII blocking mode should be warn."""
+        content = self._read_pii_scanner()
+        assert 'snapperPIIBlockingMode = "warn"' in content
+
+    def test_block_mode_no_send_anyway(self):
+        """Block mode should not include Send Anyway button."""
+        content = self._read_pii_scanner()
+        # In block mode (isBlocking = true), actionsHtml should only have OK/Cancel
+        assert "isBlocking" in content
+        assert "Send Anyway" in content  # Present in warn mode template
+        assert "Message Blocked" in content  # Block mode header text
+
+    def test_loads_from_managed_storage(self):
+        """PII scanner should load blocking mode from managed storage."""
+        content = self._read_pii_scanner()
+        assert "storage.managed" in content
+        assert "pii_blocking_mode" in content
+
+    def test_loads_from_local_storage_fallback(self):
+        """PII scanner should fall back to local storage for blocking mode."""
+        content = self._read_pii_scanner()
+        assert "storage.local" in content
+
+
+# ============================================================================
+# Enterprise Hardening: Selector Robustness Tests
+# ============================================================================
+
+
+class TestSelectorRobustness:
+    """Test that content scripts use selector fallback helper."""
+
+    def _read_script(self, name):
+        import os
+
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "extension", "content", name
+        )
+        with open(path) as f:
+            return f.read()
+
+    def test_copilot_has_selector_helper(self):
+        """copilot.js should define $() selector helper."""
+        content = self._read_script("copilot.js")
+        assert "function $(selectors" in content
+
+    def test_grok_has_selector_helper(self):
+        """grok.js should define $() selector helper."""
+        content = self._read_script("grok.js")
+        assert "function $(selectors" in content
+
+    def test_copilot_has_multi_selector_helper(self):
+        """copilot.js should define $$() multi-selector helper."""
+        content = self._read_script("copilot.js")
+        assert "function $$(selectors" in content
+
+    def test_grok_has_multi_selector_helper(self):
+        """grok.js should define $$() multi-selector helper."""
+        content = self._read_script("grok.js")
+        assert "function $$(selectors" in content
+
+    def test_chatgpt_has_selector_helper(self):
+        """chatgpt.js should have $() selector helper."""
+        content = self._read_script("chatgpt.js")
+        assert "function $(selectors" in content or "function $(" in content
+
+    def test_claude_has_selector_helper(self):
+        """claude.js should have $() selector helper."""
+        content = self._read_script("claude.js")
+        assert "function $(selectors" in content or "function $(" in content
+
+    def test_gemini_has_selector_helper(self):
+        """gemini.js should have $() selector helper."""
+        content = self._read_script("gemini.js")
+        assert "function $(selectors" in content or "function $(" in content
+
+
+# ============================================================================
+# Enterprise Hardening: Options Page Tests
+# ============================================================================
+
+
+class TestOptionsPage:
+    """Test options page includes Copilot/Grok toggles and PII blocking mode."""
+
+    def _read_options_html(self):
+        import os
+
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "extension", "options", "options.html"
+        )
+        with open(path) as f:
+            return f.read()
+
+    def _read_options_js(self):
+        import os
+
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "extension", "options", "options.js"
+        )
+        with open(path) as f:
+            return f.read()
+
+    def test_copilot_toggle_in_html(self):
+        """Options HTML should have Copilot toggle."""
+        content = self._read_options_html()
+        assert 'id="copilot_enabled"' in content
+
+    def test_grok_toggle_in_html(self):
+        """Options HTML should have Grok toggle."""
+        content = self._read_options_html()
+        assert 'id="grok_enabled"' in content
+
+    def test_pii_blocking_mode_select(self):
+        """Options HTML should have PII blocking mode select."""
+        content = self._read_options_html()
+        assert 'id="pii_blocking_mode"' in content
+        assert 'value="warn"' in content
+        assert 'value="block"' in content
+
+    def test_copilot_in_js_fields(self):
+        """Options JS FIELDS array should include copilot_enabled."""
+        content = self._read_options_js()
+        assert '"copilot_enabled"' in content
+
+    def test_grok_in_js_fields(self):
+        """Options JS FIELDS array should include grok_enabled."""
+        content = self._read_options_js()
+        assert '"grok_enabled"' in content
+
+    def test_pii_blocking_mode_in_js_fields(self):
+        """Options JS FIELDS array should include pii_blocking_mode."""
+        content = self._read_options_js()
+        assert '"pii_blocking_mode"' in content

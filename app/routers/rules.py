@@ -13,7 +13,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_rules
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
 from app.services.event_publisher import publish_from_audit_log
 from app.services.quota import QuotaChecker
@@ -866,7 +866,11 @@ async def update_rule(
     return RuleResponse.model_validate(rule)
 
 
-@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_delete_rules)],
+)
 async def delete_rule(
     rule_id: UUID,
     db: DbSessionDep,

@@ -205,6 +205,11 @@ class Team(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    external_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="External ID for SCIM Group mapping",
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import DbSessionDep, default_rate_limit
 from app.models.agents import Agent
+from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.organizations import (
     Invitation,
     InvitationStatus,
@@ -227,6 +228,13 @@ async def create_organization(
     db.add(membership)
     await db.flush()
 
+    db.add(AuditLog(
+        action=AuditAction.ORG_CREATED,
+        severity=AuditSeverity.INFO,
+        message=f"Organization created: {org.name}",
+        user_id=user_id,
+        organization_id=org.id,
+    ))
     logger.info(f"Organization created: {org.id} ({org.name}) by user {user_id}")
     return OrgResponse.model_validate(org)
 
@@ -321,6 +329,13 @@ async def update_organization(
         org.settings = payload.settings
 
     await db.flush()
+    db.add(AuditLog(
+        action=AuditAction.ORG_UPDATED,
+        severity=AuditSeverity.INFO,
+        message=f"Organization updated: {org.name}",
+        user_id=user_id,
+        organization_id=org.id,
+    ))
     logger.info(f"Organization updated: {org.id} by user {user_id}")
     return OrgResponse.model_validate(org)
 
@@ -352,6 +367,13 @@ async def delete_organization(
     org.is_active = False
     await db.flush()
 
+    db.add(AuditLog(
+        action=AuditAction.ORG_DELETED,
+        severity=AuditSeverity.WARNING,
+        message=f"Organization deleted: {org.name}",
+        user_id=user_id,
+        organization_id=org.id,
+    ))
     logger.info(f"Organization soft-deleted: {org.id} by user {user_id}")
     return None
 
@@ -488,6 +510,14 @@ async def invite_member(
         token=invitation.token,
     )
 
+    db.add(AuditLog(
+        action=AuditAction.ORG_MEMBER_INVITED,
+        severity=AuditSeverity.INFO,
+        message=f"Member invited: {payload.email} as {payload.role}",
+        user_id=user_id,
+        organization_id=org_id,
+        details={"invited_email": payload.email, "role": payload.role},
+    ))
     logger.info(
         f"Invitation created: {invitation.id} for {payload.email} "
         f"to org {org_id} by user {user_id}"
@@ -610,6 +640,14 @@ async def remove_member(
     await db.delete(membership)
     await db.flush()
 
+    db.add(AuditLog(
+        action=AuditAction.ORG_MEMBER_REMOVED,
+        severity=AuditSeverity.WARNING,
+        message=f"Member removed: {member_user_id}",
+        user_id=user_id,
+        organization_id=org_id,
+        details={"removed_user_id": str(member_user_id)},
+    ))
     logger.info(
         f"Member removed: user {member_user_id} from org {org_id} by user {user_id}"
     )

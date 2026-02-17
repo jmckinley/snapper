@@ -112,6 +112,23 @@ class User(Base):
         nullable=False,
     )
 
+    # MFA / TOTP
+    totp_secret: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Encrypted TOTP secret key",
+    )
+    totp_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    totp_backup_codes: Mapped[Optional[list]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Hashed one-time backup codes",
+    )
+
     # Preferences
     preferences: Mapped[dict] = mapped_column(
         JSONB,

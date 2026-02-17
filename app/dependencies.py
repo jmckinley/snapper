@@ -4,6 +4,7 @@ from typing import Annotated, AsyncGenerator, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -164,3 +165,55 @@ vault_write_rate_limit = RateLimiter(max_requests=30, window_seconds=60, key_pre
 approval_status_rate_limit = RateLimiter(max_requests=360, window_seconds=60, key_prefix="approval_status")
 approval_decide_rate_limit = RateLimiter(max_requests=30, window_seconds=60, key_prefix="approval_decide")
 telegram_webhook_rate_limit = RateLimiter(max_requests=300, window_seconds=60, key_prefix="telegram_webhook")
+
+
+# --- RBAC ---
+
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)):
+    """Get current authenticated user from request state."""
+    from app.models.users import User, ROLE_PERMISSIONS
+
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+    stmt = select(User).where(User.id == UUID(str(user_id)), User.deleted_at.is_(None))
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or disabled",
+        )
+    # Merge role-based permissions into user.permissions for has_permission checks
+    role_perms = ROLE_PERMISSIONS.get(user.role, [])
+    user._effective_permissions = set(user.permissions or []) | set(role_perms)
+    return user
+
+
+class RoleChecker:
+    """RBAC dependency that checks if the current user has a required permission."""
+
+    def __init__(self, required_permission: str):
+        self.required_permission = required_permission
+
+    async def __call__(self, request: Request, db: AsyncSession = Depends(get_db)):
+        user = await get_current_user(request, db)
+        effective = getattr(user, "_effective_permissions", set())
+        if user.is_admin or self.required_permission in effective:
+            return user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient permissions: requires '{self.required_permission}'",
+        )
+
+
+# Pre-configured RBAC checkers
+require_manage_rules = RoleChecker("rules:write")
+require_delete_rules = RoleChecker("rules:delete")
+require_manage_agents = RoleChecker("agents:write")
+require_delete_agents = RoleChecker("agents:delete")
+require_manage_vault = RoleChecker("rules:write")
+require_manage_org = RoleChecker("settings:write")

@@ -84,6 +84,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     default_organization_id: Optional[UUID] = None
+    locked_until: Optional[datetime] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -142,3 +143,54 @@ class SwitchOrgRequest(BaseModel):
     """Request to switch active organization context."""
 
     organization_id: UUID
+
+
+class MFASetupResponse(BaseModel):
+    """Response for MFA setup with provisioning URI and QR code."""
+
+    provisioning_uri: str
+    qr_code_base64: str
+    secret: str
+
+
+class MFAVerifyRequest(BaseModel):
+    """Request to verify a TOTP code."""
+
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        v = v.strip()
+        if not v.isdigit() or len(v) != 6:
+            raise ValueError("TOTP code must be 6 digits")
+        return v
+
+
+class MFAVerifySetupResponse(BaseModel):
+    """Response after verifying MFA setup, includes backup codes."""
+
+    enabled: bool
+    backup_codes: List[str]
+
+
+class MFALoginRequest(BaseModel):
+    """Request to complete MFA login."""
+
+    mfa_token: str
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) != 6 and len(v) != 8:
+            raise ValueError("Enter a 6-digit TOTP code or 8-character backup code")
+        return v
+
+
+class MFALoginResponse(BaseModel):
+    """Response when MFA is required during login."""
+
+    requires_mfa: bool = True
+    mfa_token: str

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit, require_manage_vault
 from app.services.quota import QuotaChecker
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
@@ -267,6 +267,54 @@ async def delete_vault_entry(
     record_pii_operation("delete")
 
     return {"status": "deleted", "entry_id": entry_id}
+
+
+@router.post(
+    "/rotate-key",
+    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access)],
+)
+async def rotate_vault_key(
+    db: DbSessionDep,
+    org_id: OptionalOrgIdDep = None,
+):
+    """
+    Rotate the PII vault encryption key.
+
+    Re-encrypts all vault entries with a new key version.
+    """
+    # Determine current max version
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    max_version_result = await db.execute(
+        sa_select(sa_func.max(PIIVaultEntry.encryption_key_version))
+    )
+    current_version = max_version_result.scalar() or 1
+    new_version = current_version + 1
+
+    count = await pii_vault.rotate_vault_key(db, new_version)
+
+    # Audit log
+    audit_log = AuditLog(
+        action=AuditAction.VAULT_KEY_ROTATED,
+        severity=AuditSeverity.WARNING,
+        message=f"Vault encryption key rotated to version {new_version}",
+        organization_id=org_id,
+        details={
+            "old_version": current_version,
+            "new_version": new_version,
+            "entries_re_encrypted": count,
+        },
+    )
+    db.add(audit_log)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "old_version": current_version,
+        "new_version": new_version,
+        "entries_re_encrypted": count,
+    }
 
 
 @router.put("/entries/{entry_id}/domains")
