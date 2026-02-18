@@ -758,7 +758,7 @@
         <span style="font-size:0.48em; color:var(--text-dim);">User adds PII via Telegram / Slack / API</span>
         <span style="font-size:0.48em; color:var(--text-dim); text-align:center;">&darr;</span><span></span>
         <div class="flow-node" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">2. Encrypt</span></div>
-        <span style="font-size:0.48em; color:var(--text-dim);">Fernet AES-128-CBC, HKDF-derived key</span>
+        <span style="font-size:0.48em; color:var(--text-dim);">AES-256-GCM, HKDF-derived key</span>
         <span style="font-size:0.48em; color:var(--text-dim); text-align:center;">&darr;</span><span></span>
         <div class="flow-node green" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">3. Tokenize</span></div>
         <span style="font-size:0.48em;"><code style="font-size:0.9em;">{{SNAPPER_VAULT:a1b2...}}</code> <span style="color:var(--text-dim);">(128-bit)</span></span>
@@ -774,7 +774,7 @@
       <div class="card" style="margin-bottom:10px;">
         <h4 style="font-size:0.68em;">Security Properties</h4>
         <ul>
-          <li>AES-128-CBC + HMAC (Fernet)</li>
+          <li>AES-256-GCM (authenticated encryption)</li>
           <li>HKDF key derivation from SECRET_KEY</li>
           <li>128-bit token entropy</li>
           <li>30-second TTL on resolved values</li>

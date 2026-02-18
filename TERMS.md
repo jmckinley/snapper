@@ -96,7 +96,7 @@ We do not warrant that:
 Snapper processes and stores the following data locally in your infrastructure:
 
 - **Audit logs** of agent actions (commands, file access, network requests)
-- **PII vault entries** encrypted with Fernet (AES-128-CBC) derived from your `SECRET_KEY`
+- **PII vault entries** encrypted with AES-256-GCM derived from your `SECRET_KEY`
 - **Agent metadata** including API keys (stored as SHA-256 hashes)
 - **Approval workflow state** in Redis (with configurable TTL)
 
@@ -190,7 +190,7 @@ You are solely responsible for determining whether your use of the Software comp
 
 ## 19. Export Controls
 
-The Software includes cryptographic functionality (Fernet/AES encryption) and may be subject to export control laws and regulations, including the U.S. Export Administration Regulations (EAR). You agree to comply with all applicable export and re-export control laws and regulations. You shall not download, use, or export the Software in violation of U.S. law or the laws of your jurisdiction, including to any country, entity, or person subject to U.S. sanctions or export restrictions. You represent and warrant that you are not located in, under the control of, or a national or resident of any country to which export of the Software would be prohibited.
+The Software includes cryptographic functionality (AES-256-GCM encryption) and may be subject to export control laws and regulations, including the U.S. Export Administration Regulations (EAR). You agree to comply with all applicable export and re-export control laws and regulations. You shall not download, use, or export the Software in violation of U.S. law or the laws of your jurisdiction, including to any country, entity, or person subject to U.S. sanctions or export restrictions. You represent and warrant that you are not located in, under the control of, or a national or resident of any country to which export of the Software would be prohibited.
 
 ## 20. Availability and Support
 

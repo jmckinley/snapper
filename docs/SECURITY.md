@@ -29,7 +29,7 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 3. **Defense in depth** — Multiple independent layers (middleware, rule engine, PII gate, rate limiting) each enforce security independently.
 4. **Least privilege** — Agents start untrusted and must earn elevated access.
 5. **Immutable audit** — All security-relevant events are logged to the database with server-generated timestamps.
-6. **Secrets never at rest in plaintext** — PII is Fernet-encrypted, API keys are hashed for comparison, resolved data has a 30-second TTL and is deleted after one retrieval.
+6. **Secrets never at rest in plaintext** — PII is AES-256-GCM encrypted, API keys are hashed for comparison, resolved data has a 30-second TTL and is deleted after one retrieval.
 
 ---
 
@@ -147,17 +147,19 @@ The vault stores sensitive data (credit cards, addresses, SSNs, API keys) so age
 
 | Property | Value |
 |----------|-------|
-| **Cipher** | Fernet (AES-128-CBC + HMAC-SHA256) |
+| **Cipher** | AES-256-GCM (authenticated encryption) |
 | **Key derivation** | HKDF-SHA256 |
 | **Key input** | `SECRET_KEY` environment variable (minimum 32 characters) |
 | **HKDF salt** | `snapper-pii-vault-v1` (constant) |
-| **HKDF info** | `pii-vault-encryption-key` (constant) |
-| **Derived key size** | 32 bytes (base64url-encoded for Fernet) |
+| **HKDF info** | `pii-vault-encryption-key-v{version}` (versioned for key rotation) |
+| **Derived key size** | 32 bytes (256-bit, used directly by AES-256-GCM) |
+| **Nonce** | 96-bit random (per NIST SP 800-38D recommendation) |
+| **Authentication** | GCM tag (128-bit) — detects any tampering of ciphertext |
 
 ### How It Works
 
 1. User stores PII via Telegram (`/vault add`) or the REST API
-2. Snapper encrypts the value with Fernet and stores the ciphertext in PostgreSQL
+2. Snapper encrypts the value with AES-256-GCM and stores the ciphertext in PostgreSQL
 3. A vault token is generated: `{{SNAPPER_VAULT:<32-hex>}}` (128 bits of entropy from `os.urandom`)
 4. The user gives the token to their agent instead of the raw value
 5. When the agent uses the token in a tool call, Snapper's PII gate intercepts it
@@ -213,7 +215,7 @@ The PII gate extracts the destination from `tool_input.url`, `page_url`, or `nav
 
 ### What Happens If SECRET_KEY Changes
 
-Fernet encryption keys are derived from `SECRET_KEY` via HKDF. If you change `SECRET_KEY`, all existing vault entries become **permanently unrecoverable**. Back up your `SECRET_KEY`.
+Encryption keys are derived from `SECRET_KEY` via HKDF. If you change `SECRET_KEY`, all existing vault entries become **permanently unrecoverable**. Back up your `SECRET_KEY`.
 
 ---
 
@@ -751,7 +753,7 @@ Note: Hook scripts use `curl -k` (insecure mode) to accept self-signed certifica
 
 ### SECRET_KEY Is Immutable After Vault Use
 
-The `SECRET_KEY` environment variable is the root of all cryptographic operations. The PII vault derives its Fernet encryption key from `SECRET_KEY` via HKDF-SHA256 with a fixed salt (`snapper-pii-vault-v1`).
+The `SECRET_KEY` environment variable is the root of all cryptographic operations. The PII vault derives its AES-256-GCM encryption key from `SECRET_KEY` via HKDF-SHA256 with a fixed salt (`snapper-pii-vault-v1`).
 
 If `SECRET_KEY` changes after vault entries have been created:
 - **All existing vault entries become permanently unrecoverable.** There is no re-encryption mechanism.

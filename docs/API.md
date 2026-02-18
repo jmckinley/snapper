@@ -261,7 +261,7 @@ Response:
 }
 ```
 
-The `token` is what agents use in place of raw PII. The raw value is encrypted at rest with Fernet (AES-128-CBC) and never returned via API.
+The `token` is what agents use in place of raw PII. The raw value is encrypted at rest with AES-256-GCM and never returned via API.
 
 #### Supported PII Categories
 

@@ -481,7 +481,7 @@ With domain restrictions, Snapper will deny any attempt to use that token on a s
 
 ### Security Design
 
-- **Encryption:** Values are encrypted with Fernet (AES-128-CBC + HMAC-SHA256) using a key derived from your Snapper SECRET_KEY via HKDF
+- **Encryption:** Values are encrypted with AES-256-GCM (authenticated encryption) using a key derived from your Snapper SECRET_KEY via HKDF
 - **Multi-tenant:** Each user's entries are isolated by their Telegram chat ID or Slack user ID. You can only see and manage your own data.
 - **Auto-delete messages:** Every message containing raw PII is deleted from Telegram immediately after processing
 - **Masked display:** Raw values are never shown — only masked versions (e.g., `****-****-****-1234`)

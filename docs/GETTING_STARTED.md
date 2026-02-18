@@ -376,7 +376,7 @@ ports:
 
 ## PII Vault Notes
 
-The PII vault uses `SECRET_KEY` from your `.env` to derive the Fernet encryption key via HKDF. Changing `SECRET_KEY` after vault entries are created will make them unrecoverable. Back up your `SECRET_KEY` securely.
+The PII vault uses `SECRET_KEY` from your `.env` to derive the AES-256-GCM encryption key via HKDF. Changing `SECRET_KEY` after vault entries are created will make them unrecoverable. Back up your `SECRET_KEY` securely.
 
 ## Uninstalling
 

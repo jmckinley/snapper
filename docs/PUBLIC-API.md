@@ -376,7 +376,7 @@ Sync rules from a YAML definition (GitOps workflow). Compares the provided YAML 
 
 #### 24. POST /api/v1/vault/entries
 
-Create a new encrypted PII vault entry. The raw value is encrypted with Fernet (HKDF-derived key) and never stored in plaintext.
+Create a new encrypted PII vault entry. The raw value is encrypted with AES-256-GCM (HKDF-derived key) and never stored in plaintext.
 
 ```bash
 curl -X POST https://your-snapper/api/v1/vault/entries \

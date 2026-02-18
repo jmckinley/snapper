@@ -495,7 +495,7 @@ Each agent has adaptive trust metrics:
 |-------|------------|
 | **Commands** | Block RCE, reverse shells, destructive operations |
 | **PII Detection** | 30+ regex patterns catch raw PII from any source (DLP) |
-| **PII Vault** | Fernet-encrypted storage with per-field approval for browser form fills |
+| **PII Vault** | AES-256-GCM encrypted storage with per-field approval for browser form fills |
 | **Files** | Protect credentials (.env, .pem, SSH keys), require approval for sensitive files |
 | **Network** | Block exfiltration domains, backdoor ports, with IP whitelist |
 | **Approval Workflow** | Human-in-the-loop for sensitive operations |
