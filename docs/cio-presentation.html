@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snapper — Agent Application Firewall | Enterprise Security Briefing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+<style>
+:root {
+  --bg: #06090f;
+  --bg-elevated: #0c1119;
+  --bg-card: #0f1520;
+  --border: #1a2233;
+  --border-bright: #243044;
+  --text: #c8cdd5;
+  --text-dim: #8b95a5;
+  --text-bright: #e8ecf1;
+  --accent: #10b981;
+  --accent-dim: rgba(16, 185, 129, 0.12);
+  --accent-glow: rgba(16, 185, 129, 0.06);
+  --red: #ef4444;
+  --red-dim: rgba(239, 68, 68, 0.12);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245, 158, 11, 0.12);
+  --blue: #3b82f6;
+  --blue-dim: rgba(59, 130, 246, 0.12);
+  --purple: #a855f7;
+  --purple-dim: rgba(168, 85, 247, 0.12);
+}
+
+/* === Global Reveal Overrides === */
+.reveal-viewport { background: var(--bg); }
+.reveal { font-family: 'Outfit', sans-serif; font-weight: 400; color: var(--text); }
+.reveal .slides { text-align: left; }
+.reveal .slides section { padding: 30px 44px; }
+.reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+  font-family: 'Outfit', sans-serif; color: var(--text-bright);
+  text-transform: none; letter-spacing: -0.5px; font-weight: 700;
+  margin-bottom: 0.5em; line-height: 1.15;
+}
+.reveal h1 { font-size: 2.2em; font-weight: 800; letter-spacing: -1px; }
+.reveal h2 { font-size: 1.5em; }
+.reveal h3 { font-size: 1.1em; font-weight: 600; }
+.reveal p, .reveal li { font-size: 0.68em; line-height: 1.6; color: var(--text); }
+.reveal ul { list-style: none; padding-left: 0; margin: 0; }
+.reveal ul li { position: relative; padding-left: 1.2em; margin-bottom: 0.3em; }
+.reveal ul li::before { content: ''; position: absolute; left: 0; top: 0.55em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.reveal code, .reveal pre { font-family: 'IBM Plex Mono', monospace; }
+.reveal code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; color: var(--accent); }
+.reveal pre { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; font-size: 0.6em; }
+.reveal a { color: var(--accent); text-decoration: none; }
+.reveal blockquote {
+  background: var(--bg-card); border-left: 3px solid var(--accent);
+  padding: 12px 18px; margin: 14px 0; border-radius: 0 8px 8px 0;
+  font-style: italic; font-size: 0.72em; color: var(--text-bright); width: auto;
+}
+.reveal .slide-number { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); }
+
+/* === Eyebrow Label === */
+.eyebrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.5em; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 2px; color: var(--accent);
+  margin-bottom: 8px; display: block;
+}
+
+/* === Subtitle === */
+.subtitle { font-size: 0.76em !important; color: var(--text-dim) !important; font-weight: 300; margin-top: -6px; }
+
+/* === Cards === */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 20px;
+}
+.card h4 { font-size: 0.76em; margin-bottom: 0.35em; }
+.card p, .card li { font-size: 0.62em; }
+
+/* === Stat Cards === */
+.stat-grid { display: grid; gap: 12px; }
+.stat-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.stat-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.stat-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.stat-grid.cols-5 { grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
+.stat {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; text-align: center;
+}
+.stat .num {
+  font-size: 1.7em; font-weight: 800; color: var(--accent);
+  line-height: 1.1; margin-bottom: 2px; letter-spacing: -1px;
+}
+.stat .label { font-size: 0.52em; color: var(--text-dim); font-weight: 500; }
+.stat.red .num { color: var(--red); }
+.stat.amber .num { color: var(--amber); }
+.stat.blue .num { color: var(--blue); }
+
+/* === Tables === */
+.reveal table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 0.56em; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.reveal table th {
+  background: var(--bg-elevated); color: var(--text-bright); font-weight: 600;
+  padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.9em; text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.reveal table td {
+  padding: 7px 12px; border-bottom: 1px solid var(--border); color: var(--text);
+}
+.reveal table tr:last-child td { border-bottom: none; }
+.reveal table tr:hover td { background: var(--accent-glow); }
+
+/* === Highlight column === */
+.reveal table .hl { background: rgba(16, 185, 129, 0.04); }
+.reveal table th.hl { border-bottom: 2px solid var(--accent); color: var(--accent); }
+
+/* === Badge pills === */
+.badge {
+  display: inline-block; font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7em; font-weight: 600; padding: 2px 9px; border-radius: 20px;
+}
+.badge.green { background: var(--accent-dim); color: var(--accent); }
+.badge.red { background: var(--red-dim); color: var(--red); }
+.badge.amber { background: var(--amber-dim); color: var(--amber); }
+.badge.blue { background: var(--blue-dim); color: var(--blue); }
+
+/* === Two-column layout === */
+.cols { display: grid; gap: 20px; align-items: start; }
+.cols-2 { grid-template-columns: 1fr 1fr; }
+.cols-60-40 { grid-template-columns: 3fr 2fr; }
+.cols-40-60 { grid-template-columns: 2fr 3fr; }
+
+/* === Quadrant grid === */
+.quad-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.quad-grid .card { border-left: 3px solid var(--accent); padding: 14px 18px; }
+.quad-grid .card.q-red { border-left-color: var(--red); }
+.quad-grid .card.q-amber { border-left-color: var(--amber); }
+.quad-grid .card.q-blue { border-left-color: var(--blue); }
+
+/* === Check / X marks === */
+.check { color: var(--accent); font-weight: 700; }
+.cross { color: var(--red); font-weight: 700; }
+.partial { color: var(--amber); font-weight: 700; }
+
+/* === Title slide === */
+.title-slide { text-align: center !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
+.title-slide h1 { font-size: 2.6em; margin-bottom: 0.15em; }
+.title-slide .tagline { font-size: 1em; color: var(--text); font-weight: 300; margin-bottom: 1.5em; max-width: 700px; }
+.title-slide .meta { font-family: 'IBM Plex Mono', monospace; font-size: 0.52em; color: var(--text-dim); letter-spacing: 1px; }
+
+/* === CTA slide === */
+.cta-btn {
+  display: inline-block; padding: 14px 32px; border-radius: 8px;
+  font-weight: 600; font-size: 0.72em; margin: 6px 8px;
+  transition: transform 0.15s, box-shadow 0.15s; cursor: pointer;
+  text-decoration: none; border: none;
+}
+.cta-btn.primary { background: var(--accent); color: #fff; }
+.cta-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 0 28px rgba(16,185,129,0.3); }
+.cta-btn.secondary { background: transparent; border: 1px solid var(--border-bright); color: var(--text-bright); }
+.cta-btn.secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+/* === Timeline / Steps === */
+.steps { display: flex; gap: 14px; }
+.step {
+  flex: 1; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; position: relative;
+}
+.step .step-num {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 700;
+  font-size: 1.4em; color: var(--accent); opacity: 0.3; margin-bottom: 4px;
+}
+.step h4 { font-size: 0.74em; margin-bottom: 4px; }
+.step p { font-size: 0.56em; }
+
+/* === Architecture box === */
+.arch-box {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.48em;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 18px; line-height: 1.5;
+  white-space: pre; color: var(--text-dim);
+}
+.arch-box .g { color: var(--accent); }
+.arch-box .r { color: var(--red); }
+.arch-box .a { color: var(--amber); }
+.arch-box .b { color: var(--blue); }
+.arch-box .w { color: var(--text-bright); }
+
+/* === Small text === */
+.small { font-size: 0.55em !important; color: var(--text-dim) !important; }
+
+/* === Divider === */
+.divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+/* === Inline list (horizontal) === */
+.inline-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.inline-list .chip {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.56em;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px; color: var(--text);
+}
+
+/* === Agent grid === */
+.agent-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.agent-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+}
+.agent-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.agent-name { font-size: 0.64em; font-weight: 600; color: var(--text-bright); }
+
+/* ====================================================== */
+/* === CSS Flow Pipeline (replaces ASCII art)          === */
+/* ====================================================== */
+.flow-pipeline { display: flex; align-items: center; gap: 0; margin: 14px 0; }
+.flow-node {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; text-align: center; flex-shrink: 0;
+}
+.flow-node .flow-label {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.5em;
+  font-weight: 600; color: var(--text-bright); display: block; margin-bottom: 2px;
+}
+.flow-node .flow-sub {
+  font-size: 0.42em; color: var(--text-dim); display: block;
+}
+.flow-node.green { border-color: var(--accent); }
+.flow-node.green .flow-label { color: var(--accent); }
+.flow-node.red { border-color: var(--red); }
+.flow-node.red .flow-label { color: var(--red); }
+.flow-node.amber { border-color: var(--amber); }
+.flow-node.amber .flow-label { color: var(--amber); }
+.flow-node.blue { border-color: var(--blue); }
+.flow-node.blue .flow-label { color: var(--blue); }
+.flow-node.wide { flex: 1; }
+.flow-arrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.6em;
+  color: var(--text-dim); padding: 0 6px; flex-shrink: 0;
+}
+.flow-arrow.down { writing-mode: vertical-lr; }
+
+/* === Vertical flow === */
+.flow-vertical { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.flow-vertical .flow-arrow { padding: 3px 0; font-size: 0.55em; }
+.flow-vertical .flow-node { width: 100%; max-width: 400px; }
+
+/* === Branch flow === */
+.flow-branch { display: flex; gap: 14px; justify-content: center; margin-top: 4px; }
+.flow-branch .flow-node { flex: 1; max-width: 180px; }
+
+/* ====================================================== */
+/* === App Mockup (CSS "screenshots")                  === */
+/* ====================================================== */
+.mockup-frame {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+}
+.mockup-titlebar {
+  background: var(--bg-card); border-bottom: 1px solid var(--border);
+  padding: 7px 12px; display: flex; align-items: center; gap: 6px;
+}
+.mockup-dot { width: 8px; height: 8px; border-radius: 50%; }
+.mockup-dot.r { background: #ef4444; }
+.mockup-dot.y { background: #f59e0b; }
+.mockup-dot.g { background: #10b981; }
+.mockup-url {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 8px; margin-left: 8px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.42em; color: var(--text-dim);
+}
+.mockup-body { padding: 12px; }
+
+/* Mockup inner components */
+.mock-sidebar {
+  background: var(--bg-card); border-right: 1px solid var(--border);
+  padding: 10px; width: 140px; flex-shrink: 0;
+}
+.mock-nav-item {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.44em;
+  padding: 5px 8px; border-radius: 4px; margin-bottom: 3px; color: var(--text-dim);
+}
+.mock-nav-item.active { background: var(--accent-dim); color: var(--accent); }
+.mock-content { flex: 1; padding: 10px; }
+.mock-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); font-size: 0.44em;
+}
+.mock-row:last-child { border-bottom: none; }
+.mock-badge {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.9em;
+  padding: 1px 6px; border-radius: 10px; font-weight: 600;
+}
+.mock-badge.allow { background: var(--accent-dim); color: var(--accent); }
+.mock-badge.deny { background: var(--red-dim); color: var(--red); }
+.mock-badge.approve { background: var(--amber-dim); color: var(--amber); }
+.mock-header {
+  font-family: 'Outfit', sans-serif; font-size: 0.52em; font-weight: 700;
+  color: var(--text-bright); margin-bottom: 8px;
+}
+.mock-stat-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.mock-stat-box {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; text-align: center;
+}
+.mock-stat-num {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.58em;
+  font-weight: 700; color: var(--accent);
+}
+.mock-stat-label { font-size: 0.38em; color: var(--text-dim); }
+
+/* Telegram mockup */
+.mock-telegram {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; max-width: 320px;
+}
+.mock-tg-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.mock-tg-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent-dim); display: flex; align-items: center;
+  justify-content: center; font-size: 0.5em; color: var(--accent); font-weight: 700;
+}
+.mock-tg-name { font-size: 0.52em; font-weight: 600; color: var(--text-bright); }
+.mock-tg-msg {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 0 8px 8px 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.mock-tg-msg p { font-size: 0.48em !important; margin: 0 0 4px; line-height: 1.5; }
+.mock-tg-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.mock-tg-btn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.44em; font-weight: 600;
+  padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);
+  text-align: center;
+}
+.mock-tg-btn.allow { background: var(--accent-dim); color: var(--accent); border-color: rgba(16,185,129,0.3); }
+.mock-tg-btn.deny { background: var(--red-dim); color: var(--red); border-color: rgba(239,68,68,0.3); }
+.mock-tg-btn.info { background: var(--blue-dim); color: var(--blue); border-color: rgba(59,130,246,0.3); }
+.mock-tg-time { font-size: 0.38em; color: var(--text-dim); text-align: right; margin-top: 4px; }
+
+/* Extension popup mockup */
+.mock-ext {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 10px; width: 280px; overflow: hidden;
+}
+.mock-ext-header {
+  background: var(--bg-card); padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.mock-ext-logo {
+  width: 20px; height: 20px; border-radius: 4px;
+  background: var(--accent-dim); display: flex; align-items: center;
+  justify-content: center; font-size: 0.42em; color: var(--accent); font-weight: 800;
+}
+.mock-ext-title { font-size: 0.5em; font-weight: 700; color: var(--text-bright); }
+.mock-ext-status {
+  margin-left: auto; font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.4em; color: var(--accent); font-weight: 600;
+}
+.mock-ext-body { padding: 10px 14px; }
+.mock-ext-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 0.44em;
+}
+.mock-ext-row:last-child { border-bottom: none; }
+.mock-ext-count {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600;
+}
+
+/* Print-pdf styles */
+@media print {
+  .reveal-viewport { background: var(--bg) !important; }
+  .reveal .slides section { page-break-after: always; }
+}
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ============================================================ -->
+<!-- SLIDE 1: Title -->
+<!-- ============================================================ -->
+<section class="title-slide">
+  <span class="eyebrow" style="margin-bottom:20px;">McKinley Labs</span>
+  <h1 style="margin-bottom:0.12em;">Snapper</h1>
+  <p style="font-size:1.1em; color:var(--accent); font-weight:500; margin:0 0 8px;">Agent Application Firewall</p>
+  <p class="tagline">Your agent keeps full power.<br>You keep full control.</p>
+  <p class="meta">Enterprise Security Briefing &nbsp;|&nbsp; February 2026</p>
+  <aside class="notes">Open with the core tension: enterprises want AI agents but can't deploy them without controls. Snapper resolves this.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 2: The AI Agent Revolution -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">The Landscape</span>
+  <h2>The AI Agent Revolution</h2>
+  <p class="subtitle">Every agent is an autonomous actor on your network</p>
+
+  <div class="cols cols-2" style="margin-top:16px;">
+    <div>
+      <div class="card" style="margin-bottom:10px; border-left:3px solid var(--accent);">
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:1.4em; font-weight:800; color:var(--accent);">6</span>
+          <span style="font-size:0.68em; font-weight:600; color:var(--text-bright);">Agent Frameworks</span>
+        </div>
+        <p style="margin:4px 0 0;">Claude Code, Cursor, Windsurf, Cline, OpenClaw, Custom &mdash; each with its own permission model, tool access, and attack surface.</p>
+      </div>
+      <div class="card" style="margin-bottom:10px; border-left:3px solid var(--blue);">
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:1.4em; font-weight:800; color:var(--blue);">40+</span>
+          <span style="font-size:0.68em; font-weight:600; color:var(--text-bright);">MCP Servers</span>
+        </div>
+        <p style="margin:4px 0 0;">GitHub, Slack, databases, filesystems &mdash; each server grants agents unchecked access to your infrastructure.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:10px; border-left:3px solid var(--amber);">
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:1.4em; font-weight:800; color:var(--amber);">3</span>
+          <span style="font-size:0.68em; font-weight:600; color:var(--text-bright);">SDK Wrappers</span>
+        </div>
+        <p style="margin:4px 0 0;">OpenAI, Anthropic, Gemini API calls bypass your firewall entirely &mdash; no visibility into what your code sends or receives.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--purple);">
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:1.4em; font-weight:800; color:var(--purple);">1</span>
+          <span style="font-size:0.68em; font-weight:600; color:var(--text-bright);">Browser Extension</span>
+        </div>
+        <p style="margin:4px 0 0;">Web-based AI chats (ChatGPT, Claude.ai, Gemini) are invisible to network security &mdash; employees paste sensitive data daily.</p>
+      </div>
+    </div>
+  </div>
+
+  <blockquote style="margin-top:12px;">
+    Every tool, server, and API is a door into your environment. Today, none of them have locks.
+  </blockquote>
+  <aside class="notes">Don't just list the numbers — explain the exposure. Each framework, server, and SDK is an unmonitored pathway. The browser extension point resonates especially with CISOs seeing shadow AI usage.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 3: The Unprotected Perimeter -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">The Problem</span>
+  <h2>The Unprotected Perimeter</h2>
+
+  <div class="cols cols-2" style="margin-top:14px;">
+    <div>
+      <ul>
+        <li>Agents have <strong style="color:var(--red);">unrestricted access</strong> to files, network, credentials, and PII</li>
+        <li><strong style="color:var(--red);">No visibility</strong> into what agents are actually doing</li>
+        <li><strong style="color:var(--red);">No approval workflow</strong> for sensitive operations</li>
+        <li><strong style="color:var(--red);">No audit trail</strong> for compliance teams</li>
+      </ul>
+    </div>
+    <div>
+      <div class="card" style="border-left: 3px solid var(--red);">
+        <p style="font-size:0.62em; color:var(--text-dim); margin-bottom:6px;">Today&rsquo;s agents can:</p>
+        <ul>
+          <li>Read <code>.env</code>, <code>~/.ssh/</code>, <code>~/.aws/</code></li>
+          <li>Execute arbitrary shell commands</li>
+          <li>Exfiltrate data via HTTP requests</li>
+          <li>Install malicious packages</li>
+          <li>Modify CI/CD pipelines</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <blockquote style="margin-top:14px;">
+    Traditional security operates at the network layer. Agents operate at the <strong style="color:var(--accent);">decision layer</strong>.
+  </blockquote>
+  <aside class="notes">This is the key insight. Network firewalls can't see what an LLM decides to do. DLP can't stop an agent from reading your secrets.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 4: Real-World Threat Landscape -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Threat Intelligence</span>
+  <h2>Real-World Threat Landscape</h2>
+  <p class="subtitle">Documented vulnerabilities in agent frameworks &mdash; these aren't hypothetical</p>
+
+  <table style="margin-top:14px;">
+    <thead>
+      <tr><th>CVE / Name</th><th>CVSS</th><th>Impact</th><th>Framework</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>CVE-2026-25253</code></td>
+        <td><span class="badge red">8.8</span></td>
+        <td>WebSocket RCE &mdash; full system takeover</td>
+        <td>OpenClaw</td>
+      </tr>
+      <tr>
+        <td><code>CVE-2026-24891</code></td>
+        <td><span class="badge red">7.8</span></td>
+        <td>Authentication bypass via session hijack</td>
+        <td>OpenClaw</td>
+      </tr>
+      <tr>
+        <td><code>CVE-2026-25157</code></td>
+        <td><span class="badge red">8.1</span></td>
+        <td>Command injection in tool executor</td>
+        <td>OpenClaw</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--red);">ClawHavoc</strong></td>
+        <td><span class="badge red">9.8</span></td>
+        <td>341+ malicious skills in community registry</td>
+        <td>OpenClaw</td>
+      </tr>
+      <tr>
+        <td><strong>MINJA / AGENTPOISON</strong></td>
+        <td><span class="badge amber">7.5</span></td>
+        <td>Memory poisoning &mdash; persistent agent manipulation</td>
+        <td>Multi-agent</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="small" style="margin-top:10px;">Source: Snapper Security Research Module &mdash; weekly CVE scanning with auto-generated defense rules</p>
+  <aside class="notes">Walk through each CVE briefly. Emphasize that ClawHavoc alone compromised 341+ community skills. These are real, documented attacks.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 5: The Security Gap -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Gap Analysis</span>
+  <h2>The Security Gap</h2>
+
+  <div class="cols" style="grid-template-columns: 1fr 1fr 1fr; margin-top:14px;">
+    <div class="card" style="border-top: 3px solid var(--red);">
+      <h4 style="color:var(--red);">Traditional Firewalls</h4>
+      <ul>
+        <li>Inspect network packets</li>
+        <li>Can't see agent decisions</li>
+        <li>No tool-call awareness</li>
+        <li><span class="cross">&times;</span> Agent-blind</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--amber);">
+      <h4 style="color:var(--amber);">DLP Solutions</h4>
+      <ul>
+        <li>Guard perimeter egress</li>
+        <li>Can't stop agent reading <code>.env</code></li>
+        <li>No pre-action interception</li>
+        <li><span class="cross">&times;</span> Reactive only</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--blue);">
+      <h4 style="color:var(--blue);">Agent Frameworks</h4>
+      <ul>
+        <li>Focus on capabilities</li>
+        <li>No built-in security layer</li>
+        <li>No cross-framework policy</li>
+        <li><span class="cross">&times;</span> Trust everything</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px; border: 1px solid var(--accent); text-align:center; padding:12px;">
+    <p style="font-size:0.72em; color:var(--text-bright); margin:0;">
+      Missing layer: the <strong style="color:var(--accent);">Agent Decision Point</strong> &mdash; inspecting and enforcing policy on every tool call, before execution
+    </p>
+  </div>
+  <aside class="notes">This is where Snapper fits. No existing product category addresses agent-level security. Snapper creates the category.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 6: Introducing Snapper -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">The Solution</span>
+  <h2>Introducing Snapper</h2>
+  <p class="subtitle">The first open-source Agent Application Firewall</p>
+
+  <div class="cols cols-60-40" style="margin-top:14px;">
+    <div>
+      <ul>
+        <li><strong style="color:var(--accent);">Bidirectional inspection</strong> &mdash; outbound actions + inbound threats</li>
+        <li><strong style="color:var(--accent);">Framework-agnostic</strong> &mdash; hooks, SDKs, and browser extension</li>
+        <li><strong style="color:var(--accent);">Fail-closed</strong> &mdash; deny by default, errors = deny</li>
+        <li><strong style="color:var(--accent);">Sub-50ms latency</strong> &mdash; invisible to agent and user</li>
+        <li><strong style="color:var(--accent);">Open source</strong> &mdash; PolyForm Noncommercial + enterprise licensing</li>
+      </ul>
+      <!-- Dashboard mockup -->
+      <div class="mockup-frame" style="margin-top:12px;">
+        <div class="mockup-titlebar">
+          <span class="mockup-dot r"></span><span class="mockup-dot y"></span><span class="mockup-dot g"></span>
+          <span class="mockup-url">https://snapper.example.com/dashboard</span>
+        </div>
+        <div class="mockup-body" style="display:flex; padding:0;">
+          <div class="mock-sidebar">
+            <div class="mock-nav-item active">Dashboard</div>
+            <div class="mock-nav-item">Rules</div>
+            <div class="mock-nav-item">Agents</div>
+            <div class="mock-nav-item">Vault</div>
+            <div class="mock-nav-item">Audit Log</div>
+            <div class="mock-nav-item">Integrations</div>
+          </div>
+          <div class="mock-content">
+            <div class="mock-stat-row">
+              <div class="mock-stat-box"><div class="mock-stat-num">4</div><div class="mock-stat-label">Active Agents</div></div>
+              <div class="mock-stat-box"><div class="mock-stat-num">23</div><div class="mock-stat-label">Rules</div></div>
+              <div class="mock-stat-box"><div class="mock-stat-num" style="color:var(--red);">7</div><div class="mock-stat-label">Blocked Today</div></div>
+              <div class="mock-stat-box"><div class="mock-stat-num" style="color:var(--amber);">2</div><div class="mock-stat-label">Pending</div></div>
+            </div>
+            <div class="mock-row"><span style="color:var(--text-bright);">claude-code-1</span><span style="margin-left:auto;"><span class="mock-badge allow">1.0</span></span></div>
+            <div class="mock-row"><span style="color:var(--text-bright);">cursor-eng</span><span style="margin-left:auto;"><span class="mock-badge allow">1.2</span></span></div>
+            <div class="mock-row"><span style="color:var(--text-bright);">openclaw-main</span><span style="margin-left:auto;"><span class="mock-badge approve">0.8</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="stat-grid cols-2">
+        <div class="stat"><div class="num">16</div><div class="label">Rule Types</div></div>
+        <div class="stat"><div class="num">&lt;50ms</div><div class="label">Eval Latency</div></div>
+        <div class="stat blue"><div class="num">864</div><div class="label">Test Cases</div></div>
+        <div class="stat amber"><div class="num">6</div><div class="label">Native Agents</div></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Key differentiator: open source + self-hosted. No data leaves the perimeter. Enterprise-grade without vendor lock-in. Show the dashboard mockup — this is what your security team sees.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 7: Architecture -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Architecture</span>
+  <h2>How Snapper Works</h2>
+  <p class="subtitle">Single evaluate endpoint &mdash; every tool call inspected before execution</p>
+
+  <!-- CSS Flow Diagram -->
+  <div style="margin-top:14px;">
+    <div class="flow-pipeline" style="justify-content:center;">
+      <div class="flow-node blue" style="min-width:130px;">
+        <span class="flow-label">Agent</span>
+        <span class="flow-sub">Claude Code, Cursor,<br>OpenClaw, ...</span>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-node" style="min-width:140px;">
+        <span class="flow-label">Hook / SDK / Extension</span>
+        <span class="flow-sub">before_tool_call intercept</span>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-node green" style="min-width:260px; border-width:2px;">
+        <span class="flow-label" style="font-size:0.58em;">Snapper Rule Engine</span>
+        <span class="flow-sub">POST /api/v1/evaluate</span>
+        <span class="flow-sub" style="margin-top:2px; color:var(--text);">16 types &middot; priority-sorted &middot; fail-closed</span>
+      </div>
+    </div>
+
+    <!-- Three outcomes -->
+    <div class="flow-branch" style="margin-top:8px; padding-left:120px;">
+      <div class="flow-node green" style="text-align:center;">
+        <span class="flow-label" style="font-size:0.55em;">&#10003; Allow</span>
+        <span class="flow-sub">Proceed immediately</span>
+      </div>
+      <div class="flow-node red" style="text-align:center;">
+        <span class="flow-label" style="font-size:0.55em;">&#10005; Deny</span>
+        <span class="flow-sub">Short-circuit, block action</span>
+      </div>
+      <div class="flow-node amber" style="text-align:center;">
+        <span class="flow-label" style="font-size:0.55em;">&#9203; Approve</span>
+        <span class="flow-sub">Telegram / Slack alert</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols cols-2" style="margin-top:14px;">
+    <div class="card" style="padding:12px 16px;">
+      <p style="font-size:0.58em; margin:0;"><strong>Request payload:</strong> <code>agent_id</code>, <code>tool_name</code>, <code>tool_input</code>, <code>command</code>, <code>destination</code>, <code>metadata</code></p>
+    </div>
+    <div class="card" style="padding:12px 16px;">
+      <p style="font-size:0.58em; margin:0;"><strong>Response:</strong> <code>allowed</code>, <code>reason</code>, <code>rule_id</code>, <code>approval_id</code>, <code>resolved_data</code></p>
+    </div>
+  </div>
+
+  <p class="small" style="text-align:center; margin-top:8px;">DENY always short-circuits &nbsp;|&nbsp; Higher-priority ALLOW overrides lower-priority REQUIRE_APPROVAL &nbsp;|&nbsp; Errors = deny</p>
+  <aside class="notes">Walk through the flow left to right. Agent calls a tool, hook intercepts, sends to Snapper, engine evaluates all matching rules in priority order, returns one of three outcomes. Sub-50ms round trip.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 8: Defense in Depth — 16 Rule Types -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Rule Engine</span>
+  <h2>Defense in Depth &mdash; 16 Rule Types</h2>
+
+  <div class="quad-grid" style="margin-top:14px;">
+    <div class="card">
+      <h4 style="font-size:0.7em;"><span style="color:var(--accent);">&#9632;</span> Access Control</h4>
+      <ul>
+        <li>Command Allow / Denylist</li>
+        <li>File Access Control</li>
+        <li>Network Egress Filtering</li>
+        <li>Localhost Restriction</li>
+      </ul>
+    </div>
+    <div class="card q-blue">
+      <h4 style="font-size:0.7em;"><span style="color:var(--blue);">&#9632;</span> Data Protection</h4>
+      <ul>
+        <li>PII Gate (vault tokens + raw scan)</li>
+        <li>Credential Protection</li>
+        <li>Human-in-the-Loop Approval</li>
+      </ul>
+    </div>
+    <div class="card q-red">
+      <h4 style="font-size:0.7em;"><span style="color:var(--red);">&#9632;</span> Threat Prevention</h4>
+      <ul>
+        <li>Skill Allow / Denylist</li>
+        <li>Origin Validation</li>
+        <li>Version Enforcement</li>
+        <li>Sandbox Required</li>
+      </ul>
+    </div>
+    <div class="card q-amber">
+      <h4 style="font-size:0.7em;"><span style="color:var(--amber);">&#9632;</span> Operational Controls</h4>
+      <ul>
+        <li>Rate Limiting (sliding window)</li>
+        <li>Time Restrictions</li>
+        <li>Adaptive Trust Scoring</li>
+      </ul>
+    </div>
+  </div>
+
+  <p style="font-size:0.58em; color:var(--text-dim); margin-top:10px; text-align:center;">
+    Rules evaluated in priority order &nbsp;|&nbsp; DENY always wins &nbsp;|&nbsp; All configurable per agent
+  </p>
+  <aside class="notes">Each quadrant addresses a different threat vector. Combined, they provide complete coverage. All configurable per agent.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 9: PII Vault -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Data Protection</span>
+  <h2>PII Vault</h2>
+  <p class="subtitle">Encrypted storage with zero-knowledge token resolution</p>
+
+  <div class="cols cols-60-40" style="margin-top:12px;">
+    <div>
+      <!-- Flow pipeline vertical -->
+      <div style="display:grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items:center;">
+        <div class="flow-node" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">1. Store</span></div>
+        <span style="font-size:0.48em; color:var(--text-dim);">User adds PII via Telegram / Slack / API</span>
+        <span style="font-size:0.48em; color:var(--text-dim); text-align:center;">&darr;</span><span></span>
+        <div class="flow-node" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">2. Encrypt</span></div>
+        <span style="font-size:0.48em; color:var(--text-dim);">Fernet AES-128-CBC, HKDF-derived key</span>
+        <span style="font-size:0.48em; color:var(--text-dim); text-align:center;">&darr;</span><span></span>
+        <div class="flow-node green" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">3. Tokenize</span></div>
+        <span style="font-size:0.48em;"><code style="font-size:0.9em;">{{SNAPPER_VAULT:a1b2...}}</code> <span style="color:var(--text-dim);">(128-bit)</span></span>
+        <span style="font-size:0.48em; color:var(--text-dim); text-align:center;">&darr;</span><span></span>
+        <div class="flow-node amber" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">4. Approve</span></div>
+        <span style="font-size:0.48em; color:var(--text-dim);">Human reviews destination + data fields</span>
+        <span style="font-size:0.48em; color:var(--text-dim); text-align:center;">&darr;</span><span></span>
+        <div class="flow-node green" style="padding:6px 12px; width:90px; text-align:center;"><span class="flow-label" style="font-size:0.46em;">5. Resolve</span></div>
+        <span style="font-size:0.48em; color:var(--text-dim);">Decrypted value returned (30s TTL)</span>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">Security Properties</h4>
+        <ul>
+          <li>AES-128-CBC + HMAC (Fernet)</li>
+          <li>HKDF key derivation from SECRET_KEY</li>
+          <li>128-bit token entropy</li>
+          <li>30-second TTL on resolved values</li>
+          <li>Brute-force lockout (5 failures/15min)</li>
+          <li>Per-user encryption isolation</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">Features</h4>
+        <ul>
+          <li>Domain whitelisting</li>
+          <li>Multi-tenant (owner scoped)</li>
+          <li>Manage via bot, API, or dashboard</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">PII never appears in agent context or logs. Only the token moves through the system. Resolution happens at the last moment with human approval. 30-second TTL means decrypted values don't linger.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 10: PII Detection -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Data Protection</span>
+  <h2>30+ Raw PII Detection Patterns</h2>
+  <p class="subtitle">Catches PII from any source before exfiltration</p>
+
+  <div class="cols cols-2" style="margin-top:14px;">
+    <div>
+      <div class="card">
+        <h4 style="color:var(--red); font-size:0.68em;">Personal Identity</h4>
+        <ul>
+          <li>Social Security Numbers (XXX-XX-XXXX)</li>
+          <li>Credit Card Numbers (Luhn-validated)</li>
+          <li>Email Addresses</li>
+          <li>Phone Numbers (US, UK, CA, AU)</li>
+          <li>Physical Addresses</li>
+          <li>Bank Account / Routing Numbers</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h4 style="color:var(--amber); font-size:0.68em;">API Keys &amp; Secrets</h4>
+        <ul>
+          <li>OpenAI (<code>sk-...</code>)</li>
+          <li>AWS (<code>AKIA...</code>)</li>
+          <li>GitHub (<code>ghp_...</code>, <code>gho_...</code>)</li>
+          <li>Stripe (<code>sk_live_...</code>)</li>
+          <li>Slack (<code>xoxb-...</code>, <code>xoxp-...</code>)</li>
+          <li>Generic high-entropy secrets</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border-left: 3px solid var(--accent); margin-top:10px;">
+    <p style="font-size:0.62em; margin:0;">
+      PII Gate scans <strong>both</strong> <code>tool_input</code> and <code>command</code> fields &mdash; catches data regardless of whether the agent
+      passes it as a parameter or embeds it in a shell command.
+    </p>
+  </div>
+  <aside class="notes">Unlike DLP which only sees egress, Snapper scans at the decision point. If an agent tries to curl your AWS keys to a remote server, the PII gate catches it before the command runs.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 11: Human-in-the-Loop -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Approval Workflow</span>
+  <h2>Human-in-the-Loop</h2>
+  <p class="subtitle">Real-time approval via Telegram and Slack</p>
+
+  <div class="cols cols-2" style="margin-top:12px;">
+    <div>
+      <div class="card" style="margin-bottom:10px; border-left:3px solid var(--amber);">
+        <h4 style="font-size:0.68em; color:var(--amber);">Rich Context Alerts</h4>
+        <ul>
+          <li>Tool name + destination URL</li>
+          <li>Data fields being sent</li>
+          <li>Dollar amounts flagged</li>
+          <li>Agent name + trust score</li>
+        </ul>
+      </div>
+      <div class="card" style="border-left:3px solid var(--accent);">
+        <h4 style="font-size:0.68em; color:var(--accent);">Decision Options</h4>
+        <ul>
+          <li><span class="badge green">Allow Once</span> &mdash; one-time pass</li>
+          <li><span class="badge green">Allow Always</span> &mdash; permanent rule</li>
+          <li><span class="badge red">Deny</span> &mdash; block + log</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <!-- Telegram mockup -->
+      <div class="mock-telegram">
+        <div class="mock-tg-header">
+          <div class="mock-tg-avatar">S</div>
+          <div>
+            <div class="mock-tg-name">Snapper Approval Bot</div>
+            <div style="font-size:0.4em; color:var(--text-dim);">bot</div>
+          </div>
+        </div>
+        <div class="mock-tg-msg">
+          <p><span style="color:var(--amber);">&#9888;</span> <strong style="color:var(--text-bright);">Approval Required</strong></p>
+          <p><strong>Agent:</strong> <span style="color:var(--text-bright);">openclaw-main</span></p>
+          <p><strong>Tool:</strong> <span style="color:var(--text-bright);">http_request</span></p>
+          <p><strong>Destination:</strong> <span style="color:var(--blue);">api.stripe.com/v1/charges</span></p>
+          <p><strong>PII Detected:</strong> <span style="color:var(--red);">credit_card, email</span></p>
+          <p><strong>Rule:</strong> <span style="color:var(--text-dim);">PII Gate &mdash; protected mode</span></p>
+        </div>
+        <div class="mock-tg-buttons">
+          <span class="mock-tg-btn allow">Allow Once</span>
+          <span class="mock-tg-btn allow">Allow Always</span>
+          <span class="mock-tg-btn deny">Deny</span>
+          <span class="mock-tg-btn info">View Rule</span>
+        </div>
+        <div class="mock-tg-time">Auto-deny in 5:00 &nbsp; &#10003;&#10003;</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small" style="text-align:center; margin-top:8px;">
+    Every decision logged with timestamp + user &nbsp;|&nbsp; 5-minute timeout, auto-deny &nbsp;|&nbsp; Allow Always creates a permanent rule
+  </p>
+  <aside class="notes">This is what an actual approval looks like in Telegram. Rich context lets you make informed decisions. Slack looks identical. Every decision is immutably logged.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 12: Adaptive Trust Scoring -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Trust &amp; Autonomy</span>
+  <h2>Adaptive Trust Scoring</h2>
+  <p class="subtitle">Agents earn autonomy through good behavior</p>
+
+  <div class="cols cols-60-40" style="margin-top:12px;">
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">How It Works</h4>
+        <ul>
+          <li>Per-agent score: <strong>0.5</strong> (restricted) to <strong>2.0</strong> (trusted)</li>
+          <li>Score multiplies rate-limit thresholds</li>
+          <li>Only rate-limit breaches reduce trust &mdash; <em>not</em> rule denials</li>
+          <li>Good behavior gradually restores trust</li>
+          <li>Opt-in enforcement per agent (default: info-only)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">Management</h4>
+        <ul>
+          <li>Dashboard toggle + reset button</li>
+          <li><code>/trust</code> Telegram &nbsp;|&nbsp; <code>/snapper-trust</code> Slack</li>
+          <li>REST API: <code>POST /agents/{id}/toggle-trust</code></li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px;">
+        <p style="font-size:0.56em; color:var(--text-dim); margin-bottom:12px; text-align:center;">Trust Score Scale</p>
+        <div style="position:relative; height:180px; display:flex; flex-direction:column; justify-content:space-between; padding:0 8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.65em; color:var(--accent); font-weight:700;">2.0</span>
+            <div style="flex:1; height:1px; background:var(--accent); opacity:0.3;"></div>
+            <span style="font-size:0.5em; color:var(--accent);">MAX &mdash; 200% rate limit</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.65em; color:var(--text-bright); font-weight:700;">1.0</span>
+            <div style="flex:1; height:2px; background:var(--text-dim); opacity:0.3;"></div>
+            <span style="font-size:0.5em; color:var(--text-dim);">DEFAULT &mdash; base rate</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.65em; color:var(--amber); font-weight:700;">0.5</span>
+            <div style="flex:1; height:1px; background:var(--amber); opacity:0.3;"></div>
+            <span style="font-size:0.5em; color:var(--amber);">MIN &mdash; 50% rate limit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Trust scoring means less friction for well-behaved agents and tighter controls for agents that misbehave. It's adaptive, not punitive — the floor is 50%, never crippling.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 13: Traffic Discovery -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Zero Config</span>
+  <h2>Traffic Discovery</h2>
+  <p class="subtitle">Automatically detect and secure agent integrations</p>
+
+  <div class="cols cols-2" style="margin-top:12px;">
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">How It Works</h4>
+        <ul>
+          <li>Parses tool names from live audit logs</li>
+          <li>Identifies MCP servers, CLI tools, builtins</li>
+          <li>Registry of <strong>40+ known servers</strong></li>
+          <li>Coverage gap analysis per server</li>
+          <li>One-click smart defaults from dashboard</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">Smart Defaults</h4>
+        <ul>
+          <li><span class="badge green">Allow</span> read-only operations</li>
+          <li><span class="badge amber">Approve</span> write operations</li>
+          <li><span class="badge red">Deny</span> destructive operations</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <!-- Traffic discovery mockup -->
+      <div class="mockup-frame">
+        <div class="mockup-titlebar">
+          <span class="mockup-dot r"></span><span class="mockup-dot y"></span><span class="mockup-dot g"></span>
+          <span class="mockup-url">Integrations &rsaquo; Traffic Discovery</span>
+        </div>
+        <div class="mockup-body">
+          <div class="mock-header">Detected MCP Servers</div>
+          <div class="mock-row">
+            <span style="color:var(--accent);">&#9679;</span>
+            <span style="color:var(--text-bright); font-weight:600;">github</span>
+            <span style="color:var(--text-dim); margin-left:4px;">12 tools</span>
+            <span style="margin-left:auto;"><span class="mock-badge allow">6 rules</span></span>
+          </div>
+          <div class="mock-row">
+            <span style="color:var(--accent);">&#9679;</span>
+            <span style="color:var(--text-bright); font-weight:600;">slack</span>
+            <span style="color:var(--text-dim); margin-left:4px;">8 tools</span>
+            <span style="margin-left:auto;"><span class="mock-badge allow">5 rules</span></span>
+          </div>
+          <div class="mock-row">
+            <span style="color:var(--amber);">&#9679;</span>
+            <span style="color:var(--text-bright); font-weight:600;">filesystem</span>
+            <span style="color:var(--text-dim); margin-left:4px;">6 tools</span>
+            <span style="margin-left:auto;"><span class="mock-badge approve">uncovered</span></span>
+          </div>
+          <div class="mock-row">
+            <span style="color:var(--red);">&#9679;</span>
+            <span style="color:var(--text-bright); font-weight:600;">postgres</span>
+            <span style="color:var(--text-dim); margin-left:4px;">4 tools</span>
+            <span style="margin-left:auto;"><span class="mock-badge deny">no rules</span></span>
+          </div>
+          <div style="margin-top:8px; text-align:right;">
+            <span class="mock-badge allow" style="font-size:0.85em; padding:3px 10px; cursor:pointer;">+ Add Smart Defaults</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small" style="text-align:center; margin-top:8px;">Week 1: Learning mode &rarr; Week 2: Review &amp; enforce &nbsp;|&nbsp; Curated packs for known servers (3+ rules each)</p>
+  <aside class="notes">Traffic discovery eliminates the cold-start problem. The mockup shows real output — green means covered, amber means partial, red means exposed. One click to add smart defaults.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 14: Agent Ecosystem + Browser Extension -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Ecosystem</span>
+  <h2>Every Agent. Every Interface.</h2>
+  <p class="subtitle">One firewall for CLI agents, API wrappers, and web-based AI chats</p>
+
+  <div class="cols" style="grid-template-columns:1fr 1fr 1fr; margin-top:12px;">
+    <div>
+      <h4 style="font-size:0.66em; color:var(--accent); margin-bottom:8px;">Native Hook Agents</h4>
+      <div class="agent-grid" style="grid-template-columns:1fr; gap:6px;">
+        <div class="agent-card" style="padding:7px 12px;"><span class="agent-dot"></span><span class="agent-name" style="font-size:0.58em;">OpenClaw</span></div>
+        <div class="agent-card" style="padding:7px 12px;"><span class="agent-dot"></span><span class="agent-name" style="font-size:0.58em;">Claude Code</span></div>
+        <div class="agent-card" style="padding:7px 12px;"><span class="agent-dot"></span><span class="agent-name" style="font-size:0.58em;">Cursor</span></div>
+        <div class="agent-card" style="padding:7px 12px;"><span class="agent-dot"></span><span class="agent-name" style="font-size:0.58em;">Windsurf</span></div>
+        <div class="agent-card" style="padding:7px 12px;"><span class="agent-dot"></span><span class="agent-name" style="font-size:0.58em;">Cline</span></div>
+        <div class="agent-card" style="padding:7px 12px;"><span class="agent-dot"></span><span class="agent-name" style="font-size:0.58em;">Custom</span></div>
+      </div>
+    </div>
+    <div>
+      <h4 style="font-size:0.66em; color:var(--blue); margin-bottom:8px;">SDK Wrappers</h4>
+      <div class="card" style="margin-bottom:8px; padding:12px 14px;">
+        <ul>
+          <li>OpenAI Python &amp; Node</li>
+          <li>Anthropic SDK</li>
+          <li>Google Gemini</li>
+        </ul>
+        <p style="font-size:0.55em; color:var(--text-dim); margin:6px 0 0;">Wrap any API call with Snapper evaluation &mdash; intercept tool_use before execution.</p>
+      </div>
+    </div>
+    <div>
+      <h4 style="font-size:0.66em; color:var(--purple); margin-bottom:8px;">Browser Extension</h4>
+      <!-- Extension popup mockup -->
+      <div class="mock-ext">
+        <div class="mock-ext-header">
+          <div class="mock-ext-logo">S</div>
+          <span class="mock-ext-title">Snapper Guard</span>
+          <span class="mock-ext-status">&#9679; Active</span>
+        </div>
+        <div class="mock-ext-body">
+          <div class="mock-ext-row">
+            <span style="color:var(--text-bright);">ChatGPT</span>
+            <span class="mock-ext-count" style="color:var(--accent);">3 blocked</span>
+          </div>
+          <div class="mock-ext-row">
+            <span style="color:var(--text-bright);">Claude.ai</span>
+            <span class="mock-ext-count" style="color:var(--accent);">1 blocked</span>
+          </div>
+          <div class="mock-ext-row">
+            <span style="color:var(--text-bright);">Gemini</span>
+            <span class="mock-ext-count" style="color:var(--text-dim);">0</span>
+          </div>
+          <div style="margin-top:6px; padding-top:6px; border-top:1px solid var(--border);">
+            <div style="font-size:0.4em; color:var(--text-dim);">Manifest V3 &middot; PII scan on paste &middot; Zero perf impact</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:10px; text-align:center; border-left:3px solid var(--accent); padding:10px 16px;">
+    <p style="font-size:0.62em; margin:0;">
+      The extension closes the <strong style="color:var(--accent);">shadow AI gap</strong> &mdash; employees pasting credentials into web AI chats are caught before the data leaves the browser.
+    </p>
+  </div>
+  <aside class="notes">Three integration paths cover every scenario. The browser extension is critical for CISOs — it catches the shadow AI problem that no network tool can see. Manifest V3 means Chrome Web Store compliant.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 15: SSO -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Enterprise Identity</span>
+  <h2>SSO &mdash; SAML 2.0 + OIDC</h2>
+  <p class="subtitle">Integrate with your existing identity provider</p>
+
+  <div class="cols cols-2" style="margin-top:14px;">
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">Supported Providers</h4>
+        <div class="inline-list" style="margin-top:6px;">
+          <span class="chip">Okta</span>
+          <span class="chip">Microsoft Entra ID</span>
+          <span class="chip">Google Workspace</span>
+          <span class="chip">Generic SAML 2.0</span>
+          <span class="chip">Generic OIDC</span>
+        </div>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">Features</h4>
+        <ul>
+          <li>JIT (Just-in-Time) user provisioning</li>
+          <li>Per-organization SSO configuration</li>
+          <li>Automatic role mapping from IdP groups</li>
+          <li>Enforced SSO (disable password login)</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="arch-box" style="font-size:0.42em;"><span class="w">Login Flow</span>
+
+<span class="b">User</span> &rarr; <span class="w">Snapper Login</span> &rarr; <span class="b">IdP Redirect</span>
+                           &darr;
+                    <span class="b">SAML/OIDC Assert</span>
+                           &darr;
+                    <span class="g">JIT Provision</span> (if new user)
+                           &darr;
+                    <span class="g">Map Roles</span> (from IdP groups)
+                           &darr;
+                    <span class="g">Issue Session</span> &rarr; <span class="w">Dashboard</span></div>
+      <p class="small" style="margin-top:8px;">Configuration via dashboard or API &mdash; per-org settings stored encrypted</p>
+    </div>
+  </div>
+  <aside class="notes">SSO is table-stakes for enterprise. Support for both SAML and OIDC covers the vast majority of enterprise IdPs. JIT provisioning means zero manual user management.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 16: SCIM 2.0 -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Provisioning</span>
+  <h2>SCIM 2.0</h2>
+  <p class="subtitle">Automated user lifecycle management</p>
+
+  <div class="cols cols-60-40" style="margin-top:14px;">
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">Full SCIM 2.0 Compliance</h4>
+        <ul>
+          <li><strong>Create</strong> &mdash; auto-provisioned with correct org + role</li>
+          <li><strong>Update</strong> &mdash; profile changes sync from IdP in real-time</li>
+          <li><strong>Deactivate</strong> &mdash; offboarded users lose access immediately</li>
+          <li><strong>Sync</strong> &mdash; periodic reconciliation catches drift</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">Security</h4>
+        <ul>
+          <li>Bearer token authentication</li>
+          <li>Rate-limited endpoints</li>
+          <li>Audit log for all provisioning events</li>
+          <li>Supports Okta, Entra ID, OneLogin, JumpCloud</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="stat-grid cols-2">
+        <div class="stat"><div class="num" style="font-size:1.3em;">0</div><div class="label">Manual User Mgmt</div></div>
+        <div class="stat blue"><div class="num" style="font-size:1em;">Real-time</div><div class="label">Deprovisioning</div></div>
+      </div>
+      <div class="card" style="margin-top:10px;">
+        <p style="font-size:0.58em; color:var(--text-dim);">
+          <strong style="color:var(--text-bright);">Why it matters:</strong> When an employee leaves, their Snapper access is revoked the moment HR deactivates their IdP account. No security gap.
+        </p>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">SCIM closes the provisioning loop. Without it, you have ghost accounts with active API keys. With SCIM, access lifecycle is fully automated.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 17: SIEM Integration -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Observability</span>
+  <h2>SIEM Integration</h2>
+  <p class="subtitle">Three simultaneous export paths &mdash; choose your stack</p>
+
+  <div class="cols" style="grid-template-columns:1fr 1fr 1fr; margin-top:12px;">
+    <div class="card" style="border-top:3px solid var(--accent); padding:14px 16px;">
+      <h4 style="font-size:0.66em; color:var(--accent);">CEF Syslog</h4>
+      <ul>
+        <li>UDP and TCP transport</li>
+        <li>70+ event class IDs</li>
+        <li>RFC 5424 compliant</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:3px solid var(--blue); padding:14px 16px;">
+      <h4 style="font-size:0.66em; color:var(--blue);">HMAC Webhooks</h4>
+      <ul>
+        <li>SHA-256 signed payloads</li>
+        <li>Configurable endpoints</li>
+        <li>Retry with backoff</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:3px solid var(--amber); padding:14px 16px;">
+      <h4 style="font-size:0.66em; color:var(--amber);">Splunk HEC</h4>
+      <ul>
+        <li>Native HTTP Event Collector</li>
+        <li>Structured JSON events</li>
+        <li>Token auth + index routing</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:10px; padding:12px 16px;">
+    <h4 style="font-size:0.64em;">Supported Platforms</h4>
+    <div class="inline-list" style="margin-top:6px;">
+      <span class="chip">Splunk</span>
+      <span class="chip">IBM QRadar</span>
+      <span class="chip">Microsoft Sentinel</span>
+      <span class="chip">ArcSight</span>
+      <span class="chip">LogRhythm</span>
+      <span class="chip">Elastic SIEM</span>
+    </div>
+  </div>
+  <aside class="notes">All three export paths can run simultaneously. CEF syslog for legacy SIEM, webhooks for custom pipelines, Splunk HEC for Splunk shops. 70+ event class IDs give granular visibility.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 18: Observability -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Monitoring</span>
+  <h2>Observability</h2>
+  <p class="subtitle">Prometheus metrics + auto-provisioned Grafana dashboards</p>
+
+  <div class="cols cols-60-40" style="margin-top:12px;">
+    <div>
+      <table>
+        <thead><tr><th>Metric Family</th><th>Examples</th></tr></thead>
+        <tbody>
+          <tr><td>HTTP Requests</td><td>count, latency, error rate</td></tr>
+          <tr><td>Rule Evaluations</td><td>eval count, duration, allow/deny/approve</td></tr>
+          <tr><td>PII Detection</td><td>vault lookups, raw PII hits</td></tr>
+          <tr><td>Agent Activity</td><td>requests per agent, trust changes</td></tr>
+          <tr><td>Approvals</td><td>pending, approved, denied, timed out</td></tr>
+          <tr><td>SIEM Export</td><td>events sent, errors, latency</td></tr>
+          <tr><td>Webhooks</td><td>delivery count, failures, retries</td></tr>
+          <tr><td>System</td><td>DB connections, Redis pool, memory</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="stat-grid cols-2">
+        <div class="stat"><div class="num">8</div><div class="label">Metric Families</div></div>
+        <div class="stat blue"><div class="num">8</div><div class="label">Grafana Panels</div></div>
+      </div>
+      <div class="card" style="margin-top:10px;">
+        <h4 style="font-size:0.64em;">Auto-provisioned</h4>
+        <ul>
+          <li>Grafana dashboard JSON included</li>
+          <li>Prometheus scrape config ready</li>
+          <li><code>/metrics</code> always-on</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">The /metrics endpoint is always active. Drop in the included Grafana dashboard JSON and you have instant visibility.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 19: Multi-Tenant Architecture -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Multi-Tenant</span>
+  <h2>Multi-Tenant Architecture</h2>
+  <p class="subtitle">Organizations, teams, and role-based access control</p>
+
+  <div class="cols cols-2" style="margin-top:12px;">
+    <div>
+      <div class="arch-box" style="font-size:0.44em;"><span class="w">Organization</span>
+<span class="b">&boxvr;&boxh;&boxh;</span> <span class="w">Team: Engineering</span>
+<span class="b">&boxv;</span>   <span class="b">&boxvr;&boxh;&boxh;</span> <span class="g">Admin:</span> alice@corp.com
+<span class="b">&boxv;</span>   <span class="b">&boxvr;&boxh;&boxh;</span> <span class="w">Member:</span> bob@corp.com
+<span class="b">&boxv;</span>   <span class="b">&boxur;&boxh;&boxh;</span> Agents: [claude-code-1, cursor-2]
+<span class="b">&boxvr;&boxh;&boxh;</span> <span class="w">Team: Security</span>
+<span class="b">&boxv;</span>   <span class="b">&boxvr;&boxh;&boxh;</span> <span class="g">Admin:</span> carol@corp.com
+<span class="b">&boxv;</span>   <span class="b">&boxur;&boxh;&boxh;</span> <span class="a">Viewer:</span> dave@corp.com
+<span class="b">&boxur;&boxh;&boxh;</span> <span class="r">Owner:</span> ciso@corp.com (full access)</div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">RBAC Roles</h4>
+        <table style="font-size:0.92em; margin:0;">
+          <thead><tr><th>Role</th><th>Permissions</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge red">Owner</span></td><td>Full org control, billing, SSO</td></tr>
+            <tr><td><span class="badge amber">Admin</span></td><td>Manage team rules, agents, vault</td></tr>
+            <tr><td><span class="badge green">Member</span></td><td>View rules, manage own agents</td></tr>
+            <tr><td><span class="badge blue">Viewer</span></td><td>Read-only, audit logs</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.64em;">Data Isolation</h4>
+        <ul>
+          <li>Per-org: rules, agents, vault, audit</li>
+          <li>Feature flags + separate encryption keys</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Full multi-tenant isolation. The security team can set org-wide policies while individual teams manage their own agent configurations. RBAC ensures least privilege.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 20: Billing & Plans -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Pricing</span>
+  <h2>Billing &amp; Plans</h2>
+  <p class="subtitle">Flexible tiers from individual developers to enterprise</p>
+
+  <table style="margin-top:14px;">
+    <thead>
+      <tr><th>Feature</th><th>Free</th><th>Pro</th><th class="hl">Enterprise</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Agents</td><td>3</td><td>25</td><td class="hl">Unlimited</td></tr>
+      <tr><td>Rules</td><td>20</td><td>200</td><td class="hl">Unlimited</td></tr>
+      <tr><td>Vault Entries</td><td>10</td><td>100</td><td class="hl">Unlimited</td></tr>
+      <tr><td>Team Members</td><td>1</td><td>10</td><td class="hl">Unlimited</td></tr>
+      <tr><td>SSO / SCIM</td><td><span class="cross">&times;</span></td><td><span class="cross">&times;</span></td><td class="hl"><span class="check">&check;</span></td></tr>
+      <tr><td>SIEM Integration</td><td><span class="cross">&times;</span></td><td><span class="check">&check;</span></td><td class="hl"><span class="check">&check;</span></td></tr>
+      <tr><td>Audit Retention</td><td>7 days</td><td>90 days</td><td class="hl">Unlimited</td></tr>
+      <tr><td>Support</td><td>Community</td><td>Email</td><td class="hl">Dedicated SLA</td></tr>
+    </tbody>
+  </table>
+
+  <div class="cols cols-2" style="margin-top:12px;">
+    <div class="card" style="border-left:3px solid var(--accent); padding:10px 16px;">
+      <p style="font-size:0.62em; margin:0;">
+        <strong style="color:var(--accent);">Self-hosted = Unlimited.</strong> All features, no quotas. Enterprise license for commercial use.
+      </p>
+    </div>
+    <div class="card" style="border-left:3px solid var(--blue); padding:10px 16px;">
+      <p style="font-size:0.62em; margin:0;">
+        <strong style="color:var(--blue);">Stripe integration</strong> &mdash; usage-based billing, quota enforcement, upgrade prompts.
+      </p>
+    </div>
+  </div>
+  <aside class="notes">Self-hosted is always unlimited — no artificial restrictions. SaaS tiers provide managed hosting with quota guardrails. Enterprise gets everything plus custom SLAs.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 21: Compliance & Audit -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Compliance</span>
+  <h2>Compliance &amp; Audit</h2>
+  <p class="subtitle">Immutable audit trail with enterprise compliance coverage</p>
+
+  <div class="cols cols-60-40" style="margin-top:12px;">
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">Audit Trail</h4>
+        <ul>
+          <li><strong>40+ action types</strong> logged with full context</li>
+          <li>BRIN-indexed for fast time-range queries</li>
+          <li>Server-side timestamps (no client trust)</li>
+          <li>Immutable &mdash; append-only, no edits or deletes</li>
+          <li>CEF export for SIEM &nbsp;|&nbsp; GDPR data purge API</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">Security Posture Assessment</h4>
+        <ul>
+          <li>Automated scan with <code>--fix</code> option</li>
+          <li>Checks coverage, PII protection, rate limits</li>
+          <li>Exportable compliance report</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="font-size:0.68em;">Framework Coverage</h4>
+        <table style="font-size:0.92em; margin:0;">
+          <thead><tr><th>Framework</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>SOC 2 Type II</td><td><span class="check">&check;</span> Audit controls</td></tr>
+            <tr><td>GDPR</td><td><span class="check">&check;</span> Data purge API</td></tr>
+            <tr><td>HIPAA</td><td><span class="check">&check;</span> PII encryption</td></tr>
+            <tr><td>PCI DSS</td><td><span class="check">&check;</span> Credential gate</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stat">
+        <div class="num">40+</div>
+        <div class="label">Auditable Action Types</div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">The audit trail is the backbone of compliance. Every rule evaluation, approval decision, trust score change, and configuration update is recorded.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 22: Deployment Flexibility -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Deployment</span>
+  <h2>Deployment Flexibility</h2>
+  <p class="subtitle">Your infrastructure, your rules</p>
+
+  <div class="cols" style="grid-template-columns:1fr 1fr 1fr; margin-top:12px;">
+    <div class="card" style="border-top:3px solid var(--accent); padding:14px 16px;">
+      <h4 style="font-size:0.66em; color:var(--accent);">Docker Compose</h4>
+      <pre style="font-size:0.85em; margin:8px 0 0;"><code>./setup.sh</code></pre>
+      <ul style="margin-top:8px;">
+        <li>One-command install</li>
+        <li>6 containers orchestrated</li>
+        <li>Auto TLS via Caddy</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:3px solid var(--blue); padding:14px 16px;">
+      <h4 style="font-size:0.66em; color:var(--blue);">Kubernetes Helm</h4>
+      <pre style="font-size:0.85em; margin:8px 0 0;"><code>helm install snapper</code></pre>
+      <ul style="margin-top:8px;">
+        <li>4 profiles: cloud, on-prem, air-gapped, minimal</li>
+        <li>HPA auto-scaling</li>
+        <li>Ingress + cert-manager</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:3px solid var(--amber); padding:14px 16px;">
+      <h4 style="font-size:0.66em; color:var(--amber);">Ubuntu VPS</h4>
+      <pre style="font-size:0.85em; margin:8px 0 0;"><code>./deploy.sh --domain</code></pre>
+      <ul style="margin-top:8px;">
+        <li>Single-server deploy</li>
+        <li>Auto Let's Encrypt TLS</li>
+        <li>Pre-built GHCR images</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px; text-align:center; border-left:3px solid var(--accent); padding:10px 16px;">
+    <p style="font-size:0.62em; margin:0;">
+      Air-gapped deployments supported &mdash; all images available for offline transfer &nbsp;|&nbsp; No phone-home telemetry
+    </p>
+  </div>
+  <aside class="notes">Docker Compose for fast POC, Helm for production K8s, VPS for simple setups. Air-gapped for regulated industries. Zero telemetry.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 23: Security Architecture -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Security Design</span>
+  <h2>Security Architecture</h2>
+
+  <div class="cols cols-2" style="margin-top:12px;">
+    <div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">6 Design Principles</h4>
+        <ul>
+          <li><span style="color:var(--accent);">1.</span> Deny by default &mdash; no rule = blocked</li>
+          <li><span style="color:var(--accent);">2.</span> DENY always short-circuits</li>
+          <li><span style="color:var(--accent);">3.</span> Priority-based evaluation</li>
+          <li><span style="color:var(--accent);">4.</span> No rule caching &mdash; always fresh</li>
+          <li><span style="color:var(--accent);">5.</span> Learning mode for safe onboarding</li>
+          <li><span style="color:var(--accent);">6.</span> Errors = deny (fail-closed)</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h4 style="font-size:0.68em;">6 Enforcement Layers</h4>
+        <div class="arch-box" style="font-size:0.42em; margin-top:6px;"><span class="w">Request</span>
+  <span class="b">&darr;</span>
+<span class="b">L1:</span> <span class="w">Security Middleware</span> (Host/Origin/CORS)
+  <span class="b">&darr;</span>
+<span class="b">L2:</span> <span class="w">API Key Authentication</span>
+  <span class="b">&darr;</span>
+<span class="b">L3:</span> <span class="g">Rule Engine</span> (16 types, priority-sorted)
+  <span class="b">&darr;</span>
+<span class="b">L4:</span> <span class="a">PII Gate</span> (vault tokens + raw scan)
+  <span class="b">&darr;</span>
+<span class="b">L5:</span> <span class="a">Approval Workflow</span> (Telegram/Slack)
+  <span class="b">&darr;</span>
+<span class="b">L6:</span> <span class="w">Audit Trail</span> (immutable, BRIN-indexed)</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size:0.58em; color:var(--text-dim); margin-top:10px; text-align:center;">
+    Each layer is independent &mdash; failure in any layer defaults to deny &nbsp;|&nbsp; No single point of bypass
+  </p>
+  <aside class="notes">Defense in depth. Six independent layers mean an attacker would need to bypass all of them. Fail-closed design means any error results in deny, not pass.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 24: Competitive Landscape -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Positioning</span>
+  <h2>Competitive Landscape</h2>
+
+  <table style="margin-top:12px; font-size:0.92em;">
+    <thead>
+      <tr>
+        <th>Capability</th>
+        <th class="hl">Snapper</th>
+        <th>LlamaFirewall</th>
+        <th>Cloudflare AI GW</th>
+        <th>GitHub AdvSec</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Agent-level inspection</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="partial">~</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+      <tr>
+        <td>PII vault + tokenization</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+      <tr>
+        <td>Human-in-the-loop</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+      <tr>
+        <td>Adaptive trust scoring</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+      <tr>
+        <td>MCP server discovery</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+      <tr>
+        <td>Multi-agent + browser</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="partial">~</span></td>
+        <td><span class="check">&check;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+      <tr>
+        <td>Self-hosted + open source</td>
+        <td class="hl"><span class="check">&check;</span></td>
+        <td><span class="check">&check;</span></td>
+        <td><span class="cross">&times;</span></td>
+        <td><span class="cross">&times;</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="small" style="margin-top:8px; text-align:center;">
+    <span class="check">&check;</span> = Full support &nbsp;&nbsp; <span class="partial">~</span> = Partial &nbsp;&nbsp; <span class="cross">&times;</span> = Not available
+    &nbsp;&nbsp;|&nbsp;&nbsp; No competitor has PII vault + human-in-loop + trust scoring + MCP discovery
+  </p>
+  <aside class="notes">Walk through each row. No competitor has PII vault, human-in-loop, trust scoring, AND MCP discovery. Snapper is the only complete AAF.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 25: By the Numbers -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Metrics</span>
+  <h2>By the Numbers</h2>
+
+  <div class="stat-grid cols-5" style="margin-top:20px;">
+    <div class="stat"><div class="num">16</div><div class="label">Rule Types</div></div>
+    <div class="stat"><div class="num">864</div><div class="label">Test Cases</div></div>
+    <div class="stat red"><div class="num">341+</div><div class="label">Malicious Skills Blocked</div></div>
+    <div class="stat blue"><div class="num">30+</div><div class="label">PII Patterns</div></div>
+    <div class="stat"><div class="num">6</div><div class="label">Native Agents</div></div>
+  </div>
+
+  <div class="stat-grid cols-5" style="margin-top:12px;">
+    <div class="stat blue"><div class="num">40+</div><div class="label">Known MCP Servers</div></div>
+    <div class="stat amber"><div class="num">70+</div><div class="label">CEF Event Types</div></div>
+    <div class="stat"><div class="num">&lt;50ms</div><div class="label">Eval Latency</div></div>
+    <div class="stat"><div class="num">128-bit</div><div class="label">Vault Tokens</div></div>
+    <div class="stat"><div class="num">99.9%</div><div class="label">Enterprise SLA</div></div>
+  </div>
+
+  <blockquote style="margin-top:18px; text-align:center;">
+    Production-hardened. Battle-tested. Enterprise-ready.
+  </blockquote>
+  <aside class="notes">Let the numbers speak. 864 tests across unit, integration, and E2E. 341+ malicious skills from the ClawHavoc research. Sub-50ms means zero developer friction.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 26: ROI -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Business Case</span>
+  <h2>Return on Investment</h2>
+
+  <div class="cols cols-2" style="margin-top:14px;">
+    <div class="card" style="border-left:3px solid var(--red);">
+      <h4 style="color:var(--red); font-size:0.68em;">Cost of NOT Deploying</h4>
+      <ul>
+        <li>Average data breach: <strong style="color:var(--red);">$4.45M</strong></li>
+        <li>Compliance fines: <strong style="color:var(--red);">$100K &ndash; $1M+</strong></li>
+        <li>Manual security review: <strong style="color:var(--red);">10+ hrs/week</strong></li>
+        <li>Shadow AI &mdash; agents deployed without oversight</li>
+        <li>No audit trail for incident response</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left:3px solid var(--accent);">
+      <h4 style="color:var(--accent); font-size:0.68em;">Value of Deploying Snapper</h4>
+      <ul>
+        <li><strong style="color:var(--accent);">Prevent breaches</strong> at the decision layer</li>
+        <li><strong style="color:var(--accent);">Enforce compliance</strong> automatically</li>
+        <li><strong style="color:var(--accent);">Reduce review burden</strong> by 80%+</li>
+        <li><strong style="color:var(--accent);">Enable safe AI adoption</strong> &mdash; not prohibition</li>
+        <li><strong style="color:var(--accent);">Audit-ready</strong> from day one</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px; text-align:center; border:1px solid var(--accent); padding:10px 16px;">
+    <p style="font-size:0.74em; margin:0; color:var(--text-bright);">
+      Payback: <strong style="color:var(--accent);">&lt; 1 week</strong> if a single incident is prevented
+    </p>
+  </div>
+  <aside class="notes">Frame this as risk mitigation, not cost. $4.45M is IBM's 2024 average breach cost. The alternative — banning AI agents — has its own cost in lost productivity.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 27: Getting Started -->
+<!-- ============================================================ -->
+<section>
+  <span class="eyebrow">Quick Start</span>
+  <h2>Getting Started</h2>
+  <p class="subtitle">From zero to enforcing in 5 minutes</p>
+
+  <div class="steps" style="margin-top:18px;">
+    <div class="step">
+      <div class="step-num">01</div>
+      <h4>Install</h4>
+      <pre style="font-size:0.8em; margin:6px 0 0;"><code>./setup.sh</code></pre>
+      <p>One command. Docker pulls images, starts 6 containers, generates keys.</p>
+      <p class="small" style="margin-top:4px;"><strong>~1 minute</strong></p>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <h4>Configure</h4>
+      <p>Setup wizard registers your first agent. Connect Telegram or Slack for approvals.</p>
+      <p class="small" style="margin-top:4px;"><strong>~2 minutes</strong></p>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <h4>Enforce</h4>
+      <p>Start in learning mode. Traffic discovery identifies integrations. Review, then enforce.</p>
+      <p class="small" style="margin-top:4px;"><strong>~2 minutes</strong></p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <div class="cols" style="grid-template-columns:1fr 1fr 1fr; text-align:center;">
+      <div>
+        <p style="font-size:0.62em; margin:0;"><strong style="color:var(--accent);">Week 1</strong></p>
+        <p style="font-size:0.55em; color:var(--text-dim); margin:3px 0 0;">Learning mode &mdash; observe traffic</p>
+      </div>
+      <div>
+        <p style="font-size:0.62em; margin:0;"><strong style="color:var(--amber);">Week 2</strong></p>
+        <p style="font-size:0.55em; color:var(--text-dim); margin:3px 0 0;">Review &amp; activate smart defaults</p>
+      </div>
+      <div>
+        <p style="font-size:0.62em; margin:0;"><strong style="color:var(--blue);">Week 3</strong></p>
+        <p style="font-size:0.55em; color:var(--text-dim); margin:3px 0 0;">Enable trust scoring &amp; fine-tune</p>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Emphasize the low barrier to entry. 5 minutes to running, 3 weeks to fully tuned. Learning mode eliminates the fear of breaking things on day one.</aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 28: Contact & Next Steps -->
+<!-- ============================================================ -->
+<section class="title-slide">
+  <span class="eyebrow" style="margin-bottom:16px;">Next Steps</span>
+  <h1 style="font-size:2.2em; margin-bottom:0.2em;">Let&rsquo;s Secure Your Agents</h1>
+  <p style="font-size:0.82em; color:var(--text); font-weight:300; max-width:600px; margin-bottom:28px;">
+    Open source. Self-hosted. Enterprise-ready.
+  </p>
+
+  <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:32px;">
+    <a class="cta-btn primary" href="#">Try It Now</a>
+    <a class="cta-btn secondary" href="#">Schedule Demo</a>
+    <a class="cta-btn secondary" href="#">Request Pricing</a>
+  </div>
+
+  <div style="display:flex; gap:24px; justify-content:center; flex-wrap:wrap; margin-bottom:28px;">
+    <div class="card" style="padding:12px 20px; text-align:center; min-width:180px;">
+      <p style="font-size:0.56em; color:var(--text-dim); margin:0 0 3px;">Open Source</p>
+      <p style="font-size:0.64em; color:var(--text-bright); margin:0;">GitHub &middot; PolyForm Noncommercial</p>
+    </div>
+    <div class="card" style="padding:12px 20px; text-align:center; min-width:180px;">
+      <p style="font-size:0.56em; color:var(--text-dim); margin:0 0 3px;">Enterprise</p>
+      <p style="font-size:0.64em; color:var(--text-bright); margin:0;">SaaS &middot; Custom SLAs &middot; Pro Services</p>
+    </div>
+  </div>
+
+  <hr class="divider" style="max-width:300px; margin:0 auto 14px;">
+
+  <p style="font-size:0.58em; color:var(--text-dim); margin:0;">
+    McKinley Labs LLC
+  </p>
+  <aside class="notes">End with clear CTAs. Offer the free trial for technical evaluation, demo for stakeholder buy-in, and pricing for procurement teams.</aside>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: 'c/t',
+  width: 1280,
+  height: 720,
+  margin: 0.04,
+  center: false,
+  transition: 'fade',
+  transitionSpeed: 'fast',
+  backgroundTransition: 'fade',
+  pdfSeparateFragments: false,
+  showNotes: false,
+  controls: true,
+  controlsTutorial: false,
+  progress: true,
+  history: true,
+  keyboard: true,
+  overview: true,
+  help: true,
+});
+</script>
+</body>
+</html>
