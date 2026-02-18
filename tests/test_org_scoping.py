@@ -66,7 +66,7 @@ async def seed_plans(db_session: AsyncSession):
         },
     )
     db_session.add(plan)
-    await db_session.commit()
+    await db_session.flush()
     return plan
 
 
@@ -76,7 +76,7 @@ async def user_a(db_session: AsyncSession, seed_plans):
     user = await create_user(
         db_session, "alice@example.com", "alice", "AlicePass1!"
     )
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(user)
     return user
 
@@ -87,7 +87,7 @@ async def user_b(db_session: AsyncSession, seed_plans):
     user = await create_user(
         db_session, "bob@example.com", "bob", "BobPass123!"
     )
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(user)
     return user
 
@@ -115,7 +115,7 @@ async def agent_in_org_a(db_session: AsyncSession, org_a_id):
         organization_id=org_a_id,
     )
     db_session.add(agent)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(agent)
     return agent
 
@@ -133,7 +133,7 @@ async def agent_in_org_b(db_session: AsyncSession, org_b_id):
         organization_id=org_b_id,
     )
     db_session.add(agent)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(agent)
     return agent
 
@@ -151,7 +151,7 @@ async def agent_no_org(db_session: AsyncSession):
         organization_id=None,
     )
     db_session.add(agent)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(agent)
     return agent
 
@@ -172,7 +172,7 @@ async def rule_in_org_a(db_session: AsyncSession, org_a_id, agent_in_org_a):
         organization_id=org_a_id,
     )
     db_session.add(rule)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(rule)
     return rule
 
@@ -193,7 +193,7 @@ async def rule_in_org_b(db_session: AsyncSession, org_b_id, agent_in_org_b):
         organization_id=org_b_id,
     )
     db_session.add(rule)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(rule)
     return rule
 
@@ -217,7 +217,7 @@ async def global_rule_no_org(db_session: AsyncSession):
         organization_id=None,
     )
     db_session.add(rule)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(rule)
     return rule
 
@@ -237,7 +237,7 @@ async def audit_log_in_org_a(
         organization_id=org_a_id,
     )
     db_session.add(log)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(log)
     return log
 
@@ -257,7 +257,7 @@ async def audit_log_in_org_b(
         organization_id=org_b_id,
     )
     db_session.add(log)
-    await db_session.commit()
+    await db_session.flush()
     await db_session.refresh(log)
     return log
 
@@ -306,7 +306,7 @@ class TestAgentsOrgScoping:
             organization_id=user_org_id,
         )
         db_session.add(agent_mine)
-        await db_session.commit()
+        await db_session.flush()
 
         client.cookies.set("snapper_access_token", access)
         client.cookies.set("snapper_refresh_token", refresh)
@@ -411,7 +411,7 @@ class TestRulesOrgScoping:
             organization_id=user_org_id,
         )
         db_session.add(my_rule)
-        await db_session.commit()
+        await db_session.flush()
 
         client.cookies.set("snapper_access_token", access)
         client.cookies.set("snapper_refresh_token", refresh)
@@ -502,7 +502,7 @@ class TestAuditOrgScoping:
             organization_id=user_org_id,
         )
         db_session.add(my_log)
-        await db_session.commit()
+        await db_session.flush()
 
         client.cookies.set("snapper_access_token", access)
         client.cookies.set("snapper_refresh_token", refresh)
@@ -559,7 +559,7 @@ class TestCrossOrgIsolation:
             organization_id=org_b_id,
         )
         db_session.add_all([agent_a, agent_b])
-        await db_session.commit()
+        await db_session.flush()
 
         # User A queries
         client.cookies.set("snapper_access_token", access_a)
@@ -615,7 +615,7 @@ class TestCrossOrgIsolation:
             organization_id=org_b_id,
         )
         db_session.add_all([rule_a, rule_b])
-        await db_session.commit()
+        await db_session.flush()
 
         # User A
         client.cookies.set("snapper_access_token", access_a)
@@ -667,7 +667,7 @@ class TestCrossOrgIsolation:
             organization_id=org_b_id,
         )
         db_session.add_all([log_a, log_b])
-        await db_session.commit()
+        await db_session.flush()
 
         # User A
         client.cookies.set("snapper_access_token", access_a)
@@ -809,7 +809,7 @@ class TestAgentCountsPerOrg:
                 organization_id=org_b_id,
             )
         )
-        await db_session.commit()
+        await db_session.flush()
 
         # User A sees 3
         client.cookies.set("snapper_access_token", access_a)
@@ -902,7 +902,7 @@ class TestRuleCreationIsolation:
                 organization_id=None,
             )
         )
-        await db_session.commit()
+        await db_session.flush()
 
         client.cookies.set("snapper_access_token", access_a)
         client.cookies.set("snapper_refresh_token", refresh_a)
@@ -964,7 +964,7 @@ class TestSwitchOrgChangesData:
             organization_id=org_beta.id,
         )
         db_session.add_all([agent_alpha, agent_beta])
-        await db_session.commit()
+        await db_session.flush()
 
         # List agents in org Alpha (default)
         client.cookies.set("snapper_access_token", access)
@@ -1039,7 +1039,7 @@ class TestVaultOrgScoping:
             organization_id=org_b_id,
         )
         db_session.add_all([entry_a, entry_b])
-        await db_session.commit()
+        await db_session.flush()
 
         # User A queries vault — should see only their org's entry
         client.cookies.set("snapper_access_token", access_a)
@@ -1079,7 +1079,7 @@ class TestVaultOrgScoping:
             organization_id=org_a_id,
         )
         db_session.add(entry)
-        await db_session.commit()
+        await db_session.flush()
 
         # User B queries — should not see User A's entry
         client.cookies.set("snapper_access_token", access_b)

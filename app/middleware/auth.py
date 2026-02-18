@@ -90,17 +90,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if access_token:
             try:
                 payload = verify_token(access_token)
+            except ValueError:
+                # Access token invalid/expired, fall through to refresh
+                payload = None
+            else:
                 if payload.get("type") == "access":
                     self._set_request_state(request, payload)
                     return await call_next(request)
-            except ValueError:
-                # Access token invalid/expired, fall through to refresh
-                pass
 
         # Attempt 2: Refresh token -> auto-rotate access token
         if refresh_token:
             try:
                 refresh_payload = verify_token(refresh_token)
+            except ValueError:
+                # Refresh token also invalid/expired
+                refresh_payload = None
+            else:
                 if refresh_payload.get("type") == "refresh":
                     user_id = refresh_payload.get("sub")
                     if user_id:
@@ -150,9 +155,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
                         )
                         return response
-            except ValueError:
-                # Refresh token also invalid/expired
-                pass
 
         # No valid authentication found
         return self._unauthenticated_response(request)

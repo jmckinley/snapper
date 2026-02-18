@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.audit_logs import AuditAction, AuditSeverity
 
@@ -22,6 +22,12 @@ class AuditLogResponse(BaseModel):
     user_id: Optional[UUID] = None
     request_id: Optional[str] = None
     ip_address: Optional[str] = None
+
+    @field_validator("ip_address", mode="before")
+    @classmethod
+    def coerce_ip_address(cls, v):
+        """Coerce IPv4Address/IPv6Address from PostgreSQL INET to string."""
+        return str(v) if v is not None else None
     origin: Optional[str] = None
     user_agent: Optional[str] = None
     endpoint: Optional[str] = None
@@ -72,6 +78,12 @@ class ViolationResponse(BaseModel):
     ip_address: Optional[str] = None
     request_id: Optional[str] = None
     is_resolved: bool
+
+    @field_validator("ip_address", mode="before")
+    @classmethod
+    def coerce_ip_address(cls, v):
+        """Coerce IPv4Address/IPv6Address from PostgreSQL INET to string."""
+        return str(v) if v is not None else None
     resolved_at: Optional[datetime] = None
     resolved_by: Optional[UUID] = None
     resolution_notes: Optional[str] = None
