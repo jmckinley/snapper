@@ -38,12 +38,13 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(
-    user_id: uuid.UUID, org_id: uuid.UUID, role: str
+    user_id: uuid.UUID, org_id: uuid.UUID, role: str, session_id: Optional[str] = None
 ) -> str:
     """
     Create a JWT access token.
 
     Payload includes user ID, organization ID, role, expiration, and token type.
+    Optionally includes session_id for session management.
     """
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(
@@ -56,6 +57,8 @@ def create_access_token(
         "exp": expire,
         "type": "access",
     }
+    if session_id:
+        payload["sid"] = session_id
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 

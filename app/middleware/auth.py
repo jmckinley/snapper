@@ -46,6 +46,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/auth/refresh",
         "/api/v1/auth/forgot-password",
         "/api/v1/auth/reset-password",
+        "/api/v1/auth/mfa/verify",
     }
 
     # Path prefixes exempt from auth

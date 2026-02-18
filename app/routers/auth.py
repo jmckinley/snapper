@@ -16,6 +16,7 @@ from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.organizations import Organization, OrganizationMembership
 from app.models.users import User
 from app.schemas.auth import (
+    ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MFALoginRequest,
@@ -26,7 +27,9 @@ from app.schemas.auth import (
     OrgMembershipInfo,
     RegisterRequest,
     ResetPasswordRequest,
+    SessionResponse,
     SwitchOrgRequest,
+    UpdateProfileRequest,
     UserResponse,
     UserWithOrgsResponse,
 )
@@ -69,6 +72,31 @@ def _create_audit_log(
     )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+async def _create_session_record(
+    user_id: UUID, session_id: str, request: Request
+) -> None:
+    """Store session metadata in Redis for session management."""
+    from datetime import datetime, timezone
+    from app.redis_client import get_redis
+
+    try:
+        redis_client = await get_redis()
+        settings = get_settings()
+        key = f"session:{user_id}:{session_id}"
+        now = datetime.now(timezone.utc).isoformat()
+        await redis_client.client.hset(key, mapping={
+            "ip_address": request.client.host if request.client else "",
+            "user_agent": request.headers.get("user-agent", "")[:200],
+            "created_at": now,
+            "last_active": now,
+        })
+        # Expire session when refresh token expires
+        await redis_client.client.expire(key, settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400)
+    except Exception:
+        # Session tracking is best-effort; don't fail login on Redis errors
+        pass
 
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
@@ -236,12 +264,16 @@ async def register(
     org_id = user.default_organization_id or memberships[0].org_id if memberships else None
     role = default_membership.role if default_membership else "owner"
 
-    # Create tokens
-    access_token = create_access_token(user.id, org_id, role)
+    # Create tokens with session tracking
+    session_id = secrets.token_hex(16)
+    access_token = create_access_token(user.id, org_id, role, session_id=session_id)
     refresh_token = create_refresh_token(user.id)
 
     # Set cookies
     _set_auth_cookies(response, access_token, refresh_token)
+
+    # Store session record
+    await _create_session_record(user.id, session_id, request)
 
     # Audit log
     db.add(_create_audit_log(
@@ -308,12 +340,16 @@ async def login(
     org_id = default_membership.org_id if default_membership else user.default_organization_id
     role = default_membership.role if default_membership else "member"
 
-    # Create tokens
-    access_token = create_access_token(user.id, org_id, role)
+    # Create tokens with session tracking
+    session_id = secrets.token_hex(16)
+    access_token = create_access_token(user.id, org_id, role, session_id=session_id)
     refresh_token = create_refresh_token(user.id)
 
     # Set cookies
     _set_auth_cookies(response, access_token, refresh_token)
+
+    # Store session record
+    await _create_session_record(user.id, session_id, request)
 
     # Audit log
     db.add(_create_audit_log(
@@ -715,9 +751,13 @@ async def mfa_verify(
     org_id = default_membership.org_id if default_membership else user.default_organization_id
     role = default_membership.role if default_membership else "member"
 
-    access_token = create_access_token(user.id, org_id, role)
+    session_id = secrets.token_hex(16)
+    access_token = create_access_token(user.id, org_id, role, session_id=session_id)
     refresh_token = create_refresh_token(user.id)
     _set_auth_cookies(response, access_token, refresh_token)
+
+    # Store session record
+    await _create_session_record(user.id, session_id, request)
 
     # Audit log
     db.add(_create_audit_log(
@@ -767,3 +807,247 @@ async def mfa_disable(
     ))
 
     return {"message": "MFA has been disabled"}
+
+
+# ---------------------------------------------------------------------------
+# Password change (logged-in user)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/change-password")
+async def change_password(
+    request: Request,
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Change the current user's password.
+
+    Requires the current password for verification.
+    """
+    from app.services.auth import hash_password, verify_password
+    from datetime import datetime, timezone
+
+    user = await _get_current_user(request, db)
+
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    if body.current_password == body.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password",
+        )
+
+    user.password_hash = hash_password(body.new_password)
+    user.last_password_change = datetime.now(timezone.utc)
+    await db.flush()
+
+    db.add(_create_audit_log(
+        AuditAction.PASSWORD_CHANGED,
+        f"Password changed for {user.email}",
+        request, user_id=user.id,
+    ))
+
+    return {"message": "Password changed successfully"}
+
+
+# ---------------------------------------------------------------------------
+# Profile update
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_profile(
+    request: Request,
+    body: UpdateProfileRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update the current user's profile (full_name, username).
+    """
+    user = await _get_current_user(request, db)
+    changes = {}
+
+    if body.full_name is not None:
+        changes["full_name"] = {"old": user.full_name, "new": body.full_name}
+        user.full_name = body.full_name
+
+    if body.username is not None:
+        # Check uniqueness
+        existing = await db.execute(
+            select(User).where(
+                User.username == body.username,
+                User.id != user.id,
+                User.deleted_at.is_(None),
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This username is already taken",
+            )
+        changes["username"] = {"old": user.username, "new": body.username}
+        user.username = body.username
+
+    if not changes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields to update",
+        )
+
+    await db.flush()
+
+    db.add(_create_audit_log(
+        AuditAction.PROFILE_UPDATED,
+        f"Profile updated for {user.email}",
+        request, user_id=user.id,
+        details={"changes": changes},
+    ))
+
+    return UserResponse.model_validate(user)
+
+
+# ---------------------------------------------------------------------------
+# Admin unlock
+# ---------------------------------------------------------------------------
+
+
+@router.post("/admin/unlock/{user_id}")
+async def admin_unlock_user(
+    user_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Unlock a locked user account. Requires admin role in the same org.
+    """
+    admin_user = await _get_current_user(request, db)
+
+    # Check admin has admin role
+    admin_role = getattr(request.state, "user_role", "viewer")
+    if admin_role not in ("admin", "owner"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or owner role required",
+        )
+
+    # Load target user
+    stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
+    result = await db.execute(stmt)
+    target_user = result.scalar_one_or_none()
+
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if not target_user.is_locked:
+        return {"message": "Account is not locked", "user_id": str(user_id)}
+
+    target_user.failed_login_attempts = 0
+    target_user.locked_until = None
+    await db.flush()
+
+    db.add(_create_audit_log(
+        AuditAction.USER_UNLOCKED,
+        f"Account unlocked by admin: {target_user.email}",
+        request, user_id=admin_user.id,
+        severity=AuditSeverity.WARNING,
+        details={"unlocked_user_id": str(user_id), "unlocked_email": target_user.email},
+    ))
+
+    logger.info(f"Account unlocked: {target_user.email} by admin {admin_user.email}")
+    return {"message": "Account unlocked", "user_id": str(user_id)}
+
+
+# ---------------------------------------------------------------------------
+# Session management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions", response_model=list[SessionResponse])
+async def list_sessions(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List active sessions for the current user.
+
+    Sessions are stored in Redis with metadata (IP, user_agent, created_at).
+    """
+    from app.redis_client import get_redis
+
+    user = await _get_current_user(request, db)
+    redis_client = await get_redis()
+
+    # Find all session keys for this user
+    pattern = f"session:{user.id}:*"
+    session_keys = []
+    async for key in redis_client.client.scan_iter(match=pattern):
+        session_keys.append(key)
+
+    # Get the current session ID from the access token cookie
+    current_session_id = None
+    access_token = request.cookies.get("snapper_access_token")
+    if access_token:
+        try:
+            payload = verify_token(access_token)
+            current_session_id = payload.get("sid")
+        except ValueError:
+            pass
+
+    sessions = []
+    for key in session_keys:
+        data = await redis_client.client.hgetall(key)
+        if not data:
+            continue
+        key_str = key if isinstance(key, str) else key.decode("utf-8")
+        session_id = key_str.split(":")[-1]
+        sessions.append(SessionResponse(
+            session_id=session_id,
+            ip_address=data.get("ip_address", data.get(b"ip_address", b"")).decode("utf-8") if isinstance(data.get("ip_address", data.get(b"ip_address", b"")), bytes) else data.get("ip_address", ""),
+            user_agent=data.get("user_agent", data.get(b"user_agent", b"")).decode("utf-8") if isinstance(data.get("user_agent", data.get(b"user_agent", b"")), bytes) else data.get("user_agent", ""),
+            created_at=data.get("created_at", data.get(b"created_at", b"")).decode("utf-8") if isinstance(data.get("created_at", data.get(b"created_at", b"")), bytes) else data.get("created_at", ""),
+            last_active=data.get("last_active", data.get(b"last_active", b"")).decode("utf-8") if isinstance(data.get("last_active", data.get(b"last_active", b"")), bytes) else data.get("last_active", ""),
+            is_current=(session_id == current_session_id),
+        ))
+
+    return sessions
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session(
+    session_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Revoke a specific session by deleting it from Redis.
+    """
+    from app.redis_client import get_redis
+
+    user = await _get_current_user(request, db)
+    redis_client = await get_redis()
+
+    key = f"session:{user.id}:{session_id}"
+    deleted = await redis_client.client.delete(key)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    db.add(_create_audit_log(
+        AuditAction.SESSION_REVOKED,
+        f"Session revoked: {session_id}",
+        request, user_id=user.id,
+        details={"revoked_session_id": session_id},
+    ))
+
+    return {"message": "Session revoked", "session_id": session_id}

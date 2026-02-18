@@ -31,6 +31,8 @@ from app.schemas.organizations import (
     OrgCreate,
     OrgDetailResponse,
     OrgResponse,
+    OrgSettingsResponse,
+    OrgSettingsUpdate,
     OrgUpdate,
     UpdateMemberRoleRequest,
     UsageResponse,
@@ -671,3 +673,119 @@ async def get_organization_usage(
 
     usage_data = await get_usage(db, org_id)
     return UsageResponse(**usage_data)
+
+
+# ---------------------------------------------------------------------------
+# Organization-level policy settings
+# ---------------------------------------------------------------------------
+
+# Default values for org settings
+_ORG_SETTINGS_DEFAULTS = {
+    "audit_retention_days": 90,
+    "require_mfa": False,
+    "max_login_attempts": 5,
+    "lockout_duration_minutes": 30,
+    "session_timeout_minutes": 30,
+}
+
+
+@router.get("/{org_id}/settings/policy", response_model=OrgSettingsResponse)
+async def get_org_settings(
+    org_id: UUID,
+    db: DbSessionDep,
+    user_id: UUID = Depends(get_current_user_id),
+):
+    """Get organization policy settings (audit retention, MFA requirement, etc.)."""
+    await _verify_membership(db, user_id, org_id)
+
+    result = await db.execute(
+        select(Organization).where(
+            Organization.id == org_id,
+            Organization.deleted_at.is_(None),
+        )
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    org_settings = org.settings or {}
+    return OrgSettingsResponse(
+        audit_retention_days=org_settings.get("audit_retention_days", _ORG_SETTINGS_DEFAULTS["audit_retention_days"]),
+        require_mfa=org_settings.get("require_mfa", _ORG_SETTINGS_DEFAULTS["require_mfa"]),
+        max_login_attempts=org_settings.get("max_login_attempts", _ORG_SETTINGS_DEFAULTS["max_login_attempts"]),
+        lockout_duration_minutes=org_settings.get("lockout_duration_minutes", _ORG_SETTINGS_DEFAULTS["lockout_duration_minutes"]),
+        session_timeout_minutes=org_settings.get("session_timeout_minutes", _ORG_SETTINGS_DEFAULTS["session_timeout_minutes"]),
+    )
+
+
+@router.patch("/{org_id}/settings/policy", response_model=OrgSettingsResponse)
+async def update_org_settings(
+    org_id: UUID,
+    payload: OrgSettingsUpdate,
+    db: DbSessionDep,
+    user_id: UUID = Depends(get_current_user_id),
+    current_role: str = Depends(get_current_role),
+):
+    """
+    Update organization policy settings.
+
+    Requires admin or owner role. Configurable:
+    - audit_retention_days: How long to keep audit logs (7-3650 days)
+    - require_mfa: Whether MFA is required for all members
+    - max_login_attempts: Lockout threshold (3-20)
+    - lockout_duration_minutes: Lockout duration (5-1440 minutes)
+    - session_timeout_minutes: Session inactivity timeout (5-1440 minutes)
+    """
+    require_role(current_role, "admin")
+    await _verify_membership(db, user_id, org_id)
+
+    result = await db.execute(
+        select(Organization).where(
+            Organization.id == org_id,
+            Organization.deleted_at.is_(None),
+        )
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    current_settings = dict(org.settings or {})
+    old_values = {}
+    new_values = {}
+
+    for field_name in ["audit_retention_days", "require_mfa", "max_login_attempts",
+                       "lockout_duration_minutes", "session_timeout_minutes"]:
+        value = getattr(payload, field_name, None)
+        if value is not None:
+            old_values[field_name] = current_settings.get(field_name, _ORG_SETTINGS_DEFAULTS[field_name])
+            current_settings[field_name] = value
+            new_values[field_name] = value
+
+    if not new_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No settings to update",
+        )
+
+    org.settings = current_settings
+    await db.flush()
+
+    db.add(AuditLog(
+        action=AuditAction.ORG_UPDATED,
+        severity=AuditSeverity.INFO,
+        message=f"Organization policy settings updated",
+        user_id=user_id,
+        organization_id=org_id,
+        old_value=old_values,
+        new_value=new_values,
+    ))
+
+    logger.info(f"Org {org_id} policy settings updated by user {user_id}: {new_values}")
+
+    return OrgSettingsResponse(
+        audit_retention_days=current_settings.get("audit_retention_days", _ORG_SETTINGS_DEFAULTS["audit_retention_days"]),
+        require_mfa=current_settings.get("require_mfa", _ORG_SETTINGS_DEFAULTS["require_mfa"]),
+        max_login_attempts=current_settings.get("max_login_attempts", _ORG_SETTINGS_DEFAULTS["max_login_attempts"]),
+        lockout_duration_minutes=current_settings.get("lockout_duration_minutes", _ORG_SETTINGS_DEFAULTS["lockout_duration_minutes"]),
+        session_timeout_minutes=current_settings.get("session_timeout_minutes", _ORG_SETTINGS_DEFAULTS["session_timeout_minutes"]),
+    )

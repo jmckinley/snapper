@@ -156,6 +156,26 @@ class UsageStat(BaseModel):
     is_unlimited: bool
 
 
+class OrgSettingsUpdate(BaseModel):
+    """Schema for updating org-level policy settings."""
+
+    audit_retention_days: Optional[int] = Field(None, ge=7, le=3650)
+    require_mfa: Optional[bool] = None
+    max_login_attempts: Optional[int] = Field(None, ge=3, le=20)
+    lockout_duration_minutes: Optional[int] = Field(None, ge=5, le=1440)
+    session_timeout_minutes: Optional[int] = Field(None, ge=5, le=1440)
+
+
+class OrgSettingsResponse(BaseModel):
+    """Schema for org-level policy settings response."""
+
+    audit_retention_days: int = 90
+    require_mfa: bool = False
+    max_login_attempts: int = 5
+    lockout_duration_minutes: int = 30
+    session_timeout_minutes: int = 30
+
+
 class UsageResponse(BaseModel):
     """Schema for organization usage / quota information."""
 

@@ -194,3 +194,57 @@ class MFALoginResponse(BaseModel):
 
     requires_mfa: bool = True
     mfa_token: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """Request to change password for a logged-in user."""
+
+    current_password: str
+    new_password: str
+    password_confirm: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "ChangePasswordRequest":
+        if self.new_password != self.password_confirm:
+            raise ValueError("Passwords do not match")
+        return self
+
+
+class UpdateProfileRequest(BaseModel):
+    """Request to update user profile."""
+
+    full_name: Optional[str] = None
+    username: Optional[str] = None
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if len(v) < 3:
+                raise ValueError("Username must be at least 3 characters")
+            if len(v) > 50:
+                raise ValueError("Username must be at most 50 characters")
+            if not re.match(r"^[a-zA-Z0-9_.@+%-]+$", v):
+                raise ValueError(
+                    "Username can only contain letters, numbers, underscores, hyphens, dots, and @"
+                )
+        return v
+
+
+class SessionResponse(BaseModel):
+    """Active session information."""
+
+    session_id: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: str
+    last_active: str
+    is_current: bool = False

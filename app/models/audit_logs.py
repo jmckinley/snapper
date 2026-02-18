@@ -86,6 +86,12 @@ class AuditAction(str, Enum):
     MFA_ENABLED = "mfa_enabled"
     MFA_DISABLED = "mfa_disabled"
 
+    # User management
+    USER_UNLOCKED = "user_unlocked"
+    PASSWORD_CHANGED = "password_changed"
+    PROFILE_UPDATED = "profile_updated"
+    SESSION_REVOKED = "session_revoked"
+
     # PII Vault events
     PII_VAULT_CREATED = "pii_vault_created"
     PII_VAULT_ACCESSED = "pii_vault_accessed"
