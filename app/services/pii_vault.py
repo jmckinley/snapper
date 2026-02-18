@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 import base64
 
@@ -33,14 +34,19 @@ VAULT_LABEL_REGEX = re.compile(
     re.IGNORECASE,
 )
 
+# Encryption scheme constants
+SCHEME_FERNET = "fernet"
+SCHEME_AES_GCM = "aes-256-gcm"
 
-def get_encryption_key(version: int = 1) -> bytes:
+# AES-256-GCM nonce size (96 bits per NIST recommendation)
+GCM_NONCE_SIZE = 12
+
+
+def _get_raw_key(version: int = 1) -> bytes:
     """
-    Derive a Fernet-compatible encryption key from SECRET_KEY using HKDF.
+    Derive a 256-bit encryption key from SECRET_KEY using HKDF.
 
-    This ensures the vault encryption is tied to the application secret
-    but uses a separate derived key for defense-in-depth.
-    Version parameter allows key rotation.
+    Returns the raw 32-byte key (used directly by AES-256-GCM).
     """
     secret_bytes = settings.SECRET_KEY.encode("utf-8")
     hkdf = HKDF(
@@ -49,28 +55,81 @@ def get_encryption_key(version: int = 1) -> bytes:
         salt=b"snapper-pii-vault-v1",
         info=f"pii-vault-encryption-key-v{version}".encode("utf-8"),
     )
-    derived = hkdf.derive(secret_bytes)
-    return base64.urlsafe_b64encode(derived)
+    return hkdf.derive(secret_bytes)
+
+
+def get_encryption_key(version: int = 1) -> bytes:
+    """
+    Derive a Fernet-compatible encryption key from SECRET_KEY using HKDF.
+
+    Kept for backward compatibility with existing Fernet-encrypted entries.
+    Returns base64url-encoded 32-byte key (as Fernet requires).
+    """
+    return base64.urlsafe_b64encode(_get_raw_key(version))
 
 
 def encrypt_value(plaintext: str, key_version: int = 1) -> bytes:
-    """Encrypt a plaintext value using Fernet (AES-128-CBC + HMAC)."""
-    key = get_encryption_key(key_version)
-    f = Fernet(key)
-    return f.encrypt(plaintext.encode("utf-8"))
+    """
+    Encrypt a plaintext value using AES-256-GCM.
+
+    Output format: nonce (12 bytes) || ciphertext+tag
+    The AESGCM.encrypt() call returns ciphertext with the 16-byte auth tag appended.
+    """
+    raw_key = _get_raw_key(key_version)
+    nonce = os.urandom(GCM_NONCE_SIZE)
+    aesgcm = AESGCM(raw_key)
+    ct_with_tag = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
+    return nonce + ct_with_tag
 
 
-def decrypt_value(ciphertext: bytes, key_version: int = 1) -> str:
-    """Decrypt a Fernet-encrypted value back to plaintext."""
-    key = get_encryption_key(key_version)
-    f = Fernet(key)
-    return f.decrypt(ciphertext).decode("utf-8")
+def decrypt_value(ciphertext: bytes, key_version: int = 1, scheme: str = "") -> str:
+    """
+    Decrypt an encrypted value back to plaintext.
+
+    Auto-detects encryption scheme if not specified:
+    - If scheme is "aes-256-gcm" or ciphertext doesn't look like Fernet, use AES-256-GCM
+    - If scheme is "fernet" or ciphertext starts with Fernet prefix, use Fernet
+    """
+    if not scheme:
+        scheme = _detect_scheme(ciphertext)
+
+    if scheme == SCHEME_FERNET:
+        key = get_encryption_key(key_version)
+        f = Fernet(key)
+        return f.decrypt(ciphertext).decode("utf-8")
+    else:
+        # AES-256-GCM: first 12 bytes are nonce, rest is ciphertext+tag
+        raw_key = _get_raw_key(key_version)
+        nonce = ciphertext[:GCM_NONCE_SIZE]
+        ct_with_tag = ciphertext[GCM_NONCE_SIZE:]
+        aesgcm = AESGCM(raw_key)
+        return aesgcm.decrypt(nonce, ct_with_tag, None).decode("utf-8")
+
+
+def _detect_scheme(ciphertext: bytes) -> str:
+    """
+    Auto-detect whether ciphertext is Fernet or AES-256-GCM.
+
+    Fernet tokens are base64url-encoded and start with 'gAAAAA' when decoded
+    from the version byte (0x80) + timestamp. As bytes they start with b'gAAAAA'.
+    """
+    # Fernet ciphertext is base64url-encoded text (all ASCII printable).
+    # AES-256-GCM ciphertext is raw binary (nonce + ct + tag).
+    # If the bytes are valid UTF-8 and start with 'gAAAAA', it's Fernet.
+    try:
+        text = ciphertext.decode("ascii")
+        if text.startswith("gAAAAA"):
+            return SCHEME_FERNET
+    except (UnicodeDecodeError, ValueError):
+        pass
+    return SCHEME_AES_GCM
 
 
 async def rotate_vault_key(db: AsyncSession, new_version: int) -> int:
     """
-    Re-encrypt all vault entries with a new key version.
+    Re-encrypt all vault entries with a new key version using AES-256-GCM.
 
+    Also migrates any remaining Fernet-encrypted entries to AES-256-GCM.
     Returns count of re-encrypted entries.
     """
     stmt = select(PIIVaultEntry).where(PIIVaultEntry.is_deleted == False)
@@ -80,12 +139,14 @@ async def rotate_vault_key(db: AsyncSession, new_version: int) -> int:
     count = 0
     for entry in entries:
         old_version = getattr(entry, "encryption_key_version", 1) or 1
-        if old_version == new_version:
+        old_scheme = getattr(entry, "encryption_scheme", None) or ""
+        if old_version == new_version and old_scheme == SCHEME_AES_GCM:
             continue
         try:
-            plaintext = decrypt_value(entry.encrypted_value, old_version)
+            plaintext = decrypt_value(entry.encrypted_value, old_version, old_scheme)
             entry.encrypted_value = encrypt_value(plaintext, new_version)
             entry.encryption_key_version = new_version
+            entry.encryption_scheme = SCHEME_AES_GCM
             count += 1
         except Exception as e:
             logger.error(f"Failed to re-encrypt entry {entry.id}: {e}")
@@ -281,6 +342,7 @@ async def create_entry(
         category=category,
         token=token,
         encrypted_value=encrypted,
+        encryption_scheme=SCHEME_AES_GCM,
         masked_value=masked,
         allowed_domains=allowed_domains or [],
         max_uses=max_uses,
@@ -494,7 +556,9 @@ async def resolve_tokens(
 
         # Decrypt and resolve
         try:
-            plaintext = decrypt_value(entry.encrypted_value)
+            entry_scheme = getattr(entry, "encryption_scheme", None) or ""
+            entry_version = getattr(entry, "encryption_key_version", 1) or 1
+            plaintext = decrypt_value(entry.encrypted_value, entry_version, entry_scheme)
         except Exception as e:
             logger.error(f"Failed to decrypt vault entry {entry.id}: {e}")
             has_failures = True

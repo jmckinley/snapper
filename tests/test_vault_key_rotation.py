@@ -9,6 +9,8 @@ import pytest
 from app.models.audit_logs import AuditAction
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.services.pii_vault import (
+    SCHEME_AES_GCM,
+    SCHEME_FERNET,
     decrypt_value,
     encrypt_value,
     get_encryption_key,
@@ -80,7 +82,7 @@ async def test_rotate_vault_key_empty():
 
 @pytest.mark.asyncio
 async def test_rotate_vault_key_reencrypts():
-    """Rotation should re-encrypt entries with new version."""
+    """Rotation should re-encrypt entries with new version and AES-256-GCM."""
     plaintext = "test-pii-value"
     old_cipher = encrypt_value(plaintext, key_version=1)
 
@@ -88,6 +90,7 @@ async def test_rotate_vault_key_reencrypts():
     entry.id = uuid.uuid4()
     entry.encrypted_value = old_cipher
     entry.encryption_key_version = 1
+    entry.encryption_scheme = SCHEME_AES_GCM
     entry.is_deleted = False
 
     db = AsyncMock()
@@ -99,6 +102,39 @@ async def test_rotate_vault_key_reencrypts():
     count = await rotate_vault_key(db, new_version=2)
     assert count == 1
     assert entry.encryption_key_version == 2
+    assert entry.encryption_scheme == SCHEME_AES_GCM
     # Verify the new ciphertext decrypts correctly with v2
     decrypted = decrypt_value(entry.encrypted_value, key_version=2)
+    assert decrypted == plaintext
+
+
+@pytest.mark.asyncio
+async def test_rotate_migrates_fernet_to_gcm():
+    """Rotation should migrate legacy Fernet entries to AES-256-GCM."""
+    from cryptography.fernet import Fernet as FernetLib
+
+    plaintext = "legacy-card-number"
+    fernet_key = get_encryption_key(1)
+    f = FernetLib(fernet_key)
+    fernet_cipher = f.encrypt(plaintext.encode("utf-8"))
+
+    entry = MagicMock(spec=PIIVaultEntry)
+    entry.id = uuid.uuid4()
+    entry.encrypted_value = fernet_cipher
+    entry.encryption_key_version = 1
+    entry.encryption_scheme = SCHEME_FERNET
+    entry.is_deleted = False
+
+    db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [entry]
+    db.execute = AsyncMock(return_value=mock_result)
+    db.flush = AsyncMock()
+
+    count = await rotate_vault_key(db, new_version=2)
+    assert count == 1
+    assert entry.encryption_key_version == 2
+    assert entry.encryption_scheme == SCHEME_AES_GCM
+    # New ciphertext should be GCM, not Fernet
+    decrypted = decrypt_value(entry.encrypted_value, key_version=2, scheme=SCHEME_AES_GCM)
     assert decrypted == plaintext

@@ -40,7 +40,9 @@ class PIIVaultEntry(Base):
     """
     Encrypted PII vault entry.
 
-    Stores sensitive personal data encrypted at rest with Fernet (AES-128-CBC).
+    Stores sensitive personal data encrypted at rest with AES-256-GCM.
+    Legacy entries may use Fernet (AES-128-CBC); the encryption_scheme column
+    tracks which scheme each entry uses for backward-compatible decryption.
     Each entry is owned by a specific Telegram user (multi-tenant by chat_id).
     """
 
@@ -112,17 +114,24 @@ class PIIVaultEntry(Base):
         comment="Safe dummy value agents use instead of vault token (e.g., Stripe test card 4242424242424242)",
     )
 
-    # Encrypted value (Fernet AES)
+    # Encrypted value (AES-256-GCM; legacy entries may be Fernet)
     encrypted_value: Mapped[bytes] = mapped_column(
         LargeBinary,
         nullable=False,
-        comment="Fernet-encrypted PII value",
+        comment="AES-256-GCM encrypted PII value (nonce || ciphertext || tag)",
     )
     encryption_key_version: Mapped[int] = mapped_column(
         Integer,
         default=1,
         nullable=False,
         comment="Version of encryption key used",
+    )
+    encryption_scheme: Mapped[str] = mapped_column(
+        String(20),
+        default="aes-256-gcm",
+        server_default="aes-256-gcm",
+        nullable=False,
+        comment="Encryption scheme: 'aes-256-gcm' (current) or 'fernet' (legacy)",
     )
 
     # Masked display value (safe to show in UI/Telegram)
