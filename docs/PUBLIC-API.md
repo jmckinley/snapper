@@ -736,15 +736,150 @@ List alerts with pagination. Alerts are generated for critical security events s
 
 ---
 
+### Threat Detection
+
+Real-time heuristic threat detection with composite scoring, behavioral baselines, and kill chain analysis. Threat scores are computed by a background Celery worker consuming Redis Streams and cached with a 300-second TTL.
+
+#### 32. GET /api/v1/threats
+
+List threat events with pagination and filtering.
+
+| Query Param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `agent_id` | UUID | -- | Filter by agent |
+| `severity` | string | -- | Filter: `critical`, `high`, `medium`, `low` |
+| `threat_type` | string | -- | Filter by type (e.g., `data_exfiltration`, `credential_theft`) |
+| `status` | string | -- | Filter: `active`, `investigating`, `resolved`, `false_positive` |
+| `page` | int | 1 | Page number |
+| `page_size` | int | 20 | Items per page (max 100) |
+
+```bash
+curl "https://your-snapper/api/v1/threats?severity=high&status=active" \
+  -H "X-API-Key: snp_your_key"
+```
+
+**Response (200):**
+
+```json
+{
+  "items": [
+    {
+      "id": "t1a2b3c4-...",
+      "agent_id": "f47ac10b-...",
+      "agent_name": "openclaw-prod",
+      "threat_type": "data_exfiltration",
+      "severity": "high",
+      "threat_score": 72.5,
+      "status": "active",
+      "description": "Anomalous outbound data transfer detected",
+      "signals": ["large_payload", "unusual_destination", "rapid_succession"],
+      "created_at": "2026-02-19T14:30:00",
+      "resolved_at": null,
+      "resolution_notes": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20,
+  "pages": 1
+}
+```
+
+#### 33. GET /api/v1/threats/summary
+
+Dashboard widget statistics: active threat counts by severity, resolved in last 24h, agents affected, top threat types.
+
+```bash
+curl "https://your-snapper/api/v1/threats/summary" \
+  -H "X-API-Key: snp_your_key"
+```
+
+**Response (200):**
+
+```json
+{
+  "active_count": 5,
+  "critical_count": 1,
+  "high_count": 2,
+  "medium_count": 1,
+  "low_count": 1,
+  "resolved_24h": 3,
+  "agents_affected": 2,
+  "top_threat_types": [
+    {"threat_type": "data_exfiltration", "count": 2}
+  ]
+}
+```
+
+#### 34. GET /api/v1/threats/{threat_id}
+
+Get a single threat event by UUID, with agent name enrichment.
+
+```bash
+curl "https://your-snapper/api/v1/threats/t1a2b3c4-..." \
+  -H "X-API-Key: snp_your_key"
+```
+
+#### 35. POST /api/v1/threats/{threat_id}/resolve
+
+Mark a threat as resolved or false positive.
+
+```bash
+curl -X POST "https://your-snapper/api/v1/threats/t1a2b3c4-.../resolve" \
+  -H "X-API-Key: snp_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "resolved",
+    "resolution_notes": "Investigated - legitimate batch processing"
+  }'
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `status` | string | yes | `resolved` or `false_positive` |
+| `resolution_notes` | string | no | Explanation of the resolution |
+
+**Response (200):** Returns the updated threat event.
+
+#### 36. GET /api/v1/threats/scores/live
+
+Returns current threat scores for all agents from Redis. Only agents with non-zero scores are included. Scores have a 300-second TTL and are refreshed by the background threat analysis worker.
+
+```bash
+curl "https://your-snapper/api/v1/threats/scores/live" \
+  -H "X-API-Key: snp_your_key"
+```
+
+**Response (200):**
+
+```json
+[
+  {
+    "agent_id": "f47ac10b-...",
+    "agent_name": "openclaw-prod",
+    "threat_score": 42.5,
+    "threat_level": "medium"
+  }
+]
+```
+
+Threat levels: `none` (0), `low` (<40), `medium` (<60), `high` (<80), `critical` (>=80).
+
+Scores influence the rule engine: score >= 80 triggers automatic `DENY`, score >= 60 triggers `REQUIRE_APPROVAL`. Configure thresholds via `THREAT_DENY_THRESHOLD` and `THREAT_APPROVAL_THRESHOLD` environment variables.
+
+---
+
 ### Webhooks
 
 Webhook endpoints allow you to receive real-time notifications for security events. Payloads are signed with HMAC-SHA256 (see Webhook Signatures below).
 
-#### 32. GET /api/v1/webhooks
+#### 37. GET /api/v1/webhooks
 
 List all webhook endpoints for the organization.
 
-#### 33. POST /api/v1/webhooks
+#### 38. POST /api/v1/webhooks
 
 Create a webhook endpoint.
 
@@ -777,11 +912,11 @@ If `secret` is not provided, one is auto-generated. The secret is only returned 
 
 **Available event types:** `request_allowed`, `request_denied`, `request_pending_approval`, `rate_limit_exceeded`, `origin_violation`, `rule_created`, `rule_updated`, `rule_deleted`, `agent_registered`, `agent_suspended`, `agent_quarantined`, `pii_vault_created`, `pii_vault_accessed`, `emergency_block`.
 
-#### 34. PUT /api/v1/webhooks/{id}
+#### 39. PUT /api/v1/webhooks/{id}
 
 Update a webhook endpoint (URL, event filters, active status, description).
 
-#### 35. DELETE /api/v1/webhooks/{id}
+#### 40. DELETE /api/v1/webhooks/{id}
 
 Delete a webhook endpoint. Returns `204 No Content`.
 
@@ -791,7 +926,7 @@ Delete a webhook endpoint. Returns `204 No Content`.
 
 Discovery-first approach: Snapper analyzes audit log traffic to detect MCP servers and tools your agents use, then helps you create targeted rules.
 
-#### 36. GET /api/v1/integrations/traffic/insights
+#### 41. GET /api/v1/integrations/traffic/insights
 
 Discovered MCP servers and tools from audit trail traffic.
 
@@ -804,7 +939,7 @@ curl "https://your-snapper/api/v1/integrations/traffic/insights" \
   -H "X-API-Key: snp_your_key"
 ```
 
-#### 37. POST /api/v1/integrations/traffic/create-rule
+#### 42. POST /api/v1/integrations/traffic/create-rule
 
 Create a single rule from a discovered command or tool.
 
@@ -820,7 +955,7 @@ curl -X POST https://your-snapper/api/v1/integrations/traffic/create-rule \
   }'
 ```
 
-#### 38. POST /api/v1/integrations/traffic/create-server-rules
+#### 43. POST /api/v1/integrations/traffic/create-server-rules
 
 Generate smart default rules for a recognized MCP server. Known servers (github, slack, filesystem, etc.) get curated rule sets. Unknown servers get three generic rules: allow reads, require approval for writes, deny destructive operations.
 
@@ -854,7 +989,7 @@ curl -X POST https://your-snapper/api/v1/integrations/traffic/create-server-rule
 }
 ```
 
-#### 39. GET /api/v1/integrations/traffic/known-servers
+#### 44. GET /api/v1/integrations/traffic/known-servers
 
 List all recognized MCP servers in the registry (40+). Returns server names, descriptions, and associated tool patterns.
 

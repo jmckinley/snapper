@@ -434,6 +434,55 @@ bash scripts/e2e_integrations_test.sh
 
 **Last validated:** 2026-02-13 — 90/90 passed on live VPS deployment.
 
+### Threat Simulator E2E Tests
+
+The threat simulator (`scripts/threat_simulator.py`) exercises every detection pathway against a live Snapper instance.
+
+**Running:**
+
+```bash
+# All 13 scenarios
+python scripts/threat_simulator.py --all --url https://76.13.127.76:8443 --no-verify-ssl
+
+# Specific scenarios
+python scripts/threat_simulator.py --scenario data_exfil credential_theft --url http://localhost:8000
+
+# List available scenarios
+python scripts/threat_simulator.py --list
+```
+
+**13 Scenarios:**
+
+| # | Scenario | Tests | Expected Score |
+|---|----------|-------|---------------|
+| 1 | `data_exfil` | FILE_READ → NETWORK_SEND kill chain | >=5 |
+| 2 | `credential_theft` | CREDENTIAL_ACCESS → NETWORK_SEND | >=5 |
+| 3 | `pii_harvest` | 3x PII_OUTBOUND → NETWORK_SEND (needs PII_GATE) | >=5 |
+| 4 | `encoded_exfil` | FILE_READ → ENCODING → NETWORK_SEND | >=5 |
+| 5 | `privesc_chain` | PRIVESC → FILE_READ → NETWORK_SEND | >=5 |
+| 6 | `vault_extraction` | VAULT_PROBE → PII_OUTBOUND (needs PII_GATE) | >=5 |
+| 7 | `lotl_attack` | TOOL_ANOMALY → NETWORK_SEND | >=5 |
+| 8 | `baseline_deviation` | 20 benign warmup → anomalous tools/destinations | >=1 |
+| 9 | `slow_drip` | 20 small network sends with increasing payloads | >=5 |
+| 10 | `encoding_stacking` | 5 requests with mixed base64+hex encoding | >=5 |
+| 11 | `stego_exfil` | STEGANOGRAPHIC_CONTENT → NETWORK_SEND | >=1 |
+| 12 | `signal_storm` | 12 rapid-fire mixed signals (all types) | >=10 |
+| 13 | `benign_control` | 11 normal commands — negative test | <10, 0 events |
+
+**What Each Scenario Verifies:**
+
+1. **Threat score** — checks composite score from `/api/v1/threats/scores/live`
+2. **Kill chain events** — checks for matching events in `/api/v1/threats`
+3. **Decision override** — verifies score-based rule engine overrides (INFO-only)
+
+**Prerequisites:**
+
+- Running Snapper instance with Celery worker and beat
+- `httpx` (included in requirements.txt)
+- Agent cleanup endpoint must accept `ThreatSim` prefix
+
+**Results:** All 13 scenarios pass against live VPS (~100s total).
+
 ---
 
 ## Enterprise & Provider Test Groups

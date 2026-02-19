@@ -335,6 +335,104 @@ curl "http://localhost:8000/api/v1/audit/logs?page=1&page_size=50"
 | POST | `/api/v1/security/recommendations/{id}/apply` | Apply recommendation |
 | GET | `/api/v1/security/threat-feed` | Get threat feed updates |
 
+### Threat Detection
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/threats` | List threat events (paginated, filterable) |
+| GET | `/api/v1/threats/summary` | Dashboard widget statistics |
+| GET | `/api/v1/threats/{threat_id}` | Get single threat event |
+| POST | `/api/v1/threats/{threat_id}/resolve` | Resolve or mark as false positive |
+| GET | `/api/v1/threats/scores/live` | Live threat scores from Redis |
+
+#### List Threat Events
+
+```bash
+curl "http://localhost:8000/api/v1/threats?severity=high&status=active&page=1&page_size=20"
+```
+
+Query parameters:
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `agent_id` | UUID | -- | Filter by agent |
+| `severity` | string | -- | Filter: `critical`, `high`, `medium`, `low` |
+| `threat_type` | string | -- | Filter by type (e.g., `data_exfiltration`, `credential_theft`) |
+| `status` | string | -- | Filter: `active`, `investigating`, `resolved`, `false_positive` |
+| `page` | int | 1 | Page number |
+| `page_size` | int | 20 | Items per page (max 100) |
+
+Response: `{ items: ThreatEvent[], total, page, page_size, pages }`
+
+#### Get Threat Summary
+
+Returns dashboard widget statistics: active threat counts by severity, resolved in last 24h, agents affected, top threat types.
+
+```bash
+curl http://localhost:8000/api/v1/threats/summary
+```
+
+Response:
+```json
+{
+  "active_count": 5,
+  "critical_count": 1,
+  "high_count": 2,
+  "medium_count": 1,
+  "low_count": 1,
+  "resolved_24h": 3,
+  "agents_affected": 2,
+  "top_threat_types": [
+    {"threat_type": "data_exfiltration", "count": 2}
+  ]
+}
+```
+
+#### Get Single Threat Event
+
+```bash
+curl http://localhost:8000/api/v1/threats/{threat_id}
+```
+
+Returns a single threat event with agent name enrichment.
+
+#### Resolve Threat Event
+
+Mark a threat as resolved or false positive.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/threats/{threat_id}/resolve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "resolved",
+    "resolution_notes": "Investigated - legitimate batch processing"
+  }'
+```
+
+`status` must be `resolved` or `false_positive`.
+
+#### Live Threat Scores
+
+Returns current threat scores for all agents from Redis (only agents with non-zero scores). Scores have a 300-second TTL.
+
+```bash
+curl http://localhost:8000/api/v1/threats/scores/live
+```
+
+Response:
+```json
+[
+  {
+    "agent_id": "uuid",
+    "agent_name": "my-agent",
+    "threat_score": 42.5,
+    "threat_level": "medium"
+  }
+]
+```
+
+Threat levels: `none` (0), `low` (<40), `medium` (<60), `high` (<80), `critical` (>=80).
+
 ### Approvals
 
 | Method | Path | Description |

@@ -17,6 +17,7 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 - [Network & Infrastructure](#network--infrastructure)
 - [Audit Trail](#audit-trail)
 - [Trust Scoring](#trust-scoring)
+- [Threat Detection Engine](#threat-detection-engine)
 - [Configuration Hardening](#configuration-hardening)
 - [Architecture Assumptions](#architecture-assumptions)
 
@@ -649,6 +650,101 @@ Management commands:
 Trust levels: `untrusted` → `limited` → `standard` → `elevated`
 
 New agents start at `untrusted` trust level. Agents that consistently follow rules can be promoted.
+
+---
+
+## Threat Detection Engine
+
+Snapper includes a heuristic bad actor detection engine that monitors agent behavior at the tool-execution layer. It detects multi-step attack patterns that single-request inspection cannot catch.
+
+### Architecture
+
+The engine has three layers:
+
+1. **Hot-path signal extraction** (<2ms) — 13 signal types extracted from every `evaluate` call using compiled regex and pattern matching. Signals are published to Redis Streams asynchronously.
+
+2. **Background analysis** (every 2s) — A Celery worker consumes signals from Redis Streams, updating per-agent behavioral baselines (7-day rolling window), advancing kill chain state machines, and computing composite threat scores (0-100).
+
+3. **AI review** (optional, every 15min) — Claude-powered analysis of 30-minute activity windows. Disabled by default. Air-gapped safe — exits immediately without API key.
+
+### Signal Types (13)
+
+| Signal | Detection |
+|--------|-----------|
+| `FILE_READ` | File access via filesystem or storage |
+| `NETWORK_SEND` | Data sent to external endpoints |
+| `CREDENTIAL_ACCESS` | Access to API keys, tokens, passwords, SSH keys |
+| `PII_OUTBOUND` | PII detected in outbound data (requires PII_GATE rule) |
+| `PII_ACCUMULATION` | Multiple PII items gathered from different sources |
+| `ENCODING_DETECTED` | Base64, hex, URL encoding in payloads |
+| `VAULT_TOKEN_PROBE` | Attempts to enumerate vault tokens |
+| `PRIVILEGE_ESCALATION` | Privilege elevation attempts (sudo, chmod, etc.) |
+| `STEGANOGRAPHIC_CONTENT` | Zero-width characters, hidden data |
+| `TOOL_ANOMALY` | Unusual tool usage (living-off-the-land patterns) |
+| `HIGH_ENTROPY_PAYLOAD` | High-entropy payloads (potential encrypted exfil) |
+| `NEW_DESTINATION` | Data sent to previously unseen endpoint |
+| `VOLUME_SPIKE` | Outbound volume exceeds Z-score threshold |
+
+### Kill Chain State Machines (7)
+
+Multi-step attack sequences modeled as state machines with time-windowed transitions:
+
+| Kill Chain | Stages | Window | Score Boost |
+|------------|--------|--------|-------------|
+| Data Exfiltration | file_read → network_send | 60s | +40 |
+| Credential Theft | credential_access → network_send | 120s | +50 |
+| PII Harvest & Exfil | 3+ pii_outbound → network_send | 300s | +45 |
+| Encoded Exfiltration | file_read → encoding → network_send | 30s/stage | +50 |
+| Priv-Esc to Exfil | privilege_escalation → file_read → network_send | 120s+60s | +55 |
+| Vault Token Extraction | vault_token_probe → pii_outbound | 180s | +60 |
+| Living-off-the-Land | tool_anomaly → network_send | 60s | +35 |
+
+### Enforcement
+
+Composite threat scores map to graduated enforcement:
+
+| Score | Action |
+|-------|--------|
+| >= 80 | **DENY** — automatic block, overrides rule engine |
+| >= 60 | **REQUIRE_APPROVAL** — human review via Telegram/Slack |
+| >= 40 | **Alert** — notification to configured channels |
+| < 40 | **Log only** — recorded for baseline building |
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THREAT_DETECTION_ENABLED` | `true` | Enable/disable detection engine |
+| `THREAT_DENY_THRESHOLD` | `80` | Auto-deny threshold |
+| `THREAT_APPROVAL_THRESHOLD` | `60` | Approval-required threshold |
+| `THREAT_AI_REVIEW_ENABLED` | `false` | Enable Claude-powered review |
+| `ANTHROPIC_API_KEY` | (none) | Required only if AI review enabled |
+
+### SIEM Integration
+
+Threat events generate CEF-formatted events for enterprise SIEM systems:
+
+| Event ID | Description |
+|----------|-------------|
+| 800 | Threat detected |
+| 801 | Threat score elevated |
+| 802 | Kill chain completed |
+| 803 | Agent quarantined |
+| 804 | Threat resolved |
+| 805 | False positive marked |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `app/services/threat_detector.py` | Signal extraction (hot path) |
+| `app/services/behavioral_baseline.py` | Per-agent baselines |
+| `app/services/kill_chain_detector.py` | Kill chain state machines |
+| `app/tasks/threat_analysis.py` | Background analysis (Celery) |
+| `app/tasks/ai_threat_review.py` | Optional AI review |
+| `app/models/threat_events.py` | Database model |
+| `app/routers/threats.py` | API endpoints |
+| `scripts/threat_simulator.py` | Red-team testing tool |
 
 ---
 
