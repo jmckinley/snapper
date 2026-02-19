@@ -400,11 +400,23 @@ class BaseScenario(ABC):
             )
             self._log(f"{C.RED}[FAIL]{C.RESET} Threat score {agent_score} < {self.expected_min_score}")
 
-        # Check kill chain events if expected
+        # Check kill chain events if expected (retry up to 3 times with 2s delays
+        # to account for Celery background worker latency)
         if self.expected_kill_chain:
-            events = await self.client.get_threat_events(self.agent_id)
-            event_list = events if isinstance(events, list) else events.get("items", [])
-            matching = [e for e in event_list if e.get("kill_chain") == self.expected_kill_chain]
+            matching = []
+            max_retries = 3
+            for attempt in range(max_retries + 1):
+                events = await self.client.get_threat_events(self.agent_id)
+                event_list = events if isinstance(events, list) else events.get("items", [])
+                matching = [e for e in event_list if e.get("kill_chain") == self.expected_kill_chain]
+                if matching:
+                    break
+                if attempt < max_retries:
+                    self._log(
+                        f"{C.YELLOW}[RETRY]{C.RESET} Kill chain '{self.expected_kill_chain}' not yet found, "
+                        f"retrying in 2s ({attempt + 1}/{max_retries})..."
+                    )
+                    await asyncio.sleep(2.0)
             if matching:
                 result.checks.append(
                     f"{C.GREEN}[PASS]{C.RESET} Kill chain '{self.expected_kill_chain}' event found ({len(matching)})"
@@ -414,9 +426,12 @@ class BaseScenario(ABC):
                 )
             else:
                 result.errors.append(
-                    f"No kill chain event for '{self.expected_kill_chain}'"
+                    f"No kill chain event for '{self.expected_kill_chain}' (after {max_retries} retries)"
                 )
-                self._log(f"{C.RED}[FAIL]{C.RESET} No kill chain event for '{self.expected_kill_chain}'")
+                self._log(
+                    f"{C.RED}[FAIL]{C.RESET} No kill chain event for '{self.expected_kill_chain}' "
+                    f"(after {max_retries} retries)"
+                )
 
         # Check decision override for high scores
         if agent_score >= 60:
@@ -473,7 +488,7 @@ class DataExfilScenario(BaseScenario):
     description = "File read -> network send kill chain"
     expected_min_score = 5
     expected_kill_chain = "data_exfiltration"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def execute(self):
         self._log("Executing attack sequence (2 requests)...")
@@ -487,7 +502,7 @@ class CredentialTheftScenario(BaseScenario):
     description = "Credential file access -> network send"
     expected_min_score = 5
     expected_kill_chain = "credential_theft"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def execute(self):
         self._log("Executing attack sequence (2 requests)...")
@@ -503,7 +518,7 @@ class PIIHarvestScenario(BaseScenario):
     description = "3x PII outbound -> network send (requires PII_GATE)"
     expected_min_score = 5
     expected_kill_chain = "pii_harvest_exfil"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def setup(self):
         await super().setup()
@@ -522,7 +537,7 @@ class EncodedExfilScenario(BaseScenario):
     description = "File read -> encoding -> network send"
     expected_min_score = 5
     expected_kill_chain = "encoded_exfil"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def execute(self):
         self._log("Executing attack sequence (3 requests)...")
@@ -538,7 +553,7 @@ class PrivescChainScenario(BaseScenario):
     description = "Privilege escalation -> file read -> network send"
     expected_min_score = 5
     expected_kill_chain = "privesc_to_exfil"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def execute(self):
         self._log("Executing attack sequence (3 requests)...")
@@ -554,7 +569,7 @@ class VaultExtractionScenario(BaseScenario):
     description = "Vault token probe -> PII outbound (requires PII_GATE)"
     expected_min_score = 5
     expected_kill_chain = "vault_token_extraction"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def setup(self):
         await super().setup()
@@ -572,7 +587,7 @@ class LOTLAttackScenario(BaseScenario):
     description = "Living-off-the-land tool -> network send"
     expected_min_score = 5
     expected_kill_chain = "lotl_exfil"
-    wait_seconds = 5.0
+    wait_seconds = 8.0
 
     async def execute(self):
         self._log("Executing attack sequence (2 requests)...")
@@ -585,7 +600,7 @@ class BaselineDeviationScenario(BaseScenario):
     name = "baseline_deviation"
     description = "20 benign warmup -> anomalous tools/destinations"
     expected_min_score = 2
-    wait_seconds = 8.0
+    wait_seconds = 12.0
 
     async def warmup(self):
         self._log("Warming up with 20 benign requests...")
@@ -645,7 +660,7 @@ class SlowDripScenario(BaseScenario):
     name = "slow_drip"
     description = "20 small network sends with increasing payloads"
     expected_min_score = 2
-    wait_seconds = 8.0
+    wait_seconds = 12.0
 
     async def execute(self):
         self._log("Executing 20 small exfiltration requests...")
@@ -733,7 +748,7 @@ class SignalStormScenario(BaseScenario):
     name = "signal_storm"
     description = "12 rapid-fire mixed signals (all types)"
     expected_min_score = 10
-    wait_seconds = 8.0
+    wait_seconds = 12.0
 
     async def setup(self):
         await super().setup()
