@@ -485,7 +485,7 @@ async def forgot_password(
     if token:
         from app.services.email import send_password_reset
 
-        base_url = str(body.base_url) if hasattr(body, "base_url") else ""
+        base_url = str(body.base_url) if hasattr(body, "base_url") and body.base_url else ""
         sent = send_password_reset(body.email, token, base_url=base_url)
         if not sent:
             logger.info(f"Password reset token generated for {body.email} (email not sent — SMTP not configured)")

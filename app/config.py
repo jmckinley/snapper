@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: Optional[str] = None
     CLAWHUB_API_URL: str = "https://api.clawhub.io/v1"
 
+    # Base URL for email links (password reset, invitations)
+    BASE_URL: str = "https://app.snapperprotect.com"
+
     # Alerting
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587

@@ -52,7 +52,8 @@ def _send(to: str, subject: str, html_body: str, text_body: Optional[str] = None
 def send_password_reset(to: str, token: str, base_url: str = "") -> bool:
     """Send a password-reset email containing the reset link."""
     if not base_url:
-        base_url = "https://localhost:8443"
+        settings = get_settings()
+        base_url = settings.BASE_URL if hasattr(settings, "BASE_URL") and settings.BASE_URL else "https://app.snapperprotect.com"
 
     reset_url = f"{base_url}/reset-password?token={token}"
 
@@ -77,7 +78,8 @@ def send_password_reset(to: str, token: str, base_url: str = "") -> bool:
 def send_invitation(to: str, org_name: str, inviter_name: str, token: str, base_url: str = "") -> bool:
     """Send an organization-invitation email."""
     if not base_url:
-        base_url = "https://localhost:8443"
+        settings = get_settings()
+        base_url = settings.BASE_URL if hasattr(settings, "BASE_URL") and settings.BASE_URL else "https://app.snapperprotect.com"
 
     accept_url = f"{base_url}/invitations/accept?token={token}"
 
