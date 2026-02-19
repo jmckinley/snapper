@@ -83,6 +83,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if self._is_exempt(path):
             return await call_next(request)
 
+        # Pass through requests with API key auth (validated at router level)
+        api_key = request.headers.get("x-api-key") or ""
+        auth_header = request.headers.get("authorization") or ""
+        if api_key.startswith("snp_") or auth_header.startswith("Bearer snp_"):
+            return await call_next(request)
+
         # Try to authenticate from access token cookie
         access_token = request.cookies.get("snapper_access_token")
         refresh_token = request.cookies.get("snapper_refresh_token")
