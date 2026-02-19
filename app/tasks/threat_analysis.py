@@ -239,7 +239,7 @@ async def _analyze_signals_async():
 async def _create_threat_event(
     agent_id: str,
     chain_result: Dict[str, Any],
-    signal: ThreatSignal,
+    signal: Dict[str, Any],
 ) -> None:
     """Persist a threat event to the database."""
     try:
