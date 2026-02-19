@@ -80,6 +80,13 @@ CEF_EVENT_MAP = {
     "system_shutdown": ("701", "System Shutdown"),
     "config_changed": ("702", "Configuration Changed"),
     "security_scan_completed": ("703", "Security Scan Completed"),
+    # Threat detection events
+    "threat_detected": ("800", "Threat Detected"),
+    "threat_score_elevated": ("801", "Threat Score Elevated"),
+    "threat_kill_chain_completed": ("802", "Kill Chain Completed"),
+    "threat_agent_quarantined": ("803", "Agent Quarantined by Threat Engine"),
+    "threat_resolved": ("804", "Threat Resolved"),
+    "threat_false_positive": ("805", "Threat Marked False Positive"),
 }
 
 # Map severity to CEF severity (0-10)
@@ -138,6 +145,12 @@ def format_cef(
                     f"cs{cs_index}={_cef_escape(str(details[key]))} cs{cs_index}Label={key}"
                 )
                 cs_index += 1
+        # Enrich approval events with decision_source for SIEM filtering
+        if "decision_source" in details and cs_index <= 6:
+            extensions.append(
+                f"cs{cs_index}={_cef_escape(str(details['decision_source']))} cs{cs_index}Label=DecisionSource"
+            )
+            cs_index += 1
 
     ext_str = " ".join(extensions)
     return (

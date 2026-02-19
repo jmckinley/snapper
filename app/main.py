@@ -27,6 +27,9 @@ from app.routers import saml as saml_router
 from app.routers import oidc as oidc_router
 from app.routers import scim as scim_router
 from app.routers import webhooks as webhooks_router
+from app.routers import approval_policies as approval_policies_router
+from app.routers import suggestions as suggestions_router
+from app.routers import threats as threats_router
 
 settings = get_settings()
 
@@ -183,6 +186,9 @@ app.include_router(saml_router.router, tags=["SSO"])
 app.include_router(oidc_router.router, tags=["SSO"])
 app.include_router(scim_router.router, tags=["SSO"])
 app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=["Webhooks"])
+app.include_router(approval_policies_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
+app.include_router(suggestions_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
+app.include_router(threats_router.router, prefix=settings.API_V1_PREFIX, tags=["Threats"])
 
 
 # Global exception handler
@@ -283,6 +289,15 @@ async def rules_edit_page(request: Request, rule_id: str):
     return templates.TemplateResponse(
         "rules/edit.html",
         {"request": request, "settings": settings, "rule_id": rule_id},
+    )
+
+
+@app.get("/approvals", tags=["dashboard"])
+async def approvals_page(request: Request):
+    """Approval automation management page."""
+    return templates.TemplateResponse(
+        "approvals/index.html",
+        {"request": request, "settings": settings},
     )
 
 

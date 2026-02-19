@@ -236,6 +236,26 @@ class RuleEngine:
 
             result.matched_rules = matched_rules
 
+            # --- Threat score override (best-effort) ---
+            # If the result is ALLOW, check if the agent's threat score
+            # warrants overriding to DENY or REQUIRE_APPROVAL.
+            if result.decision == EvaluationDecision.ALLOW and not result.learning_mode:
+                try:
+                    from app.services.threat_detector import get_threat_score
+                    threat_score = await get_threat_score(self.redis, str(context.agent_id))
+                    if threat_score >= settings.THREAT_DENY_THRESHOLD:
+                        result.decision = EvaluationDecision.DENY
+                        result.reason = f"Threat score {threat_score:.0f} exceeds deny threshold ({settings.THREAT_DENY_THRESHOLD})"
+                        result.details["threat_score"] = threat_score
+                        result.details["threat_override"] = "deny"
+                    elif threat_score >= settings.THREAT_APPROVAL_THRESHOLD:
+                        result.decision = EvaluationDecision.REQUIRE_APPROVAL
+                        result.reason = f"Threat score {threat_score:.0f} exceeds approval threshold ({settings.THREAT_APPROVAL_THRESHOLD})"
+                        result.details["threat_score"] = threat_score
+                        result.details["threat_override"] = "require_approval"
+                except Exception:
+                    pass  # Threat scoring is best-effort
+
         except Exception as e:
             logger.exception(f"Error during rule evaluation: {e}")
             result.decision = EvaluationDecision.DENY

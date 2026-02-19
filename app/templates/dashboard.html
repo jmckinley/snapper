@@ -110,7 +110,7 @@
                 </div>
             </div>
         </div>
-        <div class="bg-white rounded-lg shadow p-4">
+        <a href="/approvals" class="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow block">
             <div class="flex items-center">
                 <div class="p-2 bg-purple-100 rounded-lg">
                     <svg class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -121,6 +121,59 @@
                     <p class="text-sm font-medium text-gray-500">Approvals Pending</p>
                     <p id="stat-pending" class="text-2xl font-bold text-gray-900">--</p>
                 </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Threat Detection -->
+    <div id="threats-card" class="hidden">
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden border-l-4 border-red-600">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-red-100 rounded-lg">
+                        <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">Active Threats</h2>
+                        <p id="threats-subtitle" class="text-sm text-gray-500">Behavioral anomalies detected</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="threats-badges" class="flex gap-1.5"></div>
+                </div>
+            </div>
+            <div id="threats-list" class="divide-y divide-gray-200"></div>
+            <!-- Live Threat Scores -->
+            <div id="threats-scores" class="hidden border-t border-gray-200">
+                <div class="px-6 py-3 bg-gray-50">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Live Agent Threat Scores</p>
+                </div>
+                <div id="threats-scores-list" class="divide-y divide-gray-100"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suggested Actions -->
+    <div id="suggestions-card" class="hidden">
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">💡</span>
+                    <h2 class="text-lg font-semibold text-gray-900">Suggested Actions</h2>
+                </div>
+                <span id="suggestions-count" class="text-xs text-gray-400"></span>
+            </div>
+            <div id="suggestions-list" class="divide-y divide-gray-200"></div>
+        </div>
+    </div>
+    <div id="suggestions-empty" class="hidden">
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+            <span class="text-2xl">✅</span>
+            <div>
+                <p class="font-medium text-green-800">All caught up!</p>
+                <p class="text-sm text-green-600">No recommended actions right now.</p>
             </div>
         </div>
     </div>
@@ -193,6 +246,8 @@
         loadDailyChart();
         loadActivity();
         loadRecentBlocks();
+        loadSuggestions();
+        loadThreats();
     });
 
     async function loadActivePacks() {
@@ -549,6 +604,280 @@
         return div.innerHTML;
     }
 
+
+    const severityStyles = {
+        critical: { border: 'border-l-4 border-red-500', bg: 'bg-red-50', badge: 'bg-red-100 text-red-800' },
+        high: { border: 'border-l-4 border-orange-400', bg: 'bg-orange-50', badge: 'bg-orange-100 text-orange-800' },
+        medium: { border: 'border-l-4 border-blue-400', bg: 'bg-blue-50', badge: 'bg-blue-100 text-blue-800' },
+        low: { border: 'border-l-4 border-gray-300', bg: 'bg-gray-50', badge: 'bg-gray-100 text-gray-700' },
+    };
+
+    async function loadSuggestions() {
+        try {
+            const response = await fetch('/api/v1/suggestions');
+            if (!response.ok) return;
+            const suggestions = await response.json();
+
+            const card = document.getElementById('suggestions-card');
+            const emptyState = document.getElementById('suggestions-empty');
+            const list = document.getElementById('suggestions-list');
+            const countEl = document.getElementById('suggestions-count');
+
+            if (!suggestions || suggestions.length === 0) {
+                card.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            card.classList.remove('hidden');
+            countEl.textContent = `${suggestions.length} suggestion${suggestions.length !== 1 ? 's' : ''}`;
+
+            list.innerHTML = suggestions.map(s => {
+                const style = severityStyles[s.severity] || severityStyles.low;
+                const actionBtn = s.action_type === 'link'
+                    ? `<a href="${escapeHtml(s.action_url)}" class="inline-flex items-center px-3 py-1.5 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 whitespace-nowrap">${escapeHtml(s.action_label)}</a>`
+                    : `<button onclick="window.location.href='${escapeHtml(s.action_url)}'" class="inline-flex items-center px-3 py-1.5 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 whitespace-nowrap">${escapeHtml(s.action_label)}</button>`;
+                const metricBadge = s.metric ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style.badge}">${escapeHtml(s.metric)}</span>` : '';
+
+                return `
+                    <div id="suggestion-${escapeHtml(s.id)}" class="px-6 py-4 ${style.bg} ${style.border} transition-all duration-300">
+                        <div class="flex items-start gap-3">
+                            <span class="text-xl flex-shrink-0 mt-0.5">${s.icon}</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-medium text-gray-900">${escapeHtml(s.title)}</span>
+                                    ${metricBadge}
+                                </div>
+                                <p class="text-sm text-gray-600 mt-0.5">${escapeHtml(s.description)}</p>
+                                <div class="flex items-center gap-3 mt-2">
+                                    ${actionBtn}
+                                    ${s.dismissible ? `<button onclick="dismissSuggestion('${escapeHtml(s.id)}')" class="text-xs text-gray-400 hover:text-gray-600">Dismiss</button>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Failed to load suggestions:', error);
+        }
+    }
+
+    async function dismissSuggestion(id) {
+        try {
+            await fetch(`/api/v1/suggestions/${id}/dismiss`, { method: 'POST' });
+            const el = document.getElementById(`suggestion-${id}`);
+            if (el) {
+                el.style.opacity = '0';
+                el.style.maxHeight = el.scrollHeight + 'px';
+                setTimeout(() => {
+                    el.style.maxHeight = '0';
+                    el.style.padding = '0';
+                    el.style.overflow = 'hidden';
+                }, 50);
+                setTimeout(() => {
+                    el.remove();
+                    // Check if any suggestions remain
+                    const list = document.getElementById('suggestions-list');
+                    if (list && list.children.length === 0) {
+                        document.getElementById('suggestions-card').classList.add('hidden');
+                        document.getElementById('suggestions-empty').classList.remove('hidden');
+                    } else {
+                        const count = list.children.length;
+                        document.getElementById('suggestions-count').textContent = `${count} suggestion${count !== 1 ? 's' : ''}`;
+                    }
+                }, 350);
+            }
+        } catch (error) {
+            console.error('Failed to dismiss suggestion:', error);
+        }
+    }
+
+    async function loadThreats() {
+        try {
+            // Load summary + recent events + live scores in parallel
+            const [summaryRes, eventsRes, scoresRes] = await Promise.all([
+                fetch('/api/v1/threats/summary'),
+                fetch('/api/v1/threats?status=active&page_size=5'),
+                fetch('/api/v1/threats/scores/live'),
+            ]);
+
+            const summary = summaryRes.ok ? await summaryRes.json() : null;
+            const events = eventsRes.ok ? await eventsRes.json() : null;
+            const scores = scoresRes.ok ? await scoresRes.json() : [];
+
+            const card = document.getElementById('threats-card');
+
+            // Only show if there are active threats or live scores
+            if ((!summary || summary.active_count === 0) && scores.length === 0) {
+                card.classList.add('hidden');
+                return;
+            }
+
+            card.classList.remove('hidden');
+
+            // Subtitle
+            const subtitle = document.getElementById('threats-subtitle');
+            if (summary && summary.active_count > 0) {
+                subtitle.textContent = `${summary.active_count} active threat${summary.active_count !== 1 ? 's' : ''} across ${summary.agents_affected} agent${summary.agents_affected !== 1 ? 's' : ''}`;
+            } else if (scores.length > 0) {
+                subtitle.textContent = `${scores.length} agent${scores.length !== 1 ? 's' : ''} with elevated threat scores`;
+            }
+
+            // Severity badges
+            const badges = document.getElementById('threats-badges');
+            let badgeHtml = '';
+            if (summary) {
+                if (summary.critical_count > 0) badgeHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800">${summary.critical_count} critical</span>`;
+                if (summary.high_count > 0) badgeHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800">${summary.high_count} high</span>`;
+                if (summary.medium_count > 0) badgeHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">${summary.medium_count} medium</span>`;
+                if (summary.low_count > 0) badgeHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">${summary.low_count} low</span>`;
+            }
+            badges.innerHTML = badgeHtml;
+
+            // Render threat events
+            const list = document.getElementById('threats-list');
+            if (events && events.items && events.items.length > 0) {
+                list.innerHTML = events.items.map(renderThreatEvent).join('');
+            } else {
+                list.innerHTML = '';
+            }
+
+            // Render live scores
+            const scoresSection = document.getElementById('threats-scores');
+            const scoresList = document.getElementById('threats-scores-list');
+            if (scores.length > 0) {
+                scoresSection.classList.remove('hidden');
+                scoresList.innerHTML = scores.map(s => {
+                    const levelColor = {
+                        critical: 'bg-red-500',
+                        high: 'bg-orange-500',
+                        medium: 'bg-yellow-500',
+                        low: 'bg-blue-400',
+                        none: 'bg-gray-300',
+                    }[s.threat_level] || 'bg-gray-300';
+
+                    const barWidth = Math.min(s.threat_score, 100);
+
+                    return `
+                        <div class="px-6 py-2.5 flex items-center gap-4">
+                            <span class="text-sm font-medium text-gray-900 w-32 truncate">${escapeHtml(s.agent_name || s.agent_id.substring(0, 8))}</span>
+                            <div class="flex-1">
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="${levelColor} h-2 rounded-full transition-all" style="width: ${barWidth}%"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm font-bold ${s.threat_score >= 80 ? 'text-red-600' : s.threat_score >= 60 ? 'text-orange-600' : s.threat_score >= 40 ? 'text-yellow-600' : 'text-gray-600'}">${s.threat_score.toFixed(0)}</span>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                                s.threat_level === 'critical' ? 'bg-red-100 text-red-800' :
+                                s.threat_level === 'high' ? 'bg-orange-100 text-orange-800' :
+                                s.threat_level === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-600'
+                            }">${s.threat_level}</span>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                scoresSection.classList.add('hidden');
+            }
+
+        } catch (error) {
+            console.error('Failed to load threats:', error);
+        }
+    }
+
+    function renderThreatEvent(event) {
+        const sevStyle = {
+            critical: { icon: '🔴', bg: 'bg-red-50', border: 'border-l-red-600', badge: 'bg-red-100 text-red-800' },
+            high: { icon: '🟠', bg: 'bg-orange-50', border: 'border-l-orange-500', badge: 'bg-orange-100 text-orange-800' },
+            medium: { icon: '🟡', bg: 'bg-yellow-50', border: 'border-l-yellow-500', badge: 'bg-yellow-100 text-yellow-800' },
+            low: { icon: '🔵', bg: 'bg-blue-50', border: 'border-l-blue-400', badge: 'bg-blue-100 text-blue-800' },
+        }[event.severity] || { icon: '⚪', bg: '', border: '', badge: 'bg-gray-100 text-gray-700' };
+
+        const typeLabel = event.threat_type.replace(/_/g, ' ');
+        const chainBadge = event.kill_chain
+            ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">chain: ${escapeHtml(event.kill_chain.replace(/_/g, ' '))}</span>`
+            : '';
+        const aiLabel = event.details?.source === 'ai_review'
+            ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">AI detected</span>`
+            : '';
+
+        const timeAgo = getTimeAgo(new Date(event.created_at));
+
+        return `
+            <div id="threat-${event.id}" class="px-6 py-4 ${sevStyle.bg} hover:bg-opacity-75 transition-colors">
+                <div class="flex items-start gap-3">
+                    <span class="text-lg mt-0.5">${sevStyle.icon}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${sevStyle.badge}">${event.severity}</span>
+                            <span class="text-sm font-semibold text-gray-900">${escapeHtml(typeLabel)}</span>
+                            ${chainBadge}
+                            ${aiLabel}
+                            <span class="ml-auto text-xs text-gray-400 flex-shrink-0">${timeAgo}</span>
+                        </div>
+                        <p class="text-sm text-gray-700 mt-1">${escapeHtml(event.description)}</p>
+                        <div class="flex items-center gap-3 mt-2">
+                            <span class="text-xs text-gray-500">Agent: <strong>${escapeHtml(event.agent_name || event.agent_id.substring(0, 8))}</strong></span>
+                            <span class="text-xs text-gray-500">Score: <strong>${event.threat_score.toFixed(0)}</strong></span>
+                            <div class="ml-auto flex gap-2">
+                                <button onclick="resolveThreat('${event.id}', 'resolved')"
+                                    class="inline-flex items-center px-2.5 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
+                                    Resolve
+                                </button>
+                                <button onclick="resolveThreat('${event.id}', 'false_positive')"
+                                    class="inline-flex items-center px-2.5 py-1 bg-gray-200 text-gray-700 rounded text-xs font-medium hover:bg-gray-300">
+                                    False Positive
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function resolveThreat(threatId, status) {
+        const notes = status === 'false_positive'
+            ? prompt('Optional notes (why is this a false positive?):')
+            : null;
+
+        // User cancelled the prompt
+        if (status === 'false_positive' && notes === null) return;
+
+        try {
+            const response = await fetch(`/api/v1/threats/${threatId}/resolve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status, resolution_notes: notes || undefined }),
+            });
+
+            if (response.ok) {
+                const el = document.getElementById(`threat-${threatId}`);
+                if (el) {
+                    el.style.opacity = '0';
+                    el.style.transition = 'opacity 0.3s, max-height 0.3s';
+                    setTimeout(() => {
+                        el.style.maxHeight = '0';
+                        el.style.padding = '0';
+                        el.style.overflow = 'hidden';
+                    }, 200);
+                    setTimeout(() => el.remove(), 500);
+                }
+                showToast(`Threat marked as ${status.replace('_', ' ')}`, 'success');
+
+                // Reload threats after a short delay
+                setTimeout(loadThreats, 600);
+            } else {
+                const err = await response.json();
+                showToast(err.detail || 'Failed to resolve threat', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to resolve threat:', error);
+            showToast('Failed to resolve threat', 'error');
+        }
+    }
 
     function showToast(message, type = 'info') {
         const container = document.getElementById('toast-container');

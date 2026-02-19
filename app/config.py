@@ -128,6 +128,23 @@ class Settings(BaseSettings):
     STRIPE_PRICE_PRO_MONTHLY: Optional[str] = None
     STRIPE_PRICE_PRO_YEARLY: Optional[str] = None
 
+    # Threat Detection
+    THREAT_DETECTION_ENABLED: bool = True
+    THREAT_DENY_THRESHOLD: float = 80.0
+    THREAT_APPROVAL_THRESHOLD: float = 60.0
+    THREAT_ALERT_THRESHOLD: float = 40.0
+    THREAT_AUTO_QUARANTINE: bool = False
+    THREAT_SIGNAL_STREAM_MAXLEN: int = 10000
+    THREAT_BASELINE_WINDOW_DAYS: int = 7
+    THREAT_SCORE_TTL_SECONDS: int = 300
+
+    # AI Threat Review
+    THREAT_AI_REVIEW_ENABLED: bool = False  # Requires ANTHROPIC_API_KEY
+    ANTHROPIC_API_KEY: Optional[str] = None
+    THREAT_AI_MODEL: str = "claude-sonnet-4-5-20250929"
+    THREAT_AI_REVIEW_INTERVAL_SECONDS: int = 900  # 15 minutes
+    THREAT_AI_MAX_EVENTS_PER_REVIEW: int = 50
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

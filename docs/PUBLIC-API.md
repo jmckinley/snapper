@@ -136,6 +136,244 @@ curl https://your-snapper/api/v1/approvals/abc123-def456/status
 
 ---
 
+#### 3. POST /api/v1/approvals/{id}/decide
+
+Approve or deny a pending approval request. Supports human decisions (via dashboard/Telegram/Slack) and automated bot decisions (via API key).
+
+**Auth:** API key (`snp_` prefix) or user session. When using an API key, the calling agent must belong to the same organization as the approval request.
+
+```bash
+curl -X POST https://your-snapper/api/v1/approvals/abc123-def456/decide \
+  -H "X-API-Key: snp_bot_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "decision": "approve",
+    "decided_by": "bot:my-approval-bot",
+    "reason": "Command matches safe read pattern"
+  }'
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `decision` | string | yes | `approve` or `deny` |
+| `decided_by` | string | no | Human-readable name of the decider. Defaults to `bot:<agent-name>` for API key callers |
+| `reason` | string | no | Why the decision was made. Stored in audit trail |
+
+**Response (200):**
+
+```json
+{
+  "id": "abc123-def456",
+  "status": "approved",
+  "reason": "Approved by bot:my-approval-bot"
+}
+```
+
+| Status Code | Meaning |
+|-------------|---------|
+| `200` | Decision applied |
+| `400` | Invalid decision value |
+| `401` | Missing or invalid API key |
+| `403` | Agent not in same organization |
+| `409` | Approval already decided |
+| `410` | Approval expired or not found |
+| `429` | Automated approval rate cap exceeded (see `Retry-After` header) |
+
+**Safety mechanisms for automated bots:**
+- Per-org hourly rate cap (default 200/hour, configurable per org)
+- Anomaly detection: alert fired if a single agent auto-approves > 50 requests in 10 minutes
+- Audit trail tags automated decisions with `decision_source: "automation"` and the calling agent's ID
+
+---
+
+#### 4. GET /api/v1/approvals/pending
+
+List pending (undecided) approval requests. When called with an API key, results are filtered to the calling agent's organization.
+
+```bash
+curl https://your-snapper/api/v1/approvals/pending \
+  -H "X-API-Key: snp_bot_key"
+```
+
+**Response (200):**
+
+```json
+{
+  "pending": [
+    {
+      "id": "abc123-def456",
+      "agent_id": "f47ac10b-...",
+      "agent_name": "openclaw-prod",
+      "request_type": "command",
+      "command": "rm -rf /tmp/build",
+      "tool_name": null,
+      "tool_input": null,
+      "rule_name": "Approve destructive commands",
+      "status": "pending",
+      "created_at": "2026-02-18T10:00:00",
+      "expires_at": "2026-02-18T10:05:00",
+      "organization_id": "org-uuid-..."
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+#### 5. POST /api/v1/approvals/test
+
+Simulate the full approval webhook flow without creating a real approval. Creates a temporary test approval in Redis (60s TTL), delivers a realistic `request_pending_approval` webhook to org webhooks, and returns the test approval ID.
+
+Bot developers can use the returned ID to call `/decide` and verify their full round-trip.
+
+```bash
+curl -X POST https://your-snapper/api/v1/approvals/test \
+  -H "X-API-Key: snp_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "f47ac10b-...",
+    "request_type": "command",
+    "command": "echo test"
+  }'
+```
+
+**Response (200):**
+
+```json
+{
+  "approval_request_id": "test_abc123-...",
+  "payload": {
+    "event": "request_pending_approval",
+    "test": true,
+    "details": { "..." }
+  },
+  "webhooks_delivered": 1
+}
+```
+
+Test approvals are sandboxed: decisions on test IDs are logged with `"test": true` in the audit trail and do not affect real workflows. Rate caps are not applied to test decisions.
+
+---
+
+### Approval Policies (Server-Side Auto-Rules)
+
+Policies auto-approve or auto-deny requests without human intervention. Stored in organization settings. Policies never auto-approve when PII vault tokens are present.
+
+#### 6. GET /api/v1/approval-policies
+
+List all approval policies for the organization.
+
+#### 7. POST /api/v1/approval-policies
+
+Create an approval policy. Requires org membership.
+
+```bash
+curl -X POST https://your-snapper/api/v1/approval-policies \
+  -H "X-API-Key: snp_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Auto-approve reads for trusted agents",
+    "conditions": {
+      "request_types": ["command"],
+      "command_patterns": ["^(ls|cat|head|git log)"],
+      "min_trust_score": 0.8
+    },
+    "decision": "approve",
+    "priority": 10,
+    "max_auto_per_hour": 100
+  }'
+```
+
+**Policy conditions (all are AND-ed):**
+
+| Condition | Type | Description |
+|-----------|------|-------------|
+| `request_types` | list[str] | Filter by request type |
+| `command_patterns` | list[str] | Regex patterns for command matching |
+| `tool_names` | list[str] | Exact tool name matches |
+| `min_trust_score` | float | Minimum agent trust score (0.5-2.0) |
+| `agent_names` | list[str] | Specific agent names |
+
+**Safety:**
+- Per-policy hourly cap (`max_auto_per_hour`, default 100)
+- Org kill switch: `Organization.settings["approval_policies_enabled"]` (default true)
+- PII vault tokens always require explicit decision (policies cannot auto-approve PII)
+
+#### 8. PUT /api/v1/approval-policies/{id}
+
+Update a policy (name, conditions, decision, priority, active status).
+
+#### 9. DELETE /api/v1/approval-policies/{id}
+
+Delete a policy. Returns `204 No Content`.
+
+#### 10. POST /api/v1/approval-policies/test
+
+Dry-run a request against policies without executing anything.
+
+```bash
+curl -X POST https://your-snapper/api/v1/approval-policies/test \
+  -H "X-API-Key: snp_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "production-agent",
+    "request_type": "command",
+    "command": "ls -la",
+    "trust_score": 0.9,
+    "has_pii": false
+  }'
+```
+
+**Response (200):**
+
+```json
+{
+  "matched": true,
+  "policy_id": "abc123-...",
+  "policy_name": "Auto-approve reads for trusted agents",
+  "decision": "approve",
+  "reason": "Policy 'Auto-approve reads for trusted agents' would approve this request"
+}
+```
+
+---
+
+### Webhook Payload: request_pending_approval
+
+When an approval is created, Snapper delivers an enriched webhook payload to all configured org webhooks:
+
+```json
+{
+  "event": "request_pending_approval",
+  "severity": "warning",
+  "message": "Agent 'openclaw-prod' requires approval: rm -rf /tmp/build",
+  "timestamp": "2026-02-18T10:00:00",
+  "source": "snapper",
+  "organization_id": "org-uuid-...",
+  "details": {
+    "approval_request_id": "abc123-def456",
+    "approval_expires_at": "2026-02-18T10:05:00",
+    "agent_id": "f47ac10b-...",
+    "agent_name": "openclaw-prod",
+    "rule_name": "Approve destructive commands",
+    "rule_id": "rule-uuid-...",
+    "request_type": "command",
+    "command": "rm -rf /tmp/build",
+    "tool_name": null,
+    "tool_input": null,
+    "trust_score": 1.0,
+    "pii_detected": false
+  }
+}
+```
+
+Use `details.approval_request_id` to call `/decide`. Check `details.approval_expires_at` for your deadline.
+
+---
+
 ### Agents
 
 #### 3. GET /api/v1/agents

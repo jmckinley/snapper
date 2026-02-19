@@ -100,6 +100,14 @@ class AuditAction(str, Enum):
     PII_SUBMISSION_APPROVED = "pii_submission_approved"
     PII_SUBMISSION_DENIED = "pii_submission_denied"
 
+    # Threat detection events
+    THREAT_DETECTED = "threat_detected"
+    THREAT_SCORE_ELEVATED = "threat_score_elevated"
+    THREAT_KILL_CHAIN_COMPLETED = "threat_kill_chain_completed"
+    THREAT_AGENT_QUARANTINED = "threat_agent_quarantined"
+    THREAT_RESOLVED = "threat_resolved"
+    THREAT_FALSE_POSITIVE = "threat_false_positive"
+
 
 class AuditSeverity(str, Enum):
     """Severity levels for audit events."""

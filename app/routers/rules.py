@@ -1458,6 +1458,25 @@ async def evaluate_request(
         if blocking_rule:
             matched_rule_name = blocking_rule.name
 
+    # Extract and publish threat signals (fire-and-forget, <2ms)
+    try:
+        from app.services.threat_detector import extract_signals, publish_signals
+        threat_signals = extract_signals(
+            agent_id=str(agent.id),
+            request_type=request.request_type,
+            command=request.command,
+            tool_name=request.tool_name,
+            tool_input=request.tool_input,
+            file_path=request.file_path,
+            target_host=target_host,
+            url=request.url,
+            pii_detected=context.metadata.get("pii_detected"),
+        )
+        if threat_signals:
+            await publish_signals(redis, threat_signals)
+    except Exception:
+        pass  # Never block the hot path
+
     # Log to audit trail (all decisions: allow, deny, require_approval)
     audit_action_map = {
         "allow": AuditAction.REQUEST_ALLOWED,
@@ -1602,10 +1621,96 @@ async def evaluate_request(
                     command=request.command,
                     file_path=request.file_path,
                     tool_name=request.tool_name,
+                    tool_input=request.tool_input,
                     pii_context=pii_context,
                     vault_tokens=all_vault_tokens if all_vault_tokens else None,
                     owner_chat_id=vault_owner_chat_id,
+                    organization_id=str(agent.organization_id) if agent.organization_id else None,
                 )
+
+                # --- Evaluate approval policies (server-side auto-rules) ---
+                try:
+                    from app.services.approval_policies import evaluate_approval_policies
+
+                    policy_data = {
+                        "request_type": request.request_type,
+                        "command": request.command,
+                        "tool_name": request.tool_name,
+                        "tool_input": request.tool_input,
+                        "vault_tokens": all_vault_tokens if all_vault_tokens else [],
+                        "pii_context": pii_context,
+                    }
+                    auto_decision = await evaluate_approval_policies(
+                        db=db,
+                        organization_id=str(agent.organization_id) if agent.organization_id else None,
+                        approval_data=policy_data,
+                        agent=agent,
+                        redis=redis,
+                    )
+                    if auto_decision:
+                        from app.routers.approvals import update_approval_status
+                        policy_decided_by = f"policy:{auto_decision.policy_name}"
+                        new_auto_status = "approved" if auto_decision.decision == "approve" else "denied"
+                        await update_approval_status(redis, approval_request_id, new_auto_status, policy_decided_by)
+
+                        # Audit log with decision_source="policy"
+                        try:
+                            policy_audit = AuditLog(
+                                action=AuditAction.APPROVAL_GRANTED if auto_decision.decision == "approve" else AuditAction.APPROVAL_DENIED,
+                                severity=AuditSeverity.INFO,
+                                agent_id=agent.id,
+                                message=f"Request {approval_request_id} auto-{auto_decision.decision}d by policy '{auto_decision.policy_name}'",
+                                new_value={
+                                    "request_id": approval_request_id,
+                                    "action": auto_decision.decision,
+                                    "approved_by": policy_decided_by,
+                                    "channel": "policy",
+                                    "decision_source": "policy",
+                                    "policy_id": auto_decision.policy_id,
+                                    "policy_name": auto_decision.policy_name,
+                                },
+                            )
+                            db.add(policy_audit)
+                            await db.commit()
+                            asyncio.ensure_future(publish_from_audit_log(policy_audit))
+                        except Exception:
+                            pass
+
+                        # Fire webhook with automated=true, but skip Telegram/Slack notification
+                        try:
+                            from app.services.webhook_delivery import publish_to_org_webhooks as _pub_org_wh
+                            _org_id = str(agent.organization_id) if agent.organization_id else None
+                            if _org_id:
+                                _evt = "approval_granted" if auto_decision.decision == "approve" else "approval_denied"
+                                asyncio.ensure_future(_pub_org_wh(
+                                    org_id=_org_id,
+                                    event_type=_evt,
+                                    payload={
+                                        "event": _evt,
+                                        "approval_request_id": approval_request_id,
+                                        "decision": auto_decision.decision,
+                                        "decided_by": policy_decided_by,
+                                        "automated": True,
+                                        "policy_id": auto_decision.policy_id,
+                                        "timestamp": datetime.utcnow().isoformat(),
+                                    },
+                                ))
+                        except Exception:
+                            pass
+
+                        # Return immediately — skip notification
+                        response = EvaluateResponse(
+                            decision=auto_decision.decision if auto_decision.decision == "deny" else "allow",
+                            reason=f"Auto-{auto_decision.decision}d by policy: {auto_decision.policy_name}",
+                            matched_rule_id=str(result.blocking_rule) if result.blocking_rule else None,
+                            matched_rule_name=matched_rule_name,
+                            approval_request_id=approval_request_id,
+                        )
+                        return response
+                except ImportError:
+                    pass  # approval_policies module not available
+                except Exception as e:
+                    logger.warning(f"Approval policy evaluation failed (non-fatal): {e}")
 
                 if notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
                     alert_metadata = {
@@ -1636,6 +1741,46 @@ async def evaluate_request(
                         severity="warning",
                         metadata=alert_metadata,
                     )
+
+                # Publish enriched event to org webhooks for bot-in-the-middle
+                try:
+                    from app.routers.approvals import DEFAULT_TIMEOUT_SECONDS
+                    from app.services.webhook_delivery import publish_to_org_webhooks
+                    from datetime import timedelta as _td
+
+                    approval_org_id = str(agent.organization_id) if agent.organization_id else None
+                    if approval_org_id:
+                        _now = datetime.utcnow()
+                        _expires = _now + _td(seconds=DEFAULT_TIMEOUT_SECONDS)
+                        webhook_details = {
+                            "approval_request_id": approval_request_id,
+                            "approval_expires_at": _expires.isoformat(),
+                            "agent_id": request.agent_id,
+                            "agent_name": agent.name,
+                            "rule_name": matched_rule_name or "Security Rule",
+                            "rule_id": str(result.blocking_rule) if result.blocking_rule else None,
+                            "request_type": request.request_type,
+                            "command": request.command,
+                            "tool_name": request.tool_name,
+                            "tool_input": request.tool_input,
+                            "trust_score": getattr(agent, "trust_score", 1.0),
+                            "pii_detected": bool(pii_context),
+                        }
+                        asyncio.ensure_future(publish_to_org_webhooks(
+                            org_id=approval_org_id,
+                            event_type="request_pending_approval",
+                            payload={
+                                "event": "request_pending_approval",
+                                "severity": "warning",
+                                "message": f"Agent '{agent.name}' requires approval: {action_desc}",
+                                "timestamp": _now.isoformat(),
+                                "source": "snapper",
+                                "organization_id": approval_org_id,
+                                "details": webhook_details,
+                            },
+                        ))
+                except Exception as e:
+                    logger.warning(f"Failed to publish approval webhook: {e}")
         except Exception as e:
             logger.warning(f"Failed to send alert notification: {e}")
 

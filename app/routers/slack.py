@@ -1749,6 +1749,7 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
                 "action": action,
                 "approved_by": approved_by,
                 "channel": "slack",
+                "decision_source": "human",
             },
         )
         db.add(audit_log)

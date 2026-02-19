@@ -253,13 +253,23 @@ async def delete_webhook(
     return None
 
 
+class WebhookTestRequest(BaseModel):
+    event_type: str = Field(default="test", description="Event type to simulate: 'test' or 'request_pending_approval'")
+
+
 @router.post("/{webhook_id}/test")
 async def test_webhook(
     webhook_id: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    body: Optional[WebhookTestRequest] = None,
 ):
-    """Send a test event to a webhook endpoint."""
+    """Send a test event to a webhook endpoint.
+
+    Supports event_type parameter to simulate different event payloads:
+    - "test": generic ping (default)
+    - "request_pending_approval": realistic approval event for bot testing
+    """
     org_id = _get_org_id(request)
     if not org_id:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -278,18 +288,50 @@ async def test_webhook(
 
     from app.services.webhook_delivery import deliver_webhook
 
-    test_payload = {
-        "event": "test",
-        "message": "This is a test event from Snapper",
-        "organization_id": org_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    event_type = (body.event_type if body else None) or "test"
+    now = datetime.now(timezone.utc)
+
+    if event_type == "request_pending_approval":
+        import uuid as _uuid
+        from datetime import timedelta as _td
+        test_id = f"test_{_uuid.uuid4()}"
+        expires_at = now + _td(seconds=300)
+        test_payload = {
+            "event": "request_pending_approval",
+            "test": True,
+            "severity": "warning",
+            "message": "[TEST] Agent 'test-agent' requires approval: echo hello",
+            "timestamp": now.isoformat(),
+            "source": "snapper",
+            "organization_id": org_id,
+            "details": {
+                "approval_request_id": test_id,
+                "approval_expires_at": expires_at.isoformat(),
+                "agent_id": "00000000-0000-0000-0000-000000000000",
+                "agent_name": "test-agent",
+                "rule_name": "Test Rule",
+                "rule_id": "test-rule",
+                "request_type": "command",
+                "command": "echo hello",
+                "tool_name": None,
+                "tool_input": None,
+                "trust_score": 1.0,
+                "pii_detected": False,
+            },
+        }
+    else:
+        test_payload = {
+            "event": "test",
+            "message": "This is a test event from Snapper",
+            "organization_id": org_id,
+            "timestamp": now.isoformat(),
+        }
 
     result = await deliver_webhook(
         url=target["url"],
         payload=test_payload,
         secret=target.get("secret"),
-        event_type="test",
+        event_type=event_type,
     )
 
     return WebhookTestResponse(

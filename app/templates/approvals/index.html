@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+
+{% block title %}Approval Automation - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900">Approval Automation</h1>
+            <p class="text-sm text-gray-500 mt-1">Manage pending approvals, configure automation policies, and set up bot integrations</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="btn-test-mode" class="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                Test Mode
+            </button>
+            <button id="btn-add-policy" class="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Add Policy
+            </button>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Overview Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-yellow-100 rounded-lg">
+                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Pending</p>
+                    <p id="stat-pending-count" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-green-100 rounded-lg">
+                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Auto-Approved (24h)</p>
+                    <p id="stat-auto-approved" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-purple-100 rounded-lg">
+                    <svg class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Active Policies</p>
+                    <p id="stat-policies" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-blue-100 rounded-lg">
+                    <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-500">Webhooks</p>
+                    <p id="stat-webhooks" class="text-2xl font-bold text-gray-900">--</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8">
+            <button data-tab="pending" class="tab-btn border-primary-500 text-primary-600 whitespace-nowrap border-b-2 py-3 px-1 text-sm font-medium">
+                Pending Approvals <span id="pending-badge" class="hidden ml-1 bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5 rounded-full">0</span>
+            </button>
+            <button data-tab="policies" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap border-b-2 py-3 px-1 text-sm font-medium">
+                Automation Policies
+            </button>
+            <button data-tab="webhooks" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap border-b-2 py-3 px-1 text-sm font-medium">
+                Bot Webhooks
+            </button>
+            <button data-tab="guide" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap border-b-2 py-3 px-1 text-sm font-medium">
+                Setup Guide
+            </button>
+        </nav>
+    </div>
+
+    <!-- Tab: Pending Approvals -->
+    <div id="tab-pending" class="tab-content">
+        <div id="pending-list" class="space-y-3">
+            <div class="animate-pulse bg-white rounded-lg shadow p-6">
+                <div class="h-4 w-48 bg-gray-200 rounded mb-2"></div>
+                <div class="h-3 w-96 bg-gray-100 rounded"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Automation Policies -->
+    <div id="tab-policies" class="tab-content hidden">
+        <div id="policies-list" class="space-y-3">
+            <div class="animate-pulse bg-white rounded-lg shadow p-6">
+                <div class="h-4 w-48 bg-gray-200 rounded mb-2"></div>
+                <div class="h-3 w-96 bg-gray-100 rounded"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Bot Webhooks -->
+    <div id="tab-webhooks" class="tab-content hidden">
+        <div id="webhooks-list" class="space-y-3">
+            <div class="animate-pulse bg-white rounded-lg shadow p-6">
+                <div class="h-4 w-48 bg-gray-200 rounded mb-2"></div>
+                <div class="h-3 w-96 bg-gray-100 rounded"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Setup Guide -->
+    <div id="tab-guide" class="tab-content hidden">
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="px-6 py-5 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">Bot-In-The-Loop (BITL) Setup Guide</h2>
+                <p class="text-sm text-gray-500 mt-1">Build an automated approval bot in three steps</p>
+            </div>
+            <div class="p-6 space-y-8">
+                <!-- Step 1 -->
+                <div class="flex gap-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center font-bold text-sm">1</div>
+                    <div class="flex-1">
+                        <h3 class="font-medium text-gray-900">Register a webhook</h3>
+                        <p class="text-sm text-gray-600 mt-1">Create a webhook that receives <code class="bg-gray-100 px-1 py-0.5 rounded text-xs">request_pending_approval</code> events. Each event includes the command/tool, agent name, trust score, and an <code class="bg-gray-100 px-1 py-0.5 rounded text-xs">approval_request_id</code> your bot uses to decide.</p>
+                        <div class="mt-3 bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                            <pre class="text-sm text-green-400"><code>{
+  "event": "request_pending_approval",
+  "details": {
+    "approval_request_id": "abc-123",
+    "agent_name": "production-agent",
+    "command": "rm -rf /tmp/build",
+    "trust_score": 0.95,
+    "pii_detected": false
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="flex gap-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center font-bold text-sm">2</div>
+                    <div class="flex-1">
+                        <h3 class="font-medium text-gray-900">Decide via API</h3>
+                        <p class="text-sm text-gray-600 mt-1">Your bot calls <code class="bg-gray-100 px-1 py-0.5 rounded text-xs">POST /api/v1/approvals/{id}/decide</code> with an API key and a reason. The bot must belong to the same organization as the approval.</p>
+                        <div class="mt-3 bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                            <pre class="text-sm text-green-400"><code>curl -X POST https://snapper.example.com/api/v1/approvals/abc-123/decide \
+  -H "X-API-Key: snp_your_bot_key" \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "approve", "reason": "Safe read-only command"}'</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="flex gap-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center font-bold text-sm">3</div>
+                    <div class="flex-1">
+                        <h3 class="font-medium text-gray-900">Or use server-side policies</h3>
+                        <p class="text-sm text-gray-600 mt-1">For common patterns, create automation policies that auto-approve or auto-deny without needing a bot. Policies support command regex patterns, tool name filters, trust score thresholds, and per-agent targeting.</p>
+                        <div class="mt-3 flex gap-2">
+                            <button onclick="switchTab('policies'); document.getElementById('btn-add-policy').click();" class="inline-flex items-center gap-1 px-3 py-1.5 bg-primary-50 text-primary-700 rounded-md text-sm font-medium hover:bg-primary-100">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                Create a policy
+                            </button>
+                            <button onclick="switchTab('pending');" class="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-50 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-100">
+                                View pending queue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contextual suggestion: pending queue -->
+                <div id="guide-pending-hint" class="hidden bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div class="flex items-start gap-3">
+                        <span class="text-xl flex-shrink-0">⏳</span>
+                        <div>
+                            <p class="font-medium text-purple-800">You have pending approvals</p>
+                            <p class="text-sm text-purple-700 mt-1" id="guide-pending-text">Automate repetitive decisions by creating an approval policy.</p>
+                            <button onclick="switchTab('policies'); document.getElementById('btn-add-policy').click();"
+                                class="mt-2 inline-flex items-center px-3 py-1.5 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700">
+                                Create a Policy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Safety info -->
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <div class="text-sm">
+                            <p class="font-medium text-yellow-800">Built-in safety guardrails</p>
+                            <ul class="mt-1 text-yellow-700 space-y-1 list-disc ml-4">
+                                <li>200 automated approvals per hour per organization (configurable)</li>
+                                <li>Anomaly detection alerts if one bot approves too rapidly</li>
+                                <li>PII vault tokens are never auto-approved by policies</li>
+                                <li>All automated decisions are logged with <code class="bg-yellow-100 px-1 rounded text-xs">decision_source: "automation"</code></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Add/Edit Policy -->
+<div id="policy-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex min-h-screen items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closePolicyModal()"></div>
+        <div class="relative bg-white rounded-lg shadow-xl w-full max-w-lg z-10">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 id="policy-modal-title" class="text-lg font-semibold text-gray-900">Add Automation Policy</h3>
+                <button onclick="closePolicyModal()" class="text-gray-400 hover:text-gray-500">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <form id="policy-form" onsubmit="savePolicy(event)" class="p-6 space-y-4">
+                <input type="hidden" id="policy-id" value="">
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Policy Name</label>
+                    <input type="text" id="policy-name" required maxlength="200" placeholder="e.g., Auto-approve read commands"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Decision</label>
+                        <select id="policy-decision" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                            <option value="approve">Auto-Approve</option>
+                            <option value="deny">Auto-Deny</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Priority</label>
+                        <input type="number" id="policy-priority" min="0" max="1000" value="10" placeholder="0-1000"
+                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                        <p class="text-xs text-gray-400 mt-1">Higher = evaluated first</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Request Types</label>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="request_types" value="command" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Command
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="request_types" value="tool" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Tool
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="request_types" value="file_access" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> File Access
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="request_types" value="network" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Network
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Leave all unchecked to match any type</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Command Patterns (regex, one per line)</label>
+                    <textarea id="policy-patterns" rows="2" placeholder="^(ls|cat|head|git log)\b&#10;^echo\b"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono text-xs"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Tool Names (comma-separated)</label>
+                    <input type="text" id="policy-tools" placeholder="file_read, browser_navigate"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Min Trust Score</label>
+                        <input type="number" id="policy-trust" min="0" max="2" step="0.1" placeholder="0.0 - 2.0"
+                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Max Auto/Hour</label>
+                        <input type="number" id="policy-maxhour" min="1" max="10000" value="100"
+                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Agent Names (comma-separated, optional)</label>
+                    <input type="text" id="policy-agents" placeholder="production-agent, staging-agent"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                </div>
+
+                <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button type="button" id="policy-test-btn" onclick="testPolicy()" class="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                        Test this policy...
+                    </button>
+                    <div class="flex gap-3">
+                        <button type="button" onclick="closePolicyModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700">Save Policy</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Add Webhook -->
+<div id="webhook-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex min-h-screen items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeWebhookModal()"></div>
+        <div class="relative bg-white rounded-lg shadow-xl w-full max-w-lg z-10">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 id="webhook-modal-title" class="text-lg font-semibold text-gray-900">Add Bot Webhook</h3>
+                <button onclick="closeWebhookModal()" class="text-gray-400 hover:text-gray-500">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <form id="webhook-form" onsubmit="saveWebhook(event)" class="p-6 space-y-4">
+                <input type="hidden" id="webhook-id" value="">
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Webhook URL</label>
+                    <input type="url" id="webhook-url" required placeholder="https://your-bot.example.com/webhook"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Description</label>
+                    <input type="text" id="webhook-description" placeholder="My approval bot"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Events to receive</label>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="webhook_events" value="request_pending_approval" checked class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Approval Requests
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="webhook_events" value="approval_granted" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Granted
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="webhook_events" value="approval_denied" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Denied
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-sm">
+                            <input type="checkbox" name="webhook_events" value="rule_violation" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Violations
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Uncheck all to receive every event</p>
+                </div>
+
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500">A signing secret will be auto-generated. Payloads are signed with HMAC-SHA256 via the <code class="bg-gray-200 px-1 rounded">X-Snapper-Signature</code> header.</p>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                    <button type="button" onclick="closeWebhookModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700">Save Webhook</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Test Mode -->
+<div id="test-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex min-h-screen items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeTestModal()"></div>
+        <div class="relative bg-white rounded-lg shadow-xl w-full max-w-lg z-10">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">Test Approval Webhook</h3>
+                <p class="text-sm text-gray-500 mt-1">Simulate an approval request to test your bot's round-trip</p>
+            </div>
+            <form id="test-form" onsubmit="runTest(event)" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Agent</label>
+                    <select id="test-agent" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                        <option value="">Select an agent...</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Request Type</label>
+                        <select id="test-type" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                            <option value="command">Command</option>
+                            <option value="tool">Tool</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Command</label>
+                        <input type="text" id="test-command" value="echo test" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                    </div>
+                </div>
+                <div id="test-result" class="hidden bg-gray-50 rounded-lg p-4 text-sm"></div>
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                    <button type="button" onclick="closeTestModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">Close</button>
+                    <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700">Send Test</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/approvals.js"></script>
+{% endblock %}
