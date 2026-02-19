@@ -84,12 +84,11 @@ Otherwise return:
 
 
 def _run_async(coro):
-    """Run async coroutine in sync Celery context."""
-    loop = asyncio.get_event_loop()
-    if loop.is_closed():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+    """Run async coroutine in sync Celery context.
+
+    Uses asyncio.run() to ensure a clean event loop in forked workers.
+    """
+    return asyncio.run(coro)
 
 
 @celery_app.task(bind=True, max_retries=1, default_retry_delay=300, time_limit=120)
@@ -112,41 +111,42 @@ def ai_threat_review(self):
 
 async def _ai_review_async() -> Dict[str, Any]:
     """Async implementation of AI threat review."""
-    from app.redis_client import redis_client
+    from app.redis_client import RedisClient
 
-    redis = redis_client
-    if not redis._client:
-        return {"status": "redis_unavailable"}
+    redis = RedisClient()
+    await redis.connect()
+    try:
+        # Check when we last ran to avoid duplicate reviews
+        last_run = await redis.get(LAST_REVIEW_KEY)
+        now = time.time()
+        if last_run:
+            elapsed = now - float(last_run)
+            if elapsed < settings.THREAT_AI_REVIEW_INTERVAL_SECONDS * 0.8:
+                return {"status": "skipped", "reason": "too_recent"}
 
-    # Check when we last ran to avoid duplicate reviews
-    last_run = await redis.get(LAST_REVIEW_KEY)
-    now = time.time()
-    if last_run:
-        elapsed = now - float(last_run)
-        if elapsed < settings.THREAT_AI_REVIEW_INTERVAL_SECONDS * 0.8:
-            return {"status": "skipped", "reason": "too_recent"}
+        # Mark this run
+        await redis.set(LAST_REVIEW_KEY, str(now), expire=settings.THREAT_AI_REVIEW_INTERVAL_SECONDS * 2)
 
-    # Mark this run
-    await redis.set(LAST_REVIEW_KEY, str(now), expire=settings.THREAT_AI_REVIEW_INTERVAL_SECONDS * 2)
+        # 1. Gather recent activity data
+        activity_summary = await _gather_activity_summary()
+        if not activity_summary:
+            return {"status": "no_activity"}
 
-    # 1. Gather recent activity data
-    activity_summary = await _gather_activity_summary()
-    if not activity_summary:
-        return {"status": "no_activity"}
+        # 2. Call Claude for analysis
+        findings = await _call_anthropic(activity_summary)
+        if not findings:
+            return {"status": "no_findings"}
 
-    # 2. Call Claude for analysis
-    findings = await _call_anthropic(activity_summary)
-    if not findings:
-        return {"status": "no_findings"}
+        # 3. Process findings
+        processed = await _process_findings(findings)
 
-    # 3. Process findings
-    processed = await _process_findings(findings)
-
-    return {
-        "status": "completed",
-        "findings_count": len(findings),
-        "actions_taken": processed,
-    }
+        return {
+            "status": "completed",
+            "findings_count": len(findings),
+            "actions_taken": processed,
+        }
+    finally:
+        await redis.close()
 
 
 async def _gather_activity_summary() -> Optional[str]:
@@ -159,7 +159,7 @@ async def _gather_activity_summary() -> Optional[str]:
     from app.models.audit_logs import AuditLog
     from app.models.agents import Agent
     from sqlalchemy import select, desc
-    from app.redis_client import redis_client
+    from app.redis_client import RedisClient
 
     max_events = settings.THREAT_AI_MAX_EVENTS_PER_REVIEW
     lookback = timedelta(minutes=30)
@@ -221,48 +221,57 @@ async def _gather_activity_summary() -> Optional[str]:
     except Exception as e:
         logger.warning(f"Failed to gather audit logs for AI review: {e}")
 
-    # --- Active threat scores ---
+    # --- Active threat scores and baselines from Redis ---
+    redis = None
     try:
-        redis = redis_client
-        score_keys = await redis.keys("threat:score:*")
-        if score_keys:
-            scores = {}
-            for key in score_keys[:20]:
-                agent_id = key.replace("threat:score:", "")
-                val = await redis.get(key)
-                if val:
-                    scores[agent_id[:8]] = float(val)
-            if scores:
-                sections.append(
-                    f"## Current Threat Scores\n"
-                    + json.dumps(scores, indent=2)
-                )
-    except Exception:
-        pass
+        redis = RedisClient()
+        await redis.connect()
 
-    # --- Agent baselines summary ---
-    try:
-        redis = redis_client
-        baseline_keys = await redis.keys("baseline:stats:*")
-        if baseline_keys:
-            baselines = {}
-            for key in baseline_keys[:20]:
-                agent_id = key.replace("baseline:stats:", "")
-                stats = await redis.hgetall(key)
-                if stats:
-                    baselines[agent_id[:8]] = {
-                        "total_requests": stats.get("total_requests_7d", "0"),
-                        "unique_destinations": stats.get("unique_destinations", "0"),
-                        "unique_tools": stats.get("unique_tools", "0"),
-                        "avg_bytes_out": stats.get("avg_bytes_out", "0"),
-                    }
-            if baselines:
-                sections.append(
-                    f"## Agent Baselines (7-day)\n"
-                    + json.dumps(baselines, indent=2)
-                )
+        # Active threat scores
+        try:
+            score_keys = await redis.keys("threat:score:*")
+            if score_keys:
+                scores = {}
+                for key in score_keys[:20]:
+                    agent_id = key.replace("threat:score:", "")
+                    val = await redis.get(key)
+                    if val:
+                        scores[agent_id[:8]] = float(val)
+                if scores:
+                    sections.append(
+                        f"## Current Threat Scores\n"
+                        + json.dumps(scores, indent=2)
+                    )
+        except Exception:
+            pass
+
+        # Agent baselines summary
+        try:
+            baseline_keys = await redis.keys("baseline:stats:*")
+            if baseline_keys:
+                baselines = {}
+                for key in baseline_keys[:20]:
+                    agent_id = key.replace("baseline:stats:", "")
+                    stats = await redis.hgetall(key)
+                    if stats:
+                        baselines[agent_id[:8]] = {
+                            "total_requests": stats.get("total_requests_7d", "0"),
+                            "unique_destinations": stats.get("unique_destinations", "0"),
+                            "unique_tools": stats.get("unique_tools", "0"),
+                            "avg_bytes_out": stats.get("avg_bytes_out", "0"),
+                        }
+                if baselines:
+                    sections.append(
+                        f"## Agent Baselines (7-day)\n"
+                        + json.dumps(baselines, indent=2)
+                    )
+        except Exception:
+            pass
     except Exception:
         pass
+    finally:
+        if redis:
+            await redis.close()
 
     if not sections:
         return None
@@ -348,12 +357,13 @@ async def _process_findings(findings: List[Dict[str, Any]]) -> int:
     from app.models.threat_events import ThreatEvent
     from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
     from app.models.agents import Agent
-    from app.redis_client import redis_client
+    from app.redis_client import RedisClient
     from app.services.threat_detector import get_threat_score, set_threat_score
     from uuid import UUID
     from sqlalchemy import select
 
-    redis = redis_client
+    redis = RedisClient()
+    await redis.connect()
     actions_taken = 0
 
     for finding in findings:
@@ -483,4 +493,5 @@ async def _process_findings(findings: List[Dict[str, Any]]) -> int:
         except Exception as e:
             logger.warning(f"Failed to process AI finding: {e}")
 
+    await redis.close()
     return actions_taken

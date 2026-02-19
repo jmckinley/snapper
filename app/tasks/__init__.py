@@ -75,6 +75,7 @@ celery_app.conf.beat_schedule = {
     "analyze-threat-signals": {
         "task": "app.tasks.threat_analysis.analyze_threat_signals",
         "schedule": 2,
+        "options": {"time_limit": 30},
     },
     # Prune old baseline data daily
     "prune-threat-baselines": {

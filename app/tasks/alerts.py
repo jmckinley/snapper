@@ -19,12 +19,11 @@ settings = get_settings()
 
 
 def _run_async(coro):
-    """Run async coroutine in sync Celery context."""
-    loop = asyncio.get_event_loop()
-    if loop.is_closed():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+    """Run async coroutine in sync Celery context.
+
+    Uses asyncio.run() to ensure a clean event loop in forked workers.
+    """
+    return asyncio.run(coro)
 
 
 async def _persist_alert(title, message, severity, channels, metadata):

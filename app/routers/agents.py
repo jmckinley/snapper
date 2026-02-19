@@ -883,6 +883,7 @@ async def cleanup_test_agents(
         "Quick Test",
         "Delete Test",
         "Duplicate Test",
+        "ThreatSim",
     )
     # Also match wizard agent names (created by setup wizard E2E tests)
     wizard_names = ("OpenClaw", "Claude Code", "Cursor", "Windsurf", "Cline")
