@@ -38,7 +38,8 @@ class TestGlobalNavigation:
         ]
 
         for link_text, expected_path in nav_items:
-            authenticated_page.click(f"nav a[href='{expected_path}']", force=True)
+            # Use JS click to avoid Tailwind responsive div overlap issues
+            authenticated_page.locator(f"nav a[href='{expected_path}']").dispatch_event("click")
             authenticated_page.wait_for_load_state("networkidle")
             current_url = authenticated_page.url
             if expected_path == "/":
