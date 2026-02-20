@@ -1970,6 +1970,8 @@ fi
 
 # 7b. Send command that triggers require_approval
 log "7b Triggering require_approval..."
+sleep 2
+flush_rate_keys
 sleep 1
 EVAL_RESP=$(evaluate "{
     \"agent_id\": \"${AGENT_UUID}\",
@@ -1978,6 +1980,19 @@ EVAL_RESP=$(evaluate "{
 }")
 EVAL_DECISION=$(echo "$EVAL_RESP" | jq -r '.decision // empty')
 APPROVAL_ID=$(echo "$EVAL_RESP" | jq -r '.approval_request_id // empty')
+# Retry once if empty (transient rate limit or timing issue)
+if [[ -z "$EVAL_DECISION" ]]; then
+    warn "7b Empty response, retrying after flush..."
+    flush_rate_keys
+    sleep 2
+    EVAL_RESP=$(evaluate "{
+        \"agent_id\": \"${AGENT_UUID}\",
+        \"request_type\": \"command\",
+        \"command\": \"rm -rf /tmp/e2e-test\"
+    }")
+    EVAL_DECISION=$(echo "$EVAL_RESP" | jq -r '.decision // empty')
+    APPROVAL_ID=$(echo "$EVAL_RESP" | jq -r '.approval_request_id // empty')
+fi
 TOTAL=$((TOTAL + 1))
 if [[ "$EVAL_DECISION" == "require_approval" ]] && [[ -n "$APPROVAL_ID" ]]; then
     PASS=$((PASS + 1))

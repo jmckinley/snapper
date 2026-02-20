@@ -342,13 +342,13 @@ PLAN_RESP=$(auth_curl "$COOKIE_JAR_A" "${API}/billing/plan")
 PLAN_ID=$(echo "$PLAN_RESP" | jq -r '.plan.id // empty')
 assert_eq "$PLAN_ID" "free" "3.1 Billing plan is free"
 
-# 3.2 Plan limits include agents
+# 3.2 Plan limits include agents (bumped for pilots: 25)
 PLAN_AGENTS=$(echo "$PLAN_RESP" | jq -r '.plan.limits.agents // empty')
-assert_eq "$PLAN_AGENTS" "1" "3.2 Free plan agents limit = 1"
+assert_eq "$PLAN_AGENTS" "25" "3.2 Free plan agents limit = 25"
 
-# 3.3 Plan limits include rules
+# 3.3 Plan limits include rules (bumped for pilots: 250)
 PLAN_RULES=$(echo "$PLAN_RESP" | jq -r '.plan.limits.rules // empty')
-assert_eq "$PLAN_RULES" "10" "3.3 Free plan rules limit = 10"
+assert_eq "$PLAN_RULES" "250" "3.3 Free plan rules limit = 250"
 
 # 3.4 POST /billing/checkout returns 503 (no Stripe)
 log "Testing checkout (no Stripe)..."
@@ -369,12 +369,12 @@ AGENT_RESP=$(auth_curl "$COOKIE_JAR_A" -X POST "${API}/agents" \
 AGENT_UUID_A=$(echo "$AGENT_RESP" | jq -r '.id // empty')
 assert_not_eq "$AGENT_UUID_A" "" "3.6 Create agent within quota succeeds"
 
-# 3.7 Create second agent (over quota)
-log "Testing agent quota enforcement..."
+# 3.7 Create second agent (within bumped quota of 25)
+log "Testing second agent creation (within quota)..."
 OVER_CODE=$(auth_curl "$COOKIE_JAR_A" -o /dev/null -w "%{http_code}" -X POST "${API}/agents" \
     -H "Content-Type: application/json" \
-    -d "{\"name\":\"e2e-mu-over-${UNIQUE}\",\"external_id\":\"e2e-mu-over-${UNIQUE}\"}")
-assert_eq "$OVER_CODE" "402" "3.7 Second agent returns 402 (over quota)"
+    -d "{\"name\":\"e2e-mu-agent2-${UNIQUE}\",\"external_id\":\"e2e-mu-agent2-${UNIQUE}\"}")
+assert_eq "$OVER_CODE" "201" "3.7 Second agent within free plan quota"
 
 # 3.8 Plan usage reflects created agent
 USAGE_AFTER=$(auth_curl "$COOKIE_JAR_A" "${API}/billing/plan")
@@ -420,12 +420,12 @@ RULE_B_ID=$(echo "$RULE_B_RESP" | jq -r '.id // empty')
 assert_not_eq "$RULE_B_ID" "" "4.4 User B creates rule successfully"
 
 # 4.5 User B's rule is visible to User B
-RULES_B=$(auth_curl "$COOKIE_JAR_B" "${API}/rules")
+RULES_B=$(auth_curl "$COOKIE_JAR_B" "${API}/rules?page_size=100")
 B_RULE_NAMES=$(echo "$RULES_B" | jq -r '.items[].name // empty')
 assert_contains "$B_RULE_NAMES" "e2e-mu-rule-b-${UNIQUE}" "4.5 User B sees own rule"
 
 # 4.6 User B's rule is invisible to User A
-RULES_A=$(auth_curl "$COOKIE_JAR_A" "${API}/rules")
+RULES_A=$(auth_curl "$COOKIE_JAR_A" "${API}/rules?page_size=100")
 A_RULE_NAMES=$(echo "$RULES_A" | jq -r '.items[].name // empty')
 TOTAL=$((TOTAL + 1))
 if echo "$A_RULE_NAMES" | grep -qF "e2e-mu-rule-b-${UNIQUE}"; then

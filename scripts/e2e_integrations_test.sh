@@ -355,6 +355,16 @@ log "Agent API Key: ${AGENT_API_KEY:0:10}..."
 echo ""
 echo -e "${BOLD}=== Phase 1: Active Packs ===${NC}"
 
+# Pre-cleanup: disable any stale server/pack rules from prior runs
+log "Pre-cleanup: disabling stale active packs..."
+STALE_PACKS=$(api_curl "${API}/integrations/active-packs" 2>/dev/null || echo "[]")
+for sname in $(echo "$STALE_PACKS" | jq -r '.[].server_name // empty' 2>/dev/null); do
+    api_curl -X POST "${API}/integrations/traffic/disable-server-rules" \
+        -H "Content-Type: application/json" \
+        -d "{\"server_name\": \"$sname\"}" >/dev/null 2>&1
+    log "  Disabled stale pack: $sname"
+done
+
 # 1.1 Active packs returns empty list when no rules from packs/discovery
 log "Fetching active packs (should be empty)..."
 PACKS=$(api_curl "${API}/integrations/active-packs")
