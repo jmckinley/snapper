@@ -19,7 +19,8 @@ PASS=0
 FAIL=0
 TOTAL=0
 COOKIE_JAR=$(mktemp)
-trap "rm -f $COOKIE_JAR" EXIT
+NON_META_JAR=""
+PROV_ORG_ID=""
 
 # Colors
 RED='\033[0;31m'
@@ -37,6 +38,34 @@ auth_curl() {
     local jar="$1"; shift
     curl $CURL_OPTS -b "$jar" "$@"
 }
+
+# ──────────────────────────────────────────────────────────────────
+# Cleanup (runs on EXIT — always cleans up test data)
+# ──────────────────────────────────────────────────────────────────
+
+cleanup() {
+    echo ""
+    echo -e "${CYAN}═══ Cleanup ═══${NC}"
+
+    # Call the meta admin cleanup-test endpoint to hard-delete all E2E artifacts
+    log "Calling /meta/cleanup-test to remove all test data..."
+    CLEANUP_RESP=$(curl $CURL_OPTS -b "$COOKIE_JAR" -X POST \
+        "${API}/meta/cleanup-test?confirm=true" 2>&1)
+    echo -e "  ${GREEN}Cleanup:${NC} $CLEANUP_RESP"
+
+    # Remove temp files
+    rm -f "$COOKIE_JAR"
+    [[ -n "$NON_META_JAR" ]] && rm -f "$NON_META_JAR"
+
+    # Print summary
+    echo ""
+    echo "════════════════════════════════════════════════════"
+    echo -e "  Meta Admin E2E Results: ${GREEN}${PASS} passed${NC}, ${RED}${FAIL} failed${NC} / ${TOTAL} total"
+    echo "════════════════════════════════════════════════════"
+    echo ""
+}
+
+trap cleanup EXIT
 
 # ──────────────────────────────────────────────────────────────────
 # Phase 0: Login as meta admin
@@ -449,8 +478,6 @@ else
     fail "10.3 Expected 403/401, got $DENIED_PROV"
 fi
 
-rm -f "$NON_META_JAR"
-
 # ──────────────────────────────────────────────────────────────────
 # Phase 11: Admin Dashboard Pages
 # ──────────────────────────────────────────────────────────────────
@@ -476,30 +503,7 @@ if [[ -n "$PROV_ORG_ID" ]]; then
     fi
 fi
 
-# ──────────────────────────────────────────────────────────────────
-# Cleanup
-# ──────────────────────────────────────────────────────────────────
-echo ""
-echo -e "${CYAN}═══ Cleanup ═══${NC}"
-
-# Soft-disable the provisioned org
-if [[ -n "$PROV_ORG_ID" ]]; then
-    log "Disabling provisioned test org..."
-    auth_curl "$COOKIE_JAR" -X PATCH "${API}/meta/orgs/${PROV_ORG_ID}" \
-        -H "Content-Type: application/json" \
-        -d '{"is_active": false}' > /dev/null 2>&1
-    echo -e "  Disabled org ${PROV_ORG_ID}"
-fi
-
-# ──────────────────────────────────────────────────────────────────
-# Summary
-# ──────────────────────────────────────────────────────────────────
-echo ""
-echo "════════════════════════════════════════════════════"
-echo -e "  Meta Admin E2E Results: ${GREEN}${PASS} passed${NC}, ${RED}${FAIL} failed${NC} / ${TOTAL} total"
-echo "════════════════════════════════════════════════════"
-echo ""
-
+# Done — cleanup runs via EXIT trap
 if [[ $FAIL -gt 0 ]]; then
     exit 1
 fi

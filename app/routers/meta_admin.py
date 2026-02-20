@@ -46,6 +46,11 @@ from app.schemas.meta_admin import (
     ProvisionOrgRequest,
     ProvisionOrgResponse,
 )
+from app.models.audit_logs import Alert, PolicyViolation
+from app.models.org_issue_mitigation import OrgIssueMitigation
+from app.models.pii_vault import PIIVaultEntry
+from app.models.security_issues import SecurityRecommendation
+from app.models.threat_events import ThreatEvent
 from app.services.auth import create_access_token, verify_token
 
 logger = logging.getLogger(__name__)
@@ -802,6 +807,101 @@ async def search_audit(
         }
         for log in logs
     ]
+
+
+# ---------------------------------------------------------------------------
+# Test Cleanup
+# ---------------------------------------------------------------------------
+
+TEST_PREFIXES = ("e2e-", "e2emua", "e2emub", "e2emeta", "e2epw", "pw-reg-",
+                 "pwreg", "meta-test-", "metatest", "e2e-meta-test-org")
+
+
+@router.post("/cleanup-test", openapi_extra={"x-internal": True})
+async def cleanup_test_data(
+    db: DbSessionDep,
+    meta_admin: RequireMetaAdminDep,
+    confirm: bool = Query(False),
+):
+    """Hard-delete all test users, orgs, and related data created by E2E tests.
+
+    Matches users/orgs whose email, username, slug, or name start with known
+    test prefixes. Protected real data: john@greatfallsventures.com, Default
+    Organization, all agents.
+    """
+    if not confirm:
+        return {"message": "Pass ?confirm=true to actually delete test data."}
+
+    # Find test users
+    user_conditions = [User.email.ilike(f"{p}%") for p in TEST_PREFIXES]
+    user_conditions += [User.username.ilike(f"{p}%") for p in TEST_PREFIXES]
+    from sqlalchemy import or_
+    test_users = (await db.execute(
+        select(User).where(or_(*user_conditions))
+    )).scalars().all()
+
+    test_user_ids = [u.id for u in test_users]
+
+    # Find test orgs (by slug or name prefix)
+    org_conditions = [Organization.slug.ilike(f"{p}%") for p in TEST_PREFIXES]
+    org_conditions += [Organization.name.ilike(f"{p}%") for p in TEST_PREFIXES]
+    org_conditions += [Organization.name.ilike("E2E %")]
+    org_conditions += [Organization.name.ilike("Updated Meta Test%")]
+    test_orgs = (await db.execute(
+        select(Organization).where(or_(*org_conditions))
+    )).scalars().all()
+
+    test_org_ids = [o.id for o in test_orgs]
+
+    if not test_user_ids and not test_org_ids:
+        return {"message": "No test data found.", "deleted": {}}
+
+    deleted = {}
+
+    # Delete related data for test orgs (SET NULL FKs won't cascade)
+    if test_org_ids:
+        for model, label in [
+            (Rule, "rules"),
+            (AuditLog, "audit_logs"),
+            (Alert, "alerts"),
+            (PolicyViolation, "policy_violations"),
+            (SecurityRecommendation, "security_recommendations"),
+            (PIIVaultEntry, "pii_vault_entries"),
+            (OrgIssueMitigation, "org_issue_mitigations"),
+            (ThreatEvent, "threat_events"),
+        ]:
+            if hasattr(model, "organization_id"):
+                result = await db.execute(
+                    select(func.count()).select_from(model).where(
+                        model.organization_id.in_(test_org_ids)
+                    )
+                )
+                count = result.scalar()
+                if count:
+                    await db.execute(
+                        model.__table__.delete().where(
+                            model.organization_id.in_(test_org_ids)
+                        )
+                    )
+                    deleted[label] = count
+
+        # Delete test orgs (CASCADE handles memberships, teams, invitations)
+        for org in test_orgs:
+            await db.delete(org)
+        deleted["organizations"] = len(test_orgs)
+
+    # Delete test users
+    if test_user_ids:
+        for user in test_users:
+            await db.delete(user)
+        deleted["users"] = len(test_users)
+
+    await db.commit()
+
+    logging.getLogger(__name__).info(
+        "Meta admin test cleanup by %s: %s", meta_admin.email, deleted
+    )
+    return {"message": "Test data cleaned up.", "deleted": deleted}
 
 
 # ---------------------------------------------------------------------------
