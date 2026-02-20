@@ -1,7 +1,7 @@
 """Add meta admin fields.
 
-Revision ID: 20260221_100000
-Revises: 20260220_100002
+Revision ID: gg72hh83ii94
+Revises: ff61cc94dd05
 Create Date: 2026-02-21 10:00:00.000000+00:00
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = "20260221_100000"
-down_revision = "20260220_100002"
+revision = "gg72hh83ii94"
+down_revision = "ff61cc94dd05"
 branch_labels = None
 depends_on = None
 
