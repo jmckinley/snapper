@@ -52,6 +52,7 @@ META_USER_ID=""
 META_ORG_ID=""
 PROVISIONED_ORG_ID=""
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-snapper-postgres-1}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-snapper-redis-1}"
 
 # ============================================================
 # Colors
@@ -124,6 +125,16 @@ auth_curl() {
     curl -s -b "$jar" -c "$jar" \
         "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
         "$@"
+}
+
+# Flush rate limit keys (prevents 429s between test phases)
+flush_rate_keys() {
+    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "api:*" 2>/dev/null \
+        | xargs -r docker exec -i "$REDIS_CONTAINER" redis-cli DEL >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "rate:*" 2>/dev/null \
+        | xargs -r docker exec -i "$REDIS_CONTAINER" redis-cli DEL >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "api_v1:*" 2>/dev/null \
+        | xargs -r docker exec -i "$REDIS_CONTAINER" redis-cli DEL >/dev/null 2>&1
 }
 
 # Register a user and save cookies
@@ -525,6 +536,7 @@ assert_eq "$META_BLOCKED" "403" "6.4 Regular user gets 403 on /meta/stats"
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 7: Platform Stats & Org Listing ===${NC}"
+flush_rate_keys
 
 # 7.1 GET /meta/stats returns platform stats
 log "Fetching platform stats..."
@@ -649,6 +661,7 @@ assert_eq "$BAD_PLAN_CODE" "400" "9.6 Invalid plan returns 400"
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 10: Feature Flags ===${NC}"
+flush_rate_keys
 
 # 10.1 PATCH /meta/orgs/{org_id}/features toggles flags
 log "Toggling feature flags..."
@@ -668,14 +681,21 @@ FLAGS2_RESP=$(auth_curl "$COOKIE_JAR_META" -X PATCH \
     "${API}/meta/orgs/${USER_A_ORG_ID}/features" \
     -H "Content-Type: application/json" \
     -d '{"features": {"sso": false}}')
-SSO_OFF=$(echo "$FLAGS2_RESP" | jq -r '.feature_overrides.sso // empty')
-assert_eq "$SSO_OFF" "false" "10.3 SSO feature flag disabled"
+TOTAL=$((TOTAL + 1))
+if echo "$FLAGS2_RESP" | jq -e '.feature_overrides.sso == false' >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 10.3 SSO feature flag disabled"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 10.3 SSO feature flag disabled (got: $(echo "$FLAGS2_RESP" | jq '.feature_overrides.sso'))"
+fi
 
 # ============================================================
 # Phase 11: Impersonation (5 assertions)
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 11: Impersonation ===${NC}"
+flush_rate_keys
 
 # 11.1 Start impersonation of User A's org
 log "Starting impersonation..."
@@ -710,6 +730,7 @@ assert_eq "$STATS_AFTER" "200" "11.5 Meta admin retains access after stop impers
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 12: User Management ===${NC}"
+flush_rate_keys
 
 # 12.1 GET /meta/users returns user list
 log "Listing all users..."
@@ -735,8 +756,14 @@ if [[ -n "$USER_A_ID" ]]; then
     SUSPEND_RESP=$(auth_curl "$COOKIE_JAR_META" -X PATCH "${API}/meta/users/${USER_A_ID}" \
         -H "Content-Type: application/json" \
         -d '{"is_active": false}')
-    SUSPEND_ACTIVE=$(echo "$SUSPEND_RESP" | jq -r '.changes.is_active.new // empty')
-    assert_eq "$SUSPEND_ACTIVE" "false" "12.4 Suspend user sets is_active=false"
+    TOTAL=$((TOTAL + 1))
+    if echo "$SUSPEND_RESP" | jq -e '.changes.is_active.new == false' >/dev/null 2>&1; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 12.4 Suspend user sets is_active=false"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 12.4 Suspend user sets is_active=false (resp: $(echo "$SUSPEND_RESP" | head -c 200))"
+    fi
 else
     TOTAL=$((TOTAL + 1))
     FAIL=$((FAIL + 1))
@@ -762,6 +789,7 @@ fi
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 13: Cross-Org Audit Search ===${NC}"
+flush_rate_keys
 
 # 13.1 GET /meta/audit returns audit entries
 log "Searching cross-org audit..."
