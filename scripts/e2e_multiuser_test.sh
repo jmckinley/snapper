@@ -419,21 +419,20 @@ RULE_B_RESP=$(auth_curl "$COOKIE_JAR_B" -X POST "${API}/rules" \
 RULE_B_ID=$(echo "$RULE_B_RESP" | jq -r '.id // empty')
 assert_not_eq "$RULE_B_ID" "" "4.4 User B creates rule successfully"
 
-# 4.5 User B's rule is visible to User B
-RULES_B=$(auth_curl "$COOKIE_JAR_B" "${API}/rules?page_size=100")
-B_RULE_NAMES=$(echo "$RULES_B" | jq -r '.items[].name // empty')
-assert_contains "$B_RULE_NAMES" "e2e-mu-rule-b-${UNIQUE}" "4.5 User B sees own rule"
+# 4.5 User B's rule is visible to User B (fetch by ID to avoid pagination)
+RULE_B_GET=$(auth_curl "$COOKIE_JAR_B" "${API}/rules/${RULE_B_ID}")
+RULE_B_NAME=$(echo "$RULE_B_GET" | jq -r '.name // empty')
+assert_eq "$RULE_B_NAME" "e2e-mu-rule-b-${UNIQUE}" "4.5 User B sees own rule"
 
-# 4.6 User B's rule is invisible to User A
-RULES_A=$(auth_curl "$COOKIE_JAR_A" "${API}/rules?page_size=100")
-A_RULE_NAMES=$(echo "$RULES_A" | jq -r '.items[].name // empty')
+# 4.6 User B's rule is invisible to User A (fetch by ID — should 404 or return different org)
+RULE_A_CODE=$(auth_curl "$COOKIE_JAR_A" -o /dev/null -w "%{http_code}" "${API}/rules/${RULE_B_ID}")
 TOTAL=$((TOTAL + 1))
-if echo "$A_RULE_NAMES" | grep -qF "e2e-mu-rule-b-${UNIQUE}"; then
-    FAIL=$((FAIL + 1))
-    echo -e "  ${RED}FAIL${NC} 4.6 User A should NOT see User B's rule"
-else
+if [[ "$RULE_A_CODE" == "404" || "$RULE_A_CODE" == "403" ]]; then
     PASS=$((PASS + 1))
-    echo -e "  ${GREEN}PASS${NC} 4.6 User A does not see User B's rule"
+    echo -e "  ${GREEN}PASS${NC} 4.6 User A cannot access User B's rule ($RULE_A_CODE)"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 4.6 User A should NOT see User B's rule (got $RULE_A_CODE)"
 fi
 
 # 4.7 Audit logs are org-scoped

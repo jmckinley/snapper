@@ -357,9 +357,10 @@ echo -e "${BOLD}=== Phase 1: Active Packs ===${NC}"
 
 # Pre-cleanup: hard-delete any stale server/pack rules from prior runs
 log "Pre-cleanup: removing stale active packs via SQL..."
-docker exec "$POSTGRES_CONTAINER" psql -U snapper -d snapper -c \
-    "DELETE FROM rules WHERE source IN ('rule_pack', 'traffic_discovery') AND is_deleted = false" \
-    >/dev/null 2>&1 && log "  Cleaned up stale pack/discovery rules" || warn "  SQL cleanup skipped"
+PACK_DEL=$(docker exec "$POSTGRES_CONTAINER" psql -U snapper -d snapper -t -c \
+    "DELETE FROM rules WHERE source IN ('rule_pack', 'traffic_discovery') AND is_deleted = false RETURNING id" 2>&1)
+PACK_DEL_COUNT=$(echo "$PACK_DEL" | grep -c '[0-9a-f]' 2>/dev/null || echo "0")
+log "  Deleted $PACK_DEL_COUNT stale pack/discovery rules"
 
 # 1.1 Active packs returns empty list when no rules from packs/discovery
 log "Fetching active packs (should be empty)..."
