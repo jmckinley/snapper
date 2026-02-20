@@ -128,12 +128,10 @@ auth_curl() {
 }
 
 # Flush rate limit keys (prevents 429s between test phases)
-# Uses Lua EVAL to atomically delete matching keys inside Redis
+# Actual Redis key format: rate_limit:api:127.0.0.1 (from check_rate_limit in redis_client.py)
 flush_rate_keys() {
-    local lua_del='local keys = redis.call("KEYS", ARGV[1]); for _,k in ipairs(keys) do redis.call("DEL", k) end; return #keys'
-    docker exec "$REDIS_CONTAINER" redis-cli EVAL "$lua_del" 0 "api:*" >/dev/null 2>&1
-    docker exec "$REDIS_CONTAINER" redis-cli EVAL "$lua_del" 0 "rate:*" >/dev/null 2>&1
-    docker exec "$REDIS_CONTAINER" redis-cli EVAL "$lua_del" 0 "api_v1:*" >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" redis-cli DEL "rate_limit:api:127.0.0.1" >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" redis-cli DEL "rate_limit:api_v1:127.0.0.1" >/dev/null 2>&1
 }
 
 # Register a user and save cookies
