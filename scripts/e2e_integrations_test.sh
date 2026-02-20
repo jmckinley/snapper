@@ -134,9 +134,11 @@ is_denied() {
     echo "$decision"
 }
 
-# Wrapper for curl with host header
+# Wrapper for curl with host header + auth cookies
+COOKIE_JAR=""
+AUTH_ARGS=()
 api_curl() {
-    curl -sf "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" "$@" 2>/dev/null
+    curl -sf "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" "$@" 2>/dev/null
 }
 
 # Create a rule, capture its UUID, track for cleanup
@@ -145,6 +147,7 @@ create_rule() {
     local resp
     resp=$(curl -sf -X POST "${API}/rules" \
         "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
         -H "Content-Type: application/json" \
         -d "$json" 2>/dev/null) || { echo ""; return 1; }
     local rule_id
@@ -161,7 +164,8 @@ create_rule() {
 delete_rule() {
     local rule_id="$1"
     curl -sf -X DELETE "${API}/rules/${rule_id}?hard_delete=true" \
-        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" >/dev/null 2>&1
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" >/dev/null 2>&1
 }
 
 # Evaluate a request against the rule engine
@@ -202,6 +206,56 @@ flush_traffic_cache() {
 }
 
 # ============================================================
+# Auth setup — handles both self-hosted and cloud modes
+# ============================================================
+setup_auth() {
+    local status
+    status=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${API}/agents?page_size=1" 2>/dev/null)
+    if [[ "$status" != "401" ]]; then
+        log "No auth required (self-hosted mode)"
+        return 0
+    fi
+
+    log "Auth required — setting up test session..."
+    COOKIE_JAR=$(mktemp /tmp/e2e_integ_cookies_XXXXXX)
+    local test_email="e2e-integ-test@snapper.test"
+    local test_pass="E2eTestPass123!"
+
+    local reg_resp reg_code
+    reg_resp=$(curl -s -w "\n%{http_code}" -X POST "${API}/auth/register" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        -H "Content-Type: application/json" \
+        -c "$COOKIE_JAR" \
+        -d "{\"email\":\"${test_email}\",\"password\":\"${test_pass}\",\"password_confirm\":\"${test_pass}\",\"username\":\"e2e-integ-test\"}" 2>/dev/null)
+    reg_code=$(echo "$reg_resp" | tail -1)
+
+    if [[ "$reg_code" == "200" || "$reg_code" == "201" ]]; then
+        AUTH_ARGS=(-b "$COOKIE_JAR")
+        log "Registered and authenticated as $test_email"
+        return 0
+    fi
+
+    local login_resp
+    login_resp=$(curl -s -X POST "${API}/auth/login" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        -H "Content-Type: application/json" \
+        -c "$COOKIE_JAR" \
+        -d "{\"email\":\"${test_email}\",\"password\":\"${test_pass}\"}" 2>/dev/null)
+
+    local login_ok
+    login_ok=$(echo "$login_resp" | jq -r '.email // .user.email // empty' 2>/dev/null)
+    if [[ "$login_ok" == "$test_email" ]]; then
+        AUTH_ARGS=(-b "$COOKIE_JAR")
+        log "Authenticated as $test_email"
+    else
+        err "Auth setup failed (register: $reg_code, login: $login_resp)"
+        return 1
+    fi
+}
+
+# ============================================================
 # Cleanup (runs on EXIT)
 # ============================================================
 cleanup() {
@@ -238,6 +292,8 @@ cleanup() {
     fi
     echo -e "${BOLD}========================================${NC}"
 
+    [[ -n "$COOKIE_JAR" && -f "$COOKIE_JAR" ]] && rm -f "$COOKIE_JAR"
+
     if [[ $FAIL -gt 0 ]]; then
         exit 1
     fi
@@ -249,6 +305,9 @@ trap cleanup EXIT
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 0: Environment Verification ===${NC}"
+
+# Auth setup
+setup_auth
 
 # 0.1 Snapper health
 log "Checking Snapper health..."
@@ -510,6 +569,7 @@ if [[ -n "$NAMED_ID" ]]; then CREATED_RULES+=("$NAMED_ID"); fi
 # 5.4 Empty command returns 400
 EMPTY_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
     -X POST "${API}/integrations/traffic/create-rule" \
     -H "Content-Type: application/json" \
     -d '{"command": "  ", "action": "allow"}')
@@ -518,6 +578,7 @@ assert_eq "$EMPTY_CODE" "400" "5.4 Empty command returns 400"
 # 5.5 Invalid action returns 400
 BADACT_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
     -X POST "${API}/integrations/traffic/create-rule" \
     -H "Content-Type: application/json" \
     -d '{"command": "mcp__test__foo", "action": "banana"}')
@@ -546,6 +607,7 @@ assert_eq "$SERVER_ACTIONS" "allow,deny,require_approval" "5.7 Server rules have
 # 5.8 Empty server name returns 400
 EMPTY_SRV_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
     -X POST "${API}/integrations/traffic/create-server-rules" \
     -H "Content-Type: application/json" \
     -d '{"server_name": "  "}')
@@ -590,6 +652,7 @@ assert_eq "$NOTION_AFTER" "0" "6.4 Notion gone from active packs after disable"
 # 6.5 Disable again returns 404 (no active rules left)
 REDISABLE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
     -X POST "${API}/integrations/traffic/disable-server-rules" \
     -H "Content-Type: application/json" \
     -d '{"server_name": "notion"}')
@@ -598,6 +661,7 @@ assert_eq "$REDISABLE_CODE" "404" "6.5 Re-disable returns 404"
 # 6.6 Empty server name returns 400
 EMPTY_DISABLE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
     -X POST "${API}/integrations/traffic/disable-server-rules" \
     -H "Content-Type: application/json" \
     -d '{"server_name": "  "}')

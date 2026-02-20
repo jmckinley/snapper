@@ -155,6 +155,21 @@ class Organization(Base):
         nullable=True,
         comment="Override plan max_team_members. NULL = use plan default.",
     )
+    max_agents_override: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Override plan max_agents. NULL = use plan default.",
+    )
+    max_rules_override: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Override plan max_rules. NULL = use plan default.",
+    )
+    max_vault_entries_override: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Override plan max_vault_entries. NULL = use plan default.",
+    )
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

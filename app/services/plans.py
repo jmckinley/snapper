@@ -115,9 +115,16 @@ async def check_quota(
     plan = await get_plan(db, org.plan_id)
     limit = _get_plan_limit(plan, resource_type)
 
-    # Org-level seat override (max_seats) takes precedence for team_members
-    if resource_type == "team_members" and org.max_seats is not None:
-        limit = org.max_seats
+    # Org-level overrides take precedence over plan limits
+    org_override_map = {
+        "team_members": org.max_seats,
+        "agents": org.max_agents_override,
+        "rules": org.max_rules_override,
+        "vault_entries": org.max_vault_entries_override,
+    }
+    org_override = org_override_map.get(resource_type)
+    if org_override is not None:
+        limit = org_override
 
     # -1 means unlimited
     if limit == -1:
@@ -193,9 +200,16 @@ async def get_usage(db: AsyncSession, org_id: UUID) -> dict:
 
     def _make_stat(resource_type: str) -> dict:
         limit = _get_plan_limit(plan, resource_type)
-        # Org-level seat override
-        if resource_type == "team_members" and org.max_seats is not None:
-            limit = org.max_seats
+        # Org-level overrides
+        org_override_map = {
+            "team_members": org.max_seats,
+            "agents": org.max_agents_override,
+            "rules": org.max_rules_override,
+            "vault_entries": org.max_vault_entries_override,
+        }
+        org_override = org_override_map.get(resource_type)
+        if org_override is not None:
+            limit = org_override
         return {
             "used": counts[resource_type],
             "limit": limit,

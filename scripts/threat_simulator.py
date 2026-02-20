@@ -204,6 +204,28 @@ class SnapperClient:
     async def close(self):
         await self.client.aclose()
 
+    async def setup_auth(self) -> bool:
+        """Authenticate if cloud mode (401 on protected endpoint)."""
+        try:
+            r = await self.client.get("/agents", params={"page": 1, "page_size": 1})
+            if r.status_code != 401:
+                return True  # Self-hosted, no auth needed
+        except Exception:
+            return False
+
+        email = "e2e-threat-test@snapper.test"
+        password = "E2eTestPass123!"
+        # Register (ignore errors if user exists)
+        await self.client.post("/auth/register", json={
+            "email": email, "password": password, "password_confirm": password,
+            "username": "e2e-threat-test",
+        })
+        # Login — httpx cookie jar auto-stores cookies
+        r = await self.client.post("/auth/login", json={
+            "email": email, "password": password,
+        })
+        return r.status_code == 200
+
     async def health_check(self) -> bool:
         try:
             r = await self.client.get("/agents", params={"page": 1, "page_size": 1})
@@ -833,6 +855,11 @@ class ThreatSimulator:
 
     async def preflight(self) -> bool:
         print(f"\n  Preflight: Checking {self.url}...", end=" ")
+        auth_ok = await self.client.setup_auth()
+        if not auth_ok:
+            print(f"{C.RED}AUTH FAILED{C.RESET}")
+            print(f"  Could not authenticate with Snapper at {self.url}")
+            return False
         ok = await self.client.health_check()
         if ok:
             print(f"{C.GREEN}OK{C.RESET}")

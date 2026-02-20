@@ -44,7 +44,7 @@ def upgrade() -> None:
     op.execute("""
         INSERT INTO plans (id, name, max_agents, max_rules, max_vault_entries, max_team_members, max_teams, features, price_monthly_cents, price_yearly_cents)
         VALUES
-            ('free', 'Free', 1, 10, 5, 1, 1, '{"slack_integration": false, "oauth_login": false, "sso": false, "audit_export": false}', 0, 0),
+            ('free', 'Free', 25, 250, 50, 5, 2, '{"slack_integration": true, "oauth_login": false, "sso": false, "audit_export": false}', 0, 0),
             ('pro', 'Pro', 10, 100, 50, 5, 3, '{"slack_integration": true, "oauth_login": true, "sso": false, "audit_export": true}', 2900, 29000),
             ('enterprise', 'Enterprise', -1, -1, -1, -1, -1, '{"slack_integration": true, "oauth_login": true, "sso": true, "audit_export": true}', 9900, 99000)
         ON CONFLICT (id) DO NOTHING

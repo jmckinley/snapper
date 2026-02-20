@@ -140,6 +140,7 @@ create_rule() {
     local resp
     resp=$(curl -sf -X POST "${API}/rules" \
         "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" \
         -H "Content-Type: application/json" \
         -d "$json" 2>/dev/null) || { echo ""; return 1; }
     local rule_id
@@ -156,7 +157,8 @@ create_rule() {
 delete_rule() {
     local rule_id="$1"
     curl -sf -X DELETE "${API}/rules/${rule_id}?hard_delete=true" \
-        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" >/dev/null 2>&1
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" >/dev/null 2>&1
 }
 
 # Evaluate a request against the rule engine
@@ -190,9 +192,11 @@ evaluate() {
     fi
 }
 
-# Wrapper for GET/POST/PUT/DELETE with host header
+# Wrapper for GET/POST/PUT/DELETE with host header + auth cookies
+COOKIE_JAR=""
+AUTH_ARGS=()
 api_curl() {
-    curl -sf "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" "$@" 2>/dev/null
+    curl -sf "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" "${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}" "$@" 2>/dev/null
 }
 
 # Flush rate limit and trust keys for our test agent
@@ -206,6 +210,62 @@ flush_rate_keys() {
     docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "api:*" 2>/dev/null | while read -r key; do
         docker exec "$REDIS_CONTAINER" redis-cli del "$key" >/dev/null 2>&1
     done
+}
+
+# ============================================================
+# Auth setup — handles both self-hosted and cloud modes
+# ============================================================
+setup_auth() {
+    # Check if auth is needed by testing a protected endpoint
+    local status
+    status=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        "${API}/agents?page_size=1" 2>/dev/null)
+    if [[ "$status" != "401" ]]; then
+        log "No auth required (self-hosted mode or already exempt)"
+        return 0
+    fi
+
+    log "Auth required — setting up test session..."
+    COOKIE_JAR=$(mktemp /tmp/e2e_cookies_XXXXXX)
+    local test_email="e2e-live-test@snapper.test"
+    local test_pass="E2eTestPass123!"
+
+    # Try to register first (register also sets auth cookies)
+    local reg_resp reg_code
+    reg_resp=$(curl -s -w "\n%{http_code}" -X POST "${API}/auth/register" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        -H "Content-Type: application/json" \
+        -c "$COOKIE_JAR" \
+        -d "{\"email\":\"${test_email}\",\"password\":\"${test_pass}\",\"password_confirm\":\"${test_pass}\",\"username\":\"e2e-live-test\"}" 2>/dev/null)
+    reg_code=$(echo "$reg_resp" | tail -1)
+    local reg_body
+    reg_body=$(echo "$reg_resp" | sed '$d')
+
+    if [[ "$reg_code" == "200" || "$reg_code" == "201" ]]; then
+        # Register succeeded — cookies already set
+        AUTH_ARGS=(-b "$COOKIE_JAR")
+        log "Registered and authenticated as $test_email"
+        return 0
+    fi
+
+    # User already exists — login instead
+    local login_resp
+    login_resp=$(curl -s -X POST "${API}/auth/login" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        -H "Content-Type: application/json" \
+        -c "$COOKIE_JAR" \
+        -d "{\"email\":\"${test_email}\",\"password\":\"${test_pass}\"}" 2>/dev/null)
+
+    local login_ok
+    login_ok=$(echo "$login_resp" | jq -r '.email // .user.email // empty' 2>/dev/null)
+    if [[ "$login_ok" == "$test_email" ]]; then
+        AUTH_ARGS=(-b "$COOKIE_JAR")
+        log "Authenticated as $test_email"
+    else
+        err "Auth setup failed (register: $reg_code, login: $login_resp)"
+        return 1
+    fi
 }
 
 # ============================================================
@@ -268,6 +328,9 @@ cleanup() {
     fi
     echo -e "${BOLD}========================================${NC}"
 
+    # Clean up cookie jar
+    [[ -n "$COOKIE_JAR" && -f "$COOKIE_JAR" ]] && rm -f "$COOKIE_JAR"
+
     if [[ $FAIL -gt 0 ]]; then
         exit 1
     fi
@@ -279,6 +342,9 @@ trap cleanup EXIT
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 0: Environment Verification ===${NC}"
+
+# Auth setup — must come before any API calls
+setup_auth
 
 # 0.1 Snapper health
 log "Checking Snapper health..."
@@ -2060,9 +2126,8 @@ fi
 
 # 7k. Dismiss a suggestion
 TOTAL=$((TOTAL + 1))
-DISMISS_RESP=$(curl -sf -X POST "${API}/suggestions/test-dismiss-id/dismiss" \
-    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
-    -H "Content-Type: application/json" 2>/dev/null)
+DISMISS_RESP=$(api_curl -X POST "${API}/suggestions/test-dismiss-id/dismiss" \
+    -H "Content-Type: application/json")
 DISMISS_STATUS=$(echo "$DISMISS_RESP" | jq -r '.status // empty')
 if [[ "$DISMISS_STATUS" == "dismissed" ]]; then
     PASS=$((PASS + 1))
