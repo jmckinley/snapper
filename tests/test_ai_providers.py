@@ -582,7 +582,7 @@ class TestGeminiWrapper:
         part = self._make_part(function_call=fc)
         response = self._make_response(parts=[part])
 
-        with patch("google.generativeai.GenerativeModel") as mock_model_cls:
+        with patch("google.generativeai.GenerativeModel", create=True) as mock_model_cls:
             mock_model = MagicMock()
             mock_model.generate_content.return_value = response
             mock_model_cls.return_value = mock_model
