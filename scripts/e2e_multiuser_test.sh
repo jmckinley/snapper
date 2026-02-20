@@ -128,10 +128,16 @@ auth_curl() {
 }
 
 # Flush rate limit keys (prevents 429s between test phases)
-# Actual Redis key format: rate_limit:api:127.0.0.1 (from check_rate_limit in redis_client.py)
+# Key format: rate_limit:{prefix}:{client_ip} — sorted set (sliding window)
+# Client IP varies by Docker network config, so delete all matching keys
 flush_rate_keys() {
-    docker exec "$REDIS_CONTAINER" redis-cli DEL "rate_limit:api:127.0.0.1" >/dev/null 2>&1
-    docker exec "$REDIS_CONTAINER" redis-cli DEL "rate_limit:api_v1:127.0.0.1" >/dev/null 2>&1
+    local keys
+    keys=$(docker exec "$REDIS_CONTAINER" redis-cli KEYS "rate_limit:*" 2>/dev/null)
+    if [[ -n "$keys" ]]; then
+        echo "$keys" | while read -r key; do
+            [[ -n "$key" ]] && docker exec "$REDIS_CONTAINER" redis-cli DEL "$key" >/dev/null 2>&1
+        done
+    fi
 }
 
 # Register a user and save cookies
