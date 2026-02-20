@@ -698,10 +698,11 @@ echo -e "${BOLD}=== Phase 11: Impersonation ===${NC}"
 flush_rate_keys
 
 # 11.1 Start impersonation of User A's org
-log "Starting impersonation..."
+log "Starting impersonation of org $USER_A_ORG_ID..."
 IMP_RESP=$(auth_curl "$COOKIE_JAR_META" -X POST "${API}/meta/impersonate" \
     -H "Content-Type: application/json" \
     -d "{\"org_id\": \"${USER_A_ORG_ID}\"}")
+log "Impersonate response: $(echo "$IMP_RESP" | head -c 300)"
 IMP_ORG=$(echo "$IMP_RESP" | jq -r '.org_id // empty')
 assert_eq "$IMP_ORG" "$USER_A_ORG_ID" "11.1 Impersonation returns target org_id"
 
@@ -718,6 +719,7 @@ assert_contains "$IMP_AGENT_NAMES" "e2e-mu-agent-${UNIQUE}" "11.3 Impersonation 
 # 11.4 Stop impersonation
 log "Stopping impersonation..."
 STOP_RESP=$(auth_curl "$COOKIE_JAR_META" -X POST "${API}/meta/stop-impersonation")
+log "Stop impersonation response: $(echo "$STOP_RESP" | head -c 300)"
 STOP_MSG=$(echo "$STOP_RESP" | jq -r '.message // empty')
 assert_contains "$STOP_MSG" "stopped" "11.4 Stop impersonation succeeds"
 
@@ -735,7 +737,8 @@ flush_rate_keys
 # 12.1 GET /meta/users returns user list
 log "Listing all users..."
 USERS_RESP=$(auth_curl "$COOKIE_JAR_META" "${API}/meta/users")
-USERS_COUNT=$(echo "$USERS_RESP" | jq 'length')
+log "Users response: $(echo "$USERS_RESP" | head -c 500)"
+USERS_COUNT=$(echo "$USERS_RESP" | jq 'if type == "array" then length else .items // [] | length end')
 assert_gt "$USERS_COUNT" "1" "12.1 Meta admin sees >1 users"
 
 # 12.2 Search users by email
@@ -794,7 +797,8 @@ flush_rate_keys
 # 13.1 GET /meta/audit returns audit entries
 log "Searching cross-org audit..."
 AUDIT_RESP=$(auth_curl "$COOKIE_JAR_META" "${API}/meta/audit?limit=10")
-AUDIT_COUNT=$(echo "$AUDIT_RESP" | jq 'length')
+log "Audit response: $(echo "$AUDIT_RESP" | head -c 500)"
+AUDIT_COUNT=$(echo "$AUDIT_RESP" | jq 'if type == "array" then length else .items // [] | length end')
 assert_gt "$AUDIT_COUNT" "0" "13.1 Cross-org audit returns entries"
 
 # 13.2 Audit entries have required fields
