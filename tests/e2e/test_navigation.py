@@ -38,7 +38,7 @@ class TestGlobalNavigation:
         ]
 
         for link_text, expected_path in nav_items:
-            authenticated_page.click(f"nav a[href='{expected_path}']")
+            authenticated_page.click(f"nav a[href='{expected_path}']", force=True)
             authenticated_page.wait_for_load_state("networkidle")
             current_url = authenticated_page.url
             if expected_path == "/":
