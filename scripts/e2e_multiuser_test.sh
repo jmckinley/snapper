@@ -128,13 +128,11 @@ auth_curl() {
 }
 
 # Flush rate limit keys (prevents 429s between test phases)
+# NOTE: entire pipeline runs INSIDE the container to avoid docker exec boundary issues
 flush_rate_keys() {
-    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "api:*" 2>/dev/null \
-        | xargs -r docker exec -i "$REDIS_CONTAINER" redis-cli DEL >/dev/null 2>&1
-    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "rate:*" 2>/dev/null \
-        | xargs -r docker exec -i "$REDIS_CONTAINER" redis-cli DEL >/dev/null 2>&1
-    docker exec "$REDIS_CONTAINER" redis-cli --scan --pattern "api_v1:*" 2>/dev/null \
-        | xargs -r docker exec -i "$REDIS_CONTAINER" redis-cli DEL >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" sh -c 'redis-cli --scan --pattern "api:*" | xargs -r redis-cli DEL' >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" sh -c 'redis-cli --scan --pattern "rate:*" | xargs -r redis-cli DEL' >/dev/null 2>&1
+    docker exec "$REDIS_CONTAINER" sh -c 'redis-cli --scan --pattern "api_v1:*" | xargs -r redis-cli DEL' >/dev/null 2>&1
 }
 
 # Register a user and save cookies
@@ -573,6 +571,7 @@ assert_gt "$FREE_COUNT" "0" "7.6 Org filter by plan returns results"
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 8: Org Detail & Update ===${NC}"
+flush_rate_keys
 
 # 8.1 GET /meta/orgs/{org_id} returns detail
 log "Fetching org detail..."
@@ -617,6 +616,7 @@ assert_eq "$SEATS_VAL" "10" "8.6 Max seats set to 10"
 # ============================================================
 echo ""
 echo -e "${BOLD}=== Phase 9: Provision Org ===${NC}"
+flush_rate_keys
 
 # 9.1 Provision org with pro plan
 log "Provisioning new org..."
