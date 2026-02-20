@@ -83,6 +83,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     is_verified: bool
+    is_meta_admin: bool = False
     default_organization_id: Optional[UUID] = None
     locked_until: Optional[datetime] = None
     created_at: datetime
