@@ -283,6 +283,13 @@ cleanup() {
     # Clean up orphaned test agents from all E2E runs
     api_curl -X POST "${API}/agents/cleanup-test?confirm=true" >/dev/null 2>&1
 
+    # Clean up test users, orgs, and related data
+    local setup_cleanup
+    setup_cleanup=$(api_curl -X POST "${API}/setup/cleanup-test?confirm=true" 2>/dev/null)
+    if [[ -n "$setup_cleanup" ]]; then
+        log "Setup cleanup: $setup_cleanup"
+    fi
+
     echo ""
     echo -e "${BOLD}========================================${NC}"
     if [[ $FAIL -eq 0 ]]; then

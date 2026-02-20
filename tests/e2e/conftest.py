@@ -135,6 +135,12 @@ def _cleanup_test_agents():
     _api_request("POST", "/api/v1/agents/cleanup-test?confirm=true", cookie_jar=jar)
 
 
+def _cleanup_test_users_orgs():
+    """Hard-delete test users and their auto-created orgs via setup cleanup endpoint."""
+    jar = _get_auth_jar()
+    _api_request("POST", "/api/v1/setup/cleanup-test?confirm=true", cookie_jar=jar)
+
+
 def _login_via_ui(page: Page, base_url: str):
     """Fill the login form and submit, wait for redirect to dashboard."""
     page.goto(f"{base_url}/login", wait_until="networkidle")
@@ -163,6 +169,7 @@ def cleanup_stale_test_data(register_test_user):
     _cleanup_wizard_agents()
     yield
     _cleanup_test_agents()
+    _cleanup_test_users_orgs()
 
 
 @pytest.fixture(scope="session")

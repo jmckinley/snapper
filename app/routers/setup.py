@@ -12,13 +12,16 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select, func
+import logging
+from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.agents import Agent, AgentStatus, TrustLevel, generate_api_key
 from app.models.rules import Rule
 from app.redis_client import get_redis, RedisClient
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
 
@@ -879,6 +882,103 @@ async def save_notifications(
     await db.commit()
 
     return {"status": "saved", "channels": enabled_channels}
+
+
+# ============================================================================
+# Test Cleanup
+# ============================================================================
+
+_TEST_USER_PREFIXES = (
+    "e2e-", "e2emua", "e2emub", "e2emeta", "e2epw", "pw-reg-",
+    "pwreg", "meta-test-", "metatest",
+)
+_TEST_ORG_PREFIXES = (
+    "e2e-", "e2emua", "e2emub", "e2emeta", "e2epw", "pw-reg-",
+    "pwreg", "meta-test-", "metatest", "e2e-meta-test-org",
+)
+
+
+@router.post("/cleanup-test", openapi_extra={"x-internal": True})
+async def cleanup_test_data(
+    db: AsyncSession = Depends(get_db),
+    confirm: bool = False,
+):
+    """Hard-delete test users and their auto-created organizations.
+
+    Matches users/orgs whose email, username, or slug start with known E2E
+    test prefixes. Protects real data by only deleting known test patterns.
+    Cascades handle org_memberships, teams, and invitations.
+
+    Related data (rules, audit_logs, etc.) with SET NULL FKs on the deleted
+    orgs are also cleaned up to prevent orphaned rows.
+    """
+    from app.models.audit_logs import AuditLog, Alert, PolicyViolation
+    from app.models.organizations import Organization
+    from app.models.pii_vault import PIIVaultEntry
+    from app.models.users import User
+
+    if not confirm:
+        return {"message": "Pass ?confirm=true to actually delete test data."}
+
+    # Find test users by email or username prefix
+    user_conds = [User.email.ilike(f"{p}%") for p in _TEST_USER_PREFIXES]
+    user_conds += [User.username.ilike(f"{p}%") for p in _TEST_USER_PREFIXES]
+    test_users = (await db.execute(
+        select(User).where(or_(*user_conds))
+    )).scalars().all()
+    test_user_ids = [u.id for u in test_users]
+
+    # Find test orgs by slug or name prefix
+    org_conds = [Organization.slug.ilike(f"{p}%") for p in _TEST_ORG_PREFIXES]
+    org_conds += [Organization.name.ilike(f"{p}%") for p in _TEST_ORG_PREFIXES]
+    org_conds += [Organization.name.ilike("E2E %")]
+    org_conds += [Organization.name.ilike("Updated Meta Test%")]
+    test_orgs = (await db.execute(
+        select(Organization).where(or_(*org_conds))
+    )).scalars().all()
+    test_org_ids = [o.id for o in test_orgs]
+
+    if not test_user_ids and not test_org_ids:
+        return {"message": "No test data found.", "deleted": {}}
+
+    deleted = {}
+
+    # Clean up SET NULL FK rows belonging to test orgs
+    if test_org_ids:
+        for model, label in [
+            (Rule, "rules"),
+            (AuditLog, "audit_logs"),
+            (Alert, "alerts"),
+            (PolicyViolation, "policy_violations"),
+            (PIIVaultEntry, "pii_vault_entries"),
+        ]:
+            if hasattr(model, "organization_id"):
+                result = await db.execute(
+                    select(func.count()).select_from(model).where(
+                        model.organization_id.in_(test_org_ids)
+                    )
+                )
+                count = result.scalar()
+                if count:
+                    await db.execute(
+                        model.__table__.delete().where(
+                            model.organization_id.in_(test_org_ids)
+                        )
+                    )
+                    deleted[label] = count
+
+        for org in test_orgs:
+            await db.delete(org)
+        deleted["organizations"] = len(test_orgs)
+
+    if test_user_ids:
+        for user in test_users:
+            await db.delete(user)
+        deleted["users"] = len(test_users)
+
+    await db.commit()
+    logger.info("Test cleanup: %s", deleted)
+    return {"message": "Test data cleaned up.", "deleted": deleted}
 
 
 # ============================================================================
