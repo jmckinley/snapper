@@ -104,6 +104,26 @@ OptionalOrgIdDep = Annotated[Optional[UUID], Depends(get_optional_org_id)]
 RequiredOrgIdDep = Annotated[UUID, Depends(require_org_id)]
 
 
+async def verify_resource_org(
+    resource_org_id: Optional[UUID],
+    caller_org_id: Optional[UUID],
+) -> None:
+    """Raise 404 if resource belongs to a different org.
+
+    Returns 404 (not 403) to avoid leaking existence of resources in
+    other organizations.  Skips check when running in self-hosted mode
+    or when either side has no org context (backward compat).
+    """
+    from app.config import get_settings
+
+    if get_settings().SELF_HOSTED:
+        return
+    if caller_org_id is None or resource_org_id is None:
+        return
+    if resource_org_id != caller_org_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+
 # Combined security dependencies
 LocalhostOnlyDep = Annotated[None, Depends(verify_localhost_only)]
 OriginVerifiedDep = Annotated[None, Depends(verify_origin)]
@@ -221,3 +241,30 @@ require_manage_agents = RoleChecker("agents:write")
 require_delete_agents = RoleChecker("agents:delete")
 require_manage_vault = RoleChecker("rules:write")
 require_manage_org = RoleChecker("settings:write")
+
+
+# --- Meta Admin ---
+
+
+async def require_meta_admin(
+    request: Request, db: AsyncSession = Depends(get_db),
+):
+    """Require platform operator access. Returns User, raises 403 if not meta admin."""
+    user = await get_current_user(request, db)
+    if not user.is_meta_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform admin access required",
+        )
+    return user
+
+
+RequireMetaAdminDep = Annotated[object, Depends(require_meta_admin)]
+
+
+def get_impersonation_context(request: Request) -> Optional[dict]:
+    """Return impersonation info if the current request is impersonated."""
+    imp = getattr(request.state, "impersonating_user_id", None)
+    if imp:
+        return {"impersonated_by": imp, "is_impersonation": True}
+    return None

@@ -4,6 +4,7 @@ import logging
 from typing import Callable
 from uuid import UUID
 
+from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -137,10 +138,33 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             except Exception:
                                 pass
 
+                        # Resolve org_id: if not available from expired token,
+                        # look up the user's default org from DB
+                        if not org_id:
+                            try:
+                                from app.database import get_db_context
+                                from app.models.users import User
+
+                                async with get_db_context() as _db:
+                                    _row = await _db.execute(
+                                        select(User.default_organization_id).where(
+                                            User.id == UUID(user_id)
+                                        )
+                                    )
+                                    _default_org = _row.scalar_one_or_none()
+                                    if _default_org:
+                                        org_id = str(_default_org)
+                            except Exception:
+                                pass
+
+                        if not org_id:
+                            # No org context at all — deny rather than using user_id as fake org
+                            return self._unauthenticated_response(request)
+
                         # Create new access token
                         new_access_token = create_access_token(
                             UUID(user_id),
-                            UUID(org_id) if org_id else UUID(user_id),
+                            UUID(org_id),
                             role,
                         )
 
@@ -185,6 +209,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.user_id = payload.get("sub")
         request.state.org_id = payload.get("org")
         request.state.user_role = payload.get("role")
+        request.state.is_meta_admin = payload.get("meta", False)
+        request.state.impersonating_user_id = payload.get("imp")
 
     def _unauthenticated_response(self, request: Request) -> Response:
         """Return appropriate response for unauthenticated requests."""

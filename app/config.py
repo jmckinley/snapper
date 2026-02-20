@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     SELF_HOSTED: bool = False  # When true, bypasses all plan limits
     REGISTRATION_ENABLED: bool = True
 
+    # Meta Admin
+    META_ADMIN_ENABLED: bool = True
+    META_ADMIN_IMPERSONATION_TIMEOUT_MINUTES: int = 60
+
     # Stripe billing
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None
@@ -134,6 +138,7 @@ class Settings(BaseSettings):
     # Threat Detection
     THREAT_DETECTION_ENABLED: bool = True
     AUTO_MITIGATE_THREATS: bool = True  # Auto-mitigate new CVEs from threat feeds
+    SECURITY_FEEDS_ENABLED: bool = True  # Disable for air-gapped deployments
     THREAT_DENY_THRESHOLD: float = 80.0
     THREAT_APPROVAL_THRESHOLD: float = 60.0
     THREAT_ALERT_THRESHOLD: float = 40.0

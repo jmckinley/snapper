@@ -486,6 +486,16 @@ async def invite_member(
                 detail="User is already a member of this organization",
             )
 
+    # Enforce allowed email domains
+    org = await db.get(Organization, org_id)
+    if org and org.allowed_email_domains:
+        email_domain = payload.email.split("@")[1].lower()
+        if email_domain not in [d.lower() for d in org.allowed_email_domains]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Email domain '{email_domain}' is not allowed for this organization",
+            )
+
     # Create invitation
     invitation = Invitation(
         id=_uuid.uuid4(),
@@ -503,7 +513,8 @@ async def invite_member(
     # Send invitation email (best-effort)
     from app.services.email import send_invitation as send_invite_email
 
-    org = await db.get(Organization, org_id)
+    if not org:
+        org = await db.get(Organization, org_id)
     inviter = await db.get(User, user_id)
     send_invite_email(
         to=payload.email,

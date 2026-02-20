@@ -110,6 +110,7 @@ def format_cef(
     request_id: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
     timestamp: Optional[datetime] = None,
+    organization_id: Optional[str] = None,
 ) -> str:
     """Format an audit event as a CEF (Common Event Format) string.
 
@@ -136,6 +137,8 @@ def format_cef(
     if timestamp:
         # CEF date format: MMM dd yyyy HH:mm:ss
         extensions.append(f"rt={timestamp.strftime('%b %d %Y %H:%M:%S')}")
+    if organization_id:
+        extensions.append(f"cs7={_cef_escape(organization_id)} cs7Label=OrganizationID")
     if details:
         # Add select details as custom string fields
         cs_index = 2
@@ -441,6 +444,7 @@ async def publish_event(
                 request_id=request_id,
                 details=details,
                 timestamp=timestamp,
+                organization_id=organization_id,
             )
             await send_to_syslog(cef)
 

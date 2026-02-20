@@ -746,13 +746,12 @@ class TestBackwardCompatNoOrg:
 
 class TestAgentGetByIdOrgBoundary:
     @pytest.mark.asyncio
-    async def test_get_agent_from_other_org(
+    async def test_get_agent_from_other_org_returns_404(
         self, client, db_session, seed_plans, agent_in_org_a
     ):
         """
         An authenticated user requesting an agent from another org
-        can still get it by ID (GET by ID does not filter by org today).
-        This test documents current behavior.
+        receives 404 (not 403, to avoid leaking resource existence).
         """
         user_data, access, refresh = await _register_and_get_cookies(
             client, "getother@example.com", "getother"
@@ -761,9 +760,7 @@ class TestAgentGetByIdOrgBoundary:
         client.cookies.set("snapper_refresh_token", refresh)
 
         resp = await client.get(f"/api/v1/agents/{agent_in_org_a.id}")
-        # Current behavior: GET by ID is not org-filtered
-        # This documents the behavior for future hardening
-        assert resp.status_code in (200, 403, 404)
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

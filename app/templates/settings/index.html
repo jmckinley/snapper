@@ -154,6 +154,7 @@
 
             const container = document.getElementById('security-toggles');
             const autoMitigate = config.auto_mitigate_threats ?? true;
+            const securityFeeds = config.security_feeds_enabled ?? true;
 
             container.innerHTML = toggles.map(t => {
                 const isSecure = t.inverted ? !t.value : t.value;
@@ -170,6 +171,15 @@
                     </div>
                 `;
             }).join('') + `
+                <div class="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <div>
+                        <h3 class="text-sm font-medium text-gray-900">Security Feeds</h3>
+                        <p class="text-sm text-gray-500">Fetch CVEs from NVD, GitHub, and ClawHub ${!securityFeeds ? '<span class="text-amber-600 font-medium">(Air-Gapped Mode)</span>' : ''}</p>
+                    </div>
+                    <button id="security-feeds-btn" onclick="toggleSecurityFeeds()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${securityFeeds ? 'bg-primary-600' : 'bg-gray-200'}" role="switch" aria-checked="${securityFeeds}" data-enabled="${securityFeeds}">
+                        <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${securityFeeds ? 'translate-x-5' : 'translate-x-0'}"></span>
+                    </button>
+                </div>
                 <div class="flex items-center justify-between pt-2 border-t border-gray-200">
                     <div>
                         <h3 class="text-sm font-medium text-gray-900">Auto-Mitigate Threats</h3>
@@ -214,6 +224,36 @@
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
+        }
+    }
+
+    async function toggleSecurityFeeds() {
+        const btn = document.getElementById('security-feeds-btn');
+        const currentlyEnabled = btn.dataset.enabled === 'true';
+        const newValue = !currentlyEnabled;
+
+        try {
+            const response = await fetch('/api/v1/setup/security-feeds', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: newValue }),
+            });
+
+            if (!response.ok) throw new Error('Failed to update setting');
+
+            btn.dataset.enabled = String(newValue);
+            btn.setAttribute('aria-checked', String(newValue));
+            btn.className = btn.className
+                .replace(newValue ? 'bg-gray-200' : 'bg-primary-600', newValue ? 'bg-primary-600' : 'bg-gray-200');
+            const knob = btn.querySelector('span');
+            knob.className = knob.className
+                .replace(newValue ? 'translate-x-0' : 'translate-x-5', newValue ? 'translate-x-5' : 'translate-x-0');
+
+            // Reload to update the air-gapped label
+            loadSecuritySettings();
+        } catch (error) {
+            console.error('Failed to toggle security feeds:', error);
+            alert('Failed to update security feeds setting');
         }
     }
 

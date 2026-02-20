@@ -30,6 +30,7 @@ from app.routers import webhooks as webhooks_router
 from app.routers import approval_policies as approval_policies_router
 from app.routers import suggestions as suggestions_router
 from app.routers import threats as threats_router
+from app.routers import meta_admin as meta_admin_router
 
 settings = get_settings()
 
@@ -189,6 +190,8 @@ app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=[
 app.include_router(approval_policies_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
 app.include_router(suggestions_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
 app.include_router(threats_router.router, prefix=settings.API_V1_PREFIX, tags=["Threats"])
+if settings.META_ADMIN_ENABLED:
+    app.include_router(meta_admin_router.router, prefix=settings.API_V1_PREFIX, tags=["Meta Admin"])
 
 
 # Global exception handler
@@ -434,5 +437,55 @@ async def billing_page(request: Request):
     """Billing page."""
     return templates.TemplateResponse(
         "org/billing.html",
+        {"request": request, "settings": settings},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Meta Admin pages
+# ---------------------------------------------------------------------------
+
+
+@app.get("/admin", tags=["admin"])
+async def admin_page(request: Request):
+    """Meta admin overview page."""
+    return templates.TemplateResponse(
+        "admin/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/admin/orgs", tags=["admin"])
+async def admin_orgs_page(request: Request):
+    """Meta admin organizations page."""
+    return templates.TemplateResponse(
+        "admin/orgs.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/admin/orgs/{org_id}", tags=["admin"])
+async def admin_org_detail_page(request: Request, org_id: str):
+    """Meta admin org detail page."""
+    return templates.TemplateResponse(
+        "admin/org_detail.html",
+        {"request": request, "settings": settings, "org_id": org_id},
+    )
+
+
+@app.get("/admin/provision", tags=["admin"])
+async def admin_provision_page(request: Request):
+    """Meta admin provision org page."""
+    return templates.TemplateResponse(
+        "admin/provision.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/admin/users", tags=["admin"])
+async def admin_users_page(request: Request):
+    """Meta admin user management page."""
+    return templates.TemplateResponse(
+        "admin/users.html",
         {"request": request, "settings": settings},
     )

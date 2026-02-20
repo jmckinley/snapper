@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_agents
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_agents, verify_resource_org
 from app.middleware.metrics import set_active_agents
 from app.services.event_publisher import publish_from_audit_log
 from app.services.quota import QuotaChecker
@@ -172,6 +172,7 @@ async def create_agent(
 async def get_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get agent details by ID."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -183,6 +184,7 @@ async def get_agent(
             detail=f"Agent {agent_id} not found",
         )
 
+    await verify_resource_org(agent.organization_id, org_id)
     return AgentResponse.model_validate(agent)
 
 
@@ -191,6 +193,7 @@ async def update_agent(
     agent_id: UUID,
     agent_data: AgentUpdate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Update an agent."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -201,6 +204,8 @@ async def update_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     # Store old values for audit
     old_values = {
@@ -245,6 +250,7 @@ async def update_agent(
 async def delete_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     hard_delete: bool = False,
 ):
     """Delete an agent (soft delete by default)."""
@@ -256,6 +262,8 @@ async def delete_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     if hard_delete:
         await db.delete(agent)
@@ -290,6 +298,7 @@ async def get_agent_status(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get real-time agent status."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -300,6 +309,8 @@ async def get_agent_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     # Get active rules count
     rules_stmt = select(func.count()).select_from(Rule).where(
@@ -411,6 +422,7 @@ async def bulk_create_agents(
 async def suspend_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Suspend an agent."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -421,6 +433,8 @@ async def suspend_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_status = agent.status
     agent.status = AgentStatus.SUSPENDED
@@ -447,6 +461,7 @@ async def suspend_agent(
 async def activate_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Activate an agent."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -457,6 +472,8 @@ async def activate_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_status = agent.status
     agent.status = AgentStatus.ACTIVE
@@ -483,6 +500,7 @@ async def activate_agent(
 async def quarantine_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     reason: Optional[str] = None,
 ):
     """Quarantine an agent due to security concerns."""
@@ -494,6 +512,8 @@ async def quarantine_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_status = agent.status
     agent.status = AgentStatus.QUARANTINED
@@ -521,6 +541,7 @@ async def quarantine_agent(
 async def regenerate_api_key(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Regenerate an agent's API key.
@@ -542,6 +563,8 @@ async def regenerate_api_key(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     from datetime import datetime as dt, timezone as tz
     old_key_prefix = agent.api_key[:12] + "..."  # Log prefix only
@@ -582,6 +605,7 @@ async def purge_agent_pii(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     confirm: bool = False,
 ):
     """
@@ -618,6 +642,8 @@ async def purge_agent_pii(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     # PII patterns to search for and redact
     # Use comprehensive PII patterns (US, UK, Canada, Australia)
@@ -723,6 +749,7 @@ async def whitelist_ip(
     ip_address: str,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     ttl_hours: int = 24,
 ):
     """
@@ -754,6 +781,8 @@ async def whitelist_ip(
             detail=f"Agent {agent_id} not found",
         )
 
+    await verify_resource_org(agent.organization_id, org_id)
+
     # Add to whitelist set in Redis with TTL
     whitelist_key = f"network_whitelist:{agent_id}"
     await redis.sadd(whitelist_key, ip_address)
@@ -784,8 +813,16 @@ async def remove_whitelisted_ip(
     ip_address: str,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Remove an IP address from the whitelist."""
+    # Verify agent belongs to caller's org
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    await verify_resource_org(agent.organization_id, org_id)
+
     whitelist_key = f"network_whitelist:{agent_id}"
     removed = await redis.srem(whitelist_key, ip_address)
 
@@ -916,6 +953,7 @@ async def reset_agent_trust(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Reset an agent's adaptive trust score to 1.0.
@@ -931,6 +969,8 @@ async def reset_agent_trust(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_trust = agent.trust_score
 
@@ -969,6 +1009,7 @@ async def reset_agent_trust(
 async def toggle_agent_trust(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Toggle adaptive trust enforcement for an agent.
@@ -985,6 +1026,8 @@ async def toggle_agent_trust(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_value = agent.auto_adjust_trust
     agent.auto_adjust_trust = not old_value

@@ -92,6 +92,12 @@ class User(Base):
         default=False,
         nullable=False,
     )
+    is_meta_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="McKinley Labs platform operator",
+    )
 
     # Security
     failed_login_attempts: Mapped[int] = mapped_column(
@@ -209,6 +215,11 @@ class User(Base):
     def is_admin(self) -> bool:
         """Check if user has admin role."""
         return self.role == UserRole.ADMIN
+
+    @property
+    def is_platform_admin(self) -> bool:
+        """Check if user is a McKinley Labs platform operator."""
+        return self.is_meta_admin
 
     @property
     def is_locked(self) -> bool:

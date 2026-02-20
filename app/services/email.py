@@ -100,3 +100,32 @@ def send_invitation(to: str, org_name: str, inviter_name: str, token: str, base_
     )
 
     return _send(to, f"Snapper — Invitation to {org_name}", html, text)
+
+
+def send_org_provisioned(to: str, org_name: str, plan_name: str, token: str, base_url: str = "") -> bool:
+    """Send a welcome email when a meta admin provisions a new organization."""
+    if not base_url:
+        settings = get_settings()
+        base_url = settings.BASE_URL if hasattr(settings, "BASE_URL") and settings.BASE_URL else "https://app.snapperprotect.com"
+
+    accept_url = f"{base_url}/invitations/accept?token={token}"
+
+    html = f"""\
+<html><body>
+<h2>Welcome to Snapper</h2>
+<p>Your organization <strong>{org_name}</strong> has been created on the <strong>{plan_name}</strong> plan.</p>
+<p>Click below to set up your account and get started:</p>
+<p><a href="{accept_url}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Set Up Your Account</a></p>
+<p>Or copy this link: <code>{accept_url}</code></p>
+<p>This invitation expires in 14 days.</p>
+<p style="color:#6b7280;font-size:0.875rem;margin-top:2rem;">— The Snapper Team</p>
+</body></html>"""
+
+    text = (
+        f"Welcome to Snapper\n\n"
+        f"Your organization {org_name} has been created on the {plan_name} plan.\n\n"
+        f"Set up your account: {accept_url}\n\n"
+        f"This invitation expires in 14 days."
+    )
+
+    return _send(to, f"Welcome to Snapper — {org_name}", html, text)

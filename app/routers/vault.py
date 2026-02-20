@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit, require_manage_vault
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit, require_manage_vault, verify_resource_org
 from app.services.quota import QuotaChecker
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
@@ -232,6 +232,7 @@ async def list_vault_entries(
 async def delete_vault_entry(
     entry_id: str,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     owner_chat_id: str = Query(..., description="Chat ID for ownership verification"),
 ):
     """
@@ -239,6 +240,19 @@ async def delete_vault_entry(
 
     Only the owner (by chat_id) can delete their entries.
     """
+    # Org boundary check for the vault entry
+    from sqlalchemy import select as sa_select
+    try:
+        from uuid import UUID as UUIDType
+        entry_uuid = UUIDType(entry_id)
+        entry_row = (await db.execute(
+            sa_select(PIIVaultEntry).where(PIIVaultEntry.id == entry_uuid, PIIVaultEntry.is_deleted == False)
+        )).scalar_one_or_none()
+        if entry_row:
+            await verify_resource_org(entry_row.organization_id, org_id)
+    except (ValueError, AttributeError):
+        pass
+
     success = await pii_vault.delete_entry(
         db=db,
         entry_id=entry_id,
@@ -322,6 +336,7 @@ async def update_vault_domains(
     entry_id: str,
     request: VaultDomainUpdate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     owner_chat_id: str = Query(..., description="Chat ID for ownership verification"),
 ):
     """Update the allowed domains for a vault entry."""
@@ -342,6 +357,8 @@ async def update_vault_domains(
 
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+
+    await verify_resource_org(entry.organization_id, org_id)
 
     if entry.owner_chat_id != str(owner_chat_id):
         raise HTTPException(status_code=403, detail="Not authorized to modify this entry")

@@ -25,9 +25,12 @@ settings = get_settings()
 
 
 def run_async(coro):
-    """Run async coroutine in sync context."""
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
+    """Run async coroutine in sync context.
+
+    Uses asyncio.run() instead of get_event_loop() because Celery
+    workers fork from the parent process and inherit a stale loop.
+    """
+    return asyncio.run(coro)
 
 
 async def _is_auto_mitigate_enabled() -> bool:
@@ -42,6 +45,18 @@ async def _is_auto_mitigate_enabled() -> bool:
     return settings.AUTO_MITIGATE_THREATS
 
 
+async def _are_security_feeds_enabled() -> bool:
+    """Check whether security feeds are enabled (Redis override > config)."""
+    try:
+        await redis_client.connect()
+        override = await redis_client.get("config:security_feeds_enabled")
+        if override is not None:
+            return override == "1"
+    except Exception:
+        pass
+    return settings.SECURITY_FEEDS_ENABLED
+
+
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=300)
 def fetch_nvd_updates(self):
     """
@@ -49,6 +64,10 @@ def fetch_nvd_updates(self):
 
     Runs every 6 hours to check for new CVEs that may affect Snapper.
     """
+    if not run_async(_are_security_feeds_enabled()):
+        logger.info("Security feeds disabled (air-gapped mode), skipping NVD fetch")
+        return
+
     logger.info("Starting NVD vulnerability fetch...")
 
     try:
@@ -182,6 +201,10 @@ def fetch_github_advisories(self):
 
     Runs every 4 hours to check for new advisories.
     """
+    if not run_async(_are_security_feeds_enabled()):
+        logger.info("Security feeds disabled (air-gapped mode), skipping GitHub fetch")
+        return
+
     logger.info("Starting GitHub advisory fetch...")
 
     try:
@@ -374,6 +397,10 @@ def scan_clawhub_skills(self):
 
     Runs every 2 hours to detect new threats.
     """
+    if not run_async(_are_security_feeds_enabled()):
+        logger.info("Security feeds disabled (air-gapped mode), skipping ClawHub scan")
+        return
+
     logger.info("Starting ClawHub skill scan...")
 
     try:
@@ -475,6 +502,7 @@ async def _generate_recommendations_async():
                 # Create recommendation
                 rec = SecurityRecommendation(
                     agent_id=agent.id,
+                    organization_id=agent.organization_id,
                     title=suggestion["title"],
                     description=suggestion["description"],
                     rationale=f"Improve security score by {suggestion['potential_gain']} points",
@@ -513,7 +541,7 @@ async def _calculate_security_scores_async():
         # Calculate global score
         await monitor.calculate_security_score(None)
 
-        # Calculate per-agent scores
+        # Calculate per-agent scores (org-aware)
         from sqlalchemy import select
         from app.models.agents import Agent
 
@@ -522,7 +550,7 @@ async def _calculate_security_scores_async():
         agents = list(result.scalars().all())
 
         for agent in agents:
-            await monitor.calculate_security_score(agent.id)
+            await monitor.calculate_security_score(agent.id, org_id=agent.organization_id)
 
 
 @celery_app.task(bind=True)
@@ -542,41 +570,58 @@ def send_weekly_digest(self):
 
 
 async def _send_weekly_digest_async():
-    """Async implementation of weekly digest."""
+    """Async implementation of weekly digest.
+
+    Generates per-org digests when organizations exist, falling back
+    to a single global digest for self-hosted / single-tenant setups.
+    """
     from app.tasks.alerts import send_alert
 
     async with get_db_context() as db:
         await redis_client.connect()
 
-        # Generate digest content
         now = datetime.utcnow()
         week_ago = now - timedelta(days=7)
 
-        # Get statistics
         from sqlalchemy import func, select
         from app.models.audit_logs import AuditLog, PolicyViolation
 
-        # Count violations
-        violations_stmt = select(func.count()).select_from(PolicyViolation).where(
-            PolicyViolation.created_at >= week_ago
-        )
-        violations_count = (await db.execute(violations_stmt)).scalar() or 0
+        # Collect org IDs (None = global/self-hosted)
+        org_ids: list = [None]
+        try:
+            from app.models.organizations import Organization
+            orgs_result = await db.execute(select(Organization.id))
+            found_orgs = [row[0] for row in orgs_result]
+            if found_orgs:
+                org_ids = found_orgs
+        except Exception:
+            pass  # organizations table may not exist in self-hosted
 
-        # Count blocked requests
-        blocked_stmt = select(func.count()).select_from(AuditLog).where(
-            AuditLog.created_at >= week_ago,
-            AuditLog.action == "request_denied",
-        )
-        blocked_count = (await db.execute(blocked_stmt)).scalar() or 0
-
-        # Count new CVEs
+        # Count new CVEs (global — same for all orgs)
         cves_stmt = select(func.count()).select_from(SecurityIssue).where(
             SecurityIssue.discovered_at >= week_ago
         )
         new_cves = (await db.execute(cves_stmt)).scalar() or 0
 
-        # Compose digest
-        digest = f"""
+        for oid in org_ids:
+            # Count violations (org-scoped)
+            violations_stmt = select(func.count()).select_from(PolicyViolation).where(
+                PolicyViolation.created_at >= week_ago
+            )
+            if oid:
+                violations_stmt = violations_stmt.where(PolicyViolation.organization_id == oid)
+            violations_count = (await db.execute(violations_stmt)).scalar() or 0
+
+            # Count blocked requests (org-scoped)
+            blocked_stmt = select(func.count()).select_from(AuditLog).where(
+                AuditLog.created_at >= week_ago,
+                AuditLog.action == "request_denied",
+            )
+            if oid:
+                blocked_stmt = blocked_stmt.where(AuditLog.organization_id == oid)
+            blocked_count = (await db.execute(blocked_stmt)).scalar() or 0
+
+            digest = f"""
 Snapper Rules Manager - Weekly Security Digest
 Period: {week_ago.strftime('%Y-%m-%d')} to {now.strftime('%Y-%m-%d')}
 
@@ -588,10 +633,14 @@ Summary:
 Please review the dashboard for detailed information.
 """
 
-        # Send via configured channels
-        send_alert.delay(
-            title="Weekly Security Digest",
-            message=digest,
-            severity="info",
-            channels=["email", "slack"],
-        )
+            metadata = {}
+            if oid:
+                metadata["organization_id"] = str(oid)
+
+            send_alert.delay(
+                title="Weekly Security Digest",
+                message=digest,
+                severity="info",
+                channels=["email", "slack"],
+                metadata=metadata,
+            )

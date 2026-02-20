@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin — Snapper{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d',
+                            400: '#fbbf24', 500: '#f59e0b', 600: '#d97706', 700: '#b45309',
+                            800: '#92400e', 900: '#78350f',
+                        },
+                        danger: { 500: '#ef4444', 600: '#dc2626' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" type="image/png" href="/static/images/snapper-logo.png">
+    {% block head %}{% endblock %}
+</head>
+<body class="h-full">
+    <div class="min-h-full">
+        {% if request.state.impersonating_user_id is defined and request.state.impersonating_user_id %}
+        <!-- Impersonation banner -->
+        <div class="bg-red-600 text-white text-center py-2 text-sm font-medium">
+            You are impersonating an organization.
+            <form method="POST" action="/api/v1/meta/stop-impersonation" class="inline ml-2">
+                <button type="submit" class="underline font-bold hover:text-red-200" id="stop-impersonation-btn">Stop Impersonation</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <!-- Admin Navigation -->
+        <nav class="bg-gray-900 border-b-2 border-amber-500">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <a href="/admin" class="flex items-center space-x-2 hover:opacity-80">
+                                <img src="/static/images/snapper-logo.png" alt="Snapper" class="h-10 w-10 rounded-full">
+                                <span class="text-amber-400 text-xl font-bold">Snapper Admin</span>
+                            </a>
+                        </div>
+                        <div class="hidden md:block">
+                            <div class="ml-10 flex items-baseline space-x-4">
+                                <a href="/admin" class="{% if request.url.path == '/admin' %}bg-gray-800 text-amber-400{% else %}text-gray-300 hover:bg-gray-800 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Overview</a>
+                                <a href="/admin/orgs" class="{% if '/admin/orgs' in request.url.path %}bg-gray-800 text-amber-400{% else %}text-gray-300 hover:bg-gray-800 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Organizations</a>
+                                <a href="/admin/users" class="{% if '/admin/users' in request.url.path %}bg-gray-800 text-amber-400{% else %}text-gray-300 hover:bg-gray-800 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Users</a>
+                                <a href="/admin/provision" class="{% if '/admin/provision' in request.url.path %}bg-gray-800 text-amber-400{% else %}text-gray-300 hover:bg-gray-800 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Provision</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <a href="/" class="text-gray-400 hover:text-white text-sm">Customer View</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main>
+            <div class="mx-auto max-w-7xl py-6 px-4 sm:px-6 lg:px-8">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Stop impersonation via API
+        const stopBtn = document.getElementById('stop-impersonation-btn');
+        if (stopBtn) {
+            stopBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const res = await fetch('/api/v1/meta/stop-impersonation', { method: 'POST', credentials: 'include' });
+                if (res.ok) window.location.href = '/admin';
+            });
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -115,6 +115,10 @@ async def check_quota(
     plan = await get_plan(db, org.plan_id)
     limit = _get_plan_limit(plan, resource_type)
 
+    # Org-level seat override (max_seats) takes precedence for team_members
+    if resource_type == "team_members" and org.max_seats is not None:
+        limit = org.max_seats
+
     # -1 means unlimited
     if limit == -1:
         return
@@ -189,6 +193,9 @@ async def get_usage(db: AsyncSession, org_id: UUID) -> dict:
 
     def _make_stat(resource_type: str) -> dict:
         limit = _get_plan_limit(plan, resource_type)
+        # Org-level seat override
+        if resource_type == "team_members" and org.max_seats is not None:
+            limit = org.max_seats
         return {
             "used": counts[resource_type],
             "limit": limit,

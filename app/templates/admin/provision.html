@@ -1,0 +1,132 @@
+{% extends "admin/base.html" %}
+{% block title %}Provision Organization — Admin{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/admin/orgs" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Organizations</a>
+    <h1 class="text-2xl font-bold text-gray-900 mt-2">Provision New Organization</h1>
+    <p class="text-sm text-gray-500 mt-1">Create a new customer org and invite the owner.</p>
+</div>
+
+<form id="provision-form" class="bg-white shadow rounded-lg p-6 max-w-2xl">
+    <div class="grid grid-cols-1 gap-5">
+        <!-- Name -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Organization Name *</label>
+            <input type="text" name="name" required class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="Acme Corp">
+        </div>
+
+        <!-- Slug -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Slug (auto-generated if blank)</label>
+            <input type="text" name="slug" class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="acme-corp" pattern="^[a-z0-9][a-z0-9\-]*$">
+        </div>
+
+        <!-- Plan -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Plan *</label>
+            <select name="plan_id" class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border">
+                <option value="free">Free</option>
+                <option value="pro" selected>Pro</option>
+                <option value="enterprise">Enterprise</option>
+            </select>
+        </div>
+
+        <!-- Owner Email -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Owner Email *</label>
+            <input type="email" name="owner_email" required class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="owner@acme.com">
+        </div>
+
+        <!-- Owner Name -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Owner Name</label>
+            <input type="text" name="owner_name" class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="Jane Smith">
+        </div>
+
+        <hr class="border-gray-200">
+        <p class="text-xs text-gray-500 font-medium uppercase">Advanced</p>
+
+        <!-- Allowed Email Domains -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Allowed Email Domains</label>
+            <input type="text" name="allowed_email_domains" class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="acme.com, acme.io (comma-separated, blank = any)">
+        </div>
+
+        <!-- Max Seats -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Max Seats (override)</label>
+            <input type="number" name="max_seats" min="1" class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="Leave blank for plan default">
+        </div>
+
+        <!-- Trial Days -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Trial Days</label>
+            <input type="number" name="trial_days" min="1" max="365" class="w-full rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border" placeholder="e.g. 14">
+        </div>
+    </div>
+
+    <div class="mt-6 flex items-center space-x-3">
+        <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-md text-sm font-medium">Provision Organization</button>
+        <span id="status-msg" class="text-sm"></span>
+    </div>
+</form>
+
+<!-- Result -->
+<div id="provision-result" class="hidden mt-6 bg-green-50 border border-green-200 rounded-lg p-5 max-w-2xl">
+    <h3 class="text-lg font-medium text-green-800">Organization Provisioned</h3>
+    <div id="result-content" class="mt-2 text-sm text-green-700"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('provision-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const statusMsg = document.getElementById('status-msg');
+    statusMsg.textContent = 'Provisioning...';
+    statusMsg.className = 'text-sm text-gray-500';
+
+    const formData = new FormData(form);
+    const body = {
+        name: formData.get('name'),
+        plan_id: formData.get('plan_id'),
+        owner_email: formData.get('owner_email'),
+    };
+    if (formData.get('slug')) body.slug = formData.get('slug');
+    if (formData.get('owner_name')) body.owner_name = formData.get('owner_name');
+    if (formData.get('max_seats')) body.max_seats = parseInt(formData.get('max_seats'));
+    if (formData.get('trial_days')) body.trial_days = parseInt(formData.get('trial_days'));
+    if (formData.get('allowed_email_domains')) {
+        body.allowed_email_domains = formData.get('allowed_email_domains').split(',').map(d => d.trim()).filter(Boolean);
+    }
+
+    try {
+        const res = await fetch('/api/v1/meta/provision-org', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            statusMsg.textContent = '';
+            document.getElementById('provision-result').classList.remove('hidden');
+            document.getElementById('result-content').innerHTML = `
+                <p><strong>${data.name}</strong> (${data.slug})</p>
+                <p>Plan: ${data.plan_id} &middot; Owner: ${data.owner_email}</p>
+                <p class="mt-2">Invitation token: <code class="bg-green-100 px-1 rounded">${data.invitation_token}</code></p>
+                <p class="mt-2"><a href="/admin/orgs/${data.id}" class="text-green-700 underline">View Organization</a></p>
+            `;
+            form.reset();
+        } else {
+            statusMsg.textContent = data.detail || 'Provisioning failed';
+            statusMsg.className = 'text-sm text-red-600';
+        }
+    } catch (err) {
+        statusMsg.textContent = 'Network error';
+        statusMsg.className = 'text-sm text-red-600';
+    }
+});
+</script>
+{% endblock %}

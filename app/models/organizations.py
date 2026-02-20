@@ -144,6 +144,17 @@ class Organization(Base):
         default=dict,
         nullable=False,
     )
+    allowed_email_domains: Mapped[list] = mapped_column(
+        JSONB,
+        default=list,
+        nullable=False,
+        comment='Allowed email domains for registration, e.g. ["acme.com"]. Empty = any domain.',
+    )
+    max_seats: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Override plan max_team_members. NULL = use plan default.",
+    )
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

@@ -38,18 +38,24 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(
-    user_id: uuid.UUID, org_id: uuid.UUID, role: str, session_id: Optional[str] = None
+    user_id: uuid.UUID,
+    org_id: uuid.UUID,
+    role: str,
+    session_id: Optional[str] = None,
+    is_meta_admin: bool = False,
+    impersonating_user_id: Optional[str] = None,
+    expire_minutes: Optional[int] = None,
 ) -> str:
     """
     Create a JWT access token.
 
     Payload includes user ID, organization ID, role, expiration, and token type.
-    Optionally includes session_id for session management.
+    Optionally includes session_id for session management, meta admin flag,
+    and impersonation context.
     """
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+    ttl = expire_minutes or settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ttl)
     payload = {
         "sub": str(user_id),
         "org": str(org_id),
@@ -59,6 +65,10 @@ def create_access_token(
     }
     if session_id:
         payload["sid"] = session_id
+    if is_meta_admin:
+        payload["meta"] = True
+    if impersonating_user_id:
+        payload["imp"] = impersonating_user_id
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 

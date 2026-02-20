@@ -13,7 +13,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_rules
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_rules, verify_resource_org
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
 from app.services.event_publisher import publish_from_audit_log
 from app.services.quota import QuotaChecker
@@ -789,6 +789,7 @@ async def apply_template(
 async def get_rule(
     rule_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get rule by ID."""
     stmt = select(Rule).where(Rule.id == rule_id, Rule.is_deleted == False)
@@ -800,6 +801,7 @@ async def get_rule(
             detail=f"Rule {rule_id} not found",
         )
 
+    await verify_resource_org(rule.organization_id, org_id)
     return RuleResponse.model_validate(rule)
 
 
@@ -809,6 +811,7 @@ async def update_rule(
     rule_data: RuleUpdate,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Update a rule."""
     stmt = select(Rule).where(Rule.id == rule_id, Rule.is_deleted == False)
@@ -819,6 +822,8 @@ async def update_rule(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Rule {rule_id} not found",
         )
+
+    await verify_resource_org(rule.organization_id, org_id)
 
     # Store old values for audit
     old_values = {
@@ -875,6 +880,7 @@ async def delete_rule(
     rule_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     hard_delete: bool = False,
 ):
     """Delete a rule."""
@@ -886,6 +892,8 @@ async def delete_rule(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Rule {rule_id} not found",
         )
+
+    await verify_resource_org(rule.organization_id, org_id)
 
     agent_id = rule.agent_id
 
@@ -1543,6 +1551,7 @@ async def evaluate_request(
                 agent_id=agent.id,
                 rule_id=result.blocking_rule,
                 audit_log_id=audit_log.id,
+                organization_id=agent.organization_id,
                 description=f"Agent '{agent.name}' denied: {result.reason}",
                 context={
                     "request_type": request.request_type,

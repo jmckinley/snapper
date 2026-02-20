@@ -175,6 +175,15 @@ async def get_setup_status(
     except Exception:
         pass
 
+    # Security feeds: Redis override takes precedence over config
+    security_feeds = s.SECURITY_FEEDS_ENABLED
+    try:
+        feeds_override = await redis.get("config:security_feeds_enabled")
+        if feeds_override is not None:
+            security_feeds = feeds_override == "1"
+    except Exception:
+        pass
+
     config = {
         "deny_by_default": s.DENY_BY_DEFAULT,
         "learning_mode": s.LEARNING_MODE,
@@ -183,6 +192,7 @@ async def get_setup_status(
         "require_localhost_only": s.REQUIRE_LOCALHOST_ONLY,
         "rate_limit_enabled": s.RATE_LIMIT_ENABLED,
         "auto_mitigate_threats": auto_mitigate,
+        "security_feeds_enabled": security_feeds,
         # Boolean flags for configured channels (no secrets exposed)
         "smtp_host": bool(s.SMTP_HOST),
         "smtp_user": bool(s.SMTP_USER),
@@ -563,16 +573,54 @@ class AutoMitigateRequest(BaseModel):
 
 @router.post("/auto-mitigate")
 async def toggle_auto_mitigate(
-    request: AutoMitigateRequest,
+    request_body: AutoMitigateRequest,
+    request: Request,
     redis: RedisClient = Depends(get_redis),
 ):
     """Toggle auto-mitigation of new threat feed vulnerabilities.
 
     Stores a runtime override in Redis so the setting takes effect
     immediately without restarting the application.
+
+    In multi-tenant mode, requires an authenticated admin session.
     """
-    await redis.set("config:auto_mitigate_threats", "1" if request.enabled else "0")
-    return {"auto_mitigate_threats": request.enabled}
+    from app.config import get_settings
+    if not get_settings().SELF_HOSTED:
+        user_id = getattr(request.state, "user_id", None)
+        role = getattr(request.state, "user_role", None)
+        if not user_id or role not in ("admin", "owner"):
+            raise HTTPException(status_code=403, detail="Admin role required for setup changes")
+
+    await redis.set("config:auto_mitigate_threats", "1" if request_body.enabled else "0")
+    return {"auto_mitigate_threats": request_body.enabled}
+
+
+class SecurityFeedsRequest(BaseModel):
+    """Request to toggle security feeds."""
+
+    enabled: bool
+
+
+@router.post("/security-feeds")
+async def toggle_security_feeds(
+    request_body: SecurityFeedsRequest,
+    request: Request,
+    redis: RedisClient = Depends(get_redis),
+):
+    """Toggle security feeds (NVD, GitHub, ClawHub).
+
+    Disable for air-gapped deployments that cannot reach external APIs.
+    Stores a runtime override in Redis.
+    """
+    from app.config import get_settings
+    if not get_settings().SELF_HOSTED:
+        user_id = getattr(request.state, "user_id", None)
+        role = getattr(request.state, "user_role", None)
+        if not user_id or role not in ("admin", "owner"):
+            raise HTTPException(status_code=403, detail="Admin role required for setup changes")
+
+    await redis.set("config:security_feeds_enabled", "1" if request_body.enabled else "0")
+    return {"security_feeds_enabled": request_body.enabled}
 
 
 @router.post("/install-config", response_model=InstallConfigResponse)

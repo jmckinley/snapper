@@ -246,6 +246,25 @@ async def register(
             detail="This username is already taken",
         )
 
+    # Validate email domain against any pending invitations
+    from app.models.organizations import Invitation, InvitationStatus, Organization as _Org
+
+    pending_invites = await db.execute(
+        select(Invitation).where(
+            Invitation.email == body.email.lower().strip(),
+            Invitation.status == InvitationStatus.PENDING,
+        )
+    )
+    for invite in pending_invites.scalars().all():
+        inv_org = await db.get(_Org, invite.organization_id)
+        if inv_org and inv_org.allowed_email_domains:
+            email_domain = body.email.split("@")[1].lower()
+            if email_domain not in [d.lower() for d in inv_org.allowed_email_domains]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Email domain not allowed for organization '{inv_org.name}'",
+                )
+
     try:
         user = await create_user(db, body.email, body.username, body.password)
     except Exception as e:
@@ -266,7 +285,10 @@ async def register(
 
     # Create tokens with session tracking
     session_id = secrets.token_hex(16)
-    access_token = create_access_token(user.id, org_id, role, session_id=session_id)
+    access_token = create_access_token(
+        user.id, org_id, role, session_id=session_id,
+        is_meta_admin=user.is_meta_admin,
+    )
     refresh_token = create_refresh_token(user.id)
 
     # Set cookies
@@ -342,7 +364,10 @@ async def login(
 
     # Create tokens with session tracking
     session_id = secrets.token_hex(16)
-    access_token = create_access_token(user.id, org_id, role, session_id=session_id)
+    access_token = create_access_token(
+        user.id, org_id, role, session_id=session_id,
+        is_meta_admin=user.is_meta_admin,
+    )
     refresh_token = create_refresh_token(user.id)
 
     # Set cookies
@@ -439,7 +464,10 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     role = default_membership.role if default_membership else "member"
 
     # Create new access token
-    new_access_token = create_access_token(user.id, org_id, role)
+    new_access_token = create_access_token(
+        user.id, org_id, role,
+        is_meta_admin=user.is_meta_admin,
+    )
 
     # Set the new access token cookie
     settings = get_settings()
@@ -547,7 +575,10 @@ async def switch_org(
     role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
 
     # Create new access token with new org context
-    new_access_token = create_access_token(user.id, body.organization_id, role)
+    new_access_token = create_access_token(
+        user.id, body.organization_id, role,
+        is_meta_admin=user.is_meta_admin,
+    )
 
     # Set the new access token cookie
     settings = get_settings()
@@ -752,7 +783,10 @@ async def mfa_verify(
     role = default_membership.role if default_membership else "member"
 
     session_id = secrets.token_hex(16)
-    access_token = create_access_token(user.id, org_id, role, session_id=session_id)
+    access_token = create_access_token(
+        user.id, org_id, role, session_id=session_id,
+        is_meta_admin=user.is_meta_admin,
+    )
     refresh_token = create_refresh_token(user.id)
     _set_auth_cookies(response, access_token, refresh_token)
 
@@ -934,6 +968,23 @@ async def admin_unlock_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin or owner role required",
         )
+
+    # Org boundary: verify target user is in admin's org
+    admin_org_id = getattr(request.state, "org_id", None)
+    if admin_org_id:
+        from app.config import get_settings as _get_settings
+        if not _get_settings().SELF_HOSTED:
+            target_membership = await db.execute(
+                select(OrganizationMembership).where(
+                    OrganizationMembership.user_id == user_id,
+                    OrganizationMembership.organization_id == UUID(str(admin_org_id)),
+                )
+            )
+            if not target_membership.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found",
+                )
 
     # Load target user
     stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))

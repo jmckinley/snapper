@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,7 @@ async def get_api_key(
 
 
 async def get_current_agent(
+    request: Request,
     api_key: Optional[str] = Depends(get_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> Optional[Agent]:
@@ -96,6 +97,16 @@ async def get_current_agent(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Agent is quarantined due to security violations",
         )
+
+    # Cross-org check: if user has JWT org context, ensure agent belongs to their org
+    caller_org = getattr(request.state, "org_id", None)
+    if caller_org and agent.organization_id and not settings.SELF_HOSTED:
+        if str(agent.organization_id) != str(caller_org):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     # Update last used + last seen timestamps (async, non-blocking)
     await db.execute(

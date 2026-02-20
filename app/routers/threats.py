@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, verify_resource_org
 from app.models.agents import Agent
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.threat_events import ThreatEvent
@@ -189,6 +189,7 @@ async def get_threat_summary(
 async def get_threat_event(
     threat_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get a single threat event by ID."""
     event = (await db.execute(
@@ -197,6 +198,8 @@ async def get_threat_event(
 
     if not event:
         raise HTTPException(status_code=404, detail="Threat event not found")
+
+    await verify_resource_org(event.organization_id, org_id)
 
     # Enrich with agent name
     agent = (await db.execute(
@@ -217,6 +220,7 @@ async def resolve_threat_event(
     threat_id: UUID,
     body: ThreatResolveRequest,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Mark a threat event as resolved or false positive."""
     event = (await db.execute(
@@ -225,6 +229,8 @@ async def resolve_threat_event(
 
     if not event:
         raise HTTPException(status_code=404, detail="Threat event not found")
+
+    await verify_resource_org(event.organization_id, org_id)
 
     if event.status in ("resolved", "false_positive"):
         raise HTTPException(status_code=400, detail=f"Threat already {event.status}")

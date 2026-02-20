@@ -13,6 +13,7 @@ from app.models.organizations import (
 )
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.models.rules import Rule, RuleAction, RuleType
+from app.models.org_issue_mitigation import OrgIssueMitigation
 from app.models.security_issues import SecurityIssue, IssueSeverity, IssueStatus
 from app.models.threat_events import ThreatEvent, ThreatType, ThreatSeverity, ThreatStatus
 from app.models.users import User
@@ -44,4 +45,5 @@ __all__ = [
     "Plan",
     "Invitation",
     "InvitationStatus",
+    "OrgIssueMitigation",
 ]

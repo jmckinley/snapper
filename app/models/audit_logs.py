@@ -100,6 +100,13 @@ class AuditAction(str, Enum):
     PII_SUBMISSION_APPROVED = "pii_submission_approved"
     PII_SUBMISSION_DENIED = "pii_submission_denied"
 
+    # Meta admin events
+    META_IMPERSONATION_START = "meta_impersonation_start"
+    META_IMPERSONATION_STOP = "meta_impersonation_stop"
+    META_ORG_PROVISIONED = "meta_org_provisioned"
+    META_PLAN_CHANGED = "meta_plan_changed"
+    META_FEATURE_FLAG_CHANGED = "meta_feature_flag_changed"
+
     # Threat detection events
     THREAT_DETECTED = "threat_detected"
     THREAT_SCORE_ELEVATED = "threat_score_elevated"
@@ -304,6 +311,12 @@ class PolicyViolation(Base):
         UUID(as_uuid=True),
         nullable=True,
     )
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Violation details
     description: Mapped[str] = mapped_column(
@@ -396,6 +409,12 @@ class Alert(Base):
     violation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
+    )
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Alert content
