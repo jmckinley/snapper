@@ -370,9 +370,20 @@ async def quick_register_agent(
     existing_agent = existing_result.scalar_one_or_none()
     if existing_agent:
         if existing_agent.deleted_at is None:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Agent with external_id '{external_id}' already registered",
+            # Return existing agent (idempotent registration)
+            config_snippet = _generate_config_snippet(
+                agent_id=str(existing_agent.id),
+                api_key=existing_agent.api_key,
+                rules_manager_url="http://localhost:8000",
+                agent_type=request.agent_type,
+            )
+            return QuickRegisterResponse(
+                agent_id=str(existing_agent.id),
+                name=existing_agent.name,
+                api_key=existing_agent.api_key,
+                external_id=existing_agent.external_id,
+                rules_applied=0,
+                config_snippet=config_snippet,
             )
         # Re-use the soft-deleted row: reactivate it
         existing_agent.deleted_at = None

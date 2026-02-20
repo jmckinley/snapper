@@ -923,8 +923,9 @@ async def cleanup_test_agents(
         "ThreatSim",
     )
     # Also match wizard agent names (created by setup wizard E2E tests)
-    wizard_names = ("OpenClaw", "Claude Code", "Cursor", "Windsurf", "Cline")
-    wizard_conditions = [Agent.name == n for n in wizard_names]
+    # Use ilike prefix match to catch "Windsurf on <hostname>" etc.
+    wizard_prefixes = ("OpenClaw", "Claude Code on", "Cursor on", "Windsurf on", "Cline on")
+    wizard_conditions = [Agent.name.ilike(f"{p}%") for p in wizard_prefixes]
 
     # Find agents matching any test prefix or wizard name
     conditions = [Agent.name.ilike(f"{p}%") for p in test_prefixes]
