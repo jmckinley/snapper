@@ -582,22 +582,20 @@ class TestGeminiWrapper:
         part = self._make_part(function_call=fc)
         response = self._make_response(parts=[part])
 
-        with patch("google.generativeai.GenerativeModel", create=True) as mock_model_cls:
-            mock_model = MagicMock()
-            mock_model.generate_content.return_value = response
-            mock_model_cls.return_value = mock_model
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = response
 
-            model = SnapperGemini.__new__(SnapperGemini)
-            model._snapper = mock_snapper
-            model._model = mock_model
-            model._on_deny = "raise"
+        model = SnapperGemini.__new__(SnapperGemini)
+        model._snapper = mock_snapper
+        model._model = mock_model
+        model._on_deny = "raise"
 
-            result = model.generate_content("test")
+        result = model.generate_content("test")
 
-            mock_snapper.evaluate.assert_called_once_with(
-                tool_name="get_weather",
-                tool_input={"city": "NYC"},
-            )
+        mock_snapper.evaluate.assert_called_once_with(
+            tool_name="get_weather",
+            tool_input={"city": "NYC"},
+        )
 
     @patch("snapper.base.SnapperClient")
     def test_allow_passes_through(self, mock_snapper_cls):
