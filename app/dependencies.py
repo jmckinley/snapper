@@ -209,6 +209,22 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         )
     # Merge role-based permissions into user.permissions for has_permission checks
     role_perms = ROLE_PERMISSIONS.get(user.role, [])
+
+    # Also check org membership role — owner/admin get full permissions
+    org_id = getattr(request.state, "org_id", None)
+    if org_id:
+        from app.models.organizations import OrganizationMembership, OrgRole
+        mem_stmt = select(OrganizationMembership.role).where(
+            OrganizationMembership.user_id == user.id,
+            OrganizationMembership.organization_id == UUID(str(org_id)),
+        )
+        mem_result = await db.execute(mem_stmt)
+        org_role = mem_result.scalar_one_or_none()
+        if org_role in (OrgRole.OWNER, OrgRole.ADMIN):
+            # Org owner/admin gets all permissions
+            from app.models.users import UserRole
+            role_perms = ROLE_PERMISSIONS.get(UserRole.ADMIN, role_perms)
+
     user._effective_permissions = set(user.permissions or []) | set(role_perms)
     return user
 

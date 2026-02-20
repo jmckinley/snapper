@@ -66,9 +66,17 @@ async def admin_user(db_session: AsyncSession, seed_plans):
 
 
 @pytest_asyncio.fixture
-async def regular_user(db_session: AsyncSession, seed_plans):
-    """Create a regular user with their own org."""
+async def regular_user(db_session: AsyncSession, seed_plans, admin_user):
+    """Create a regular user and add them to the admin's org for cross-org tests."""
     user = await create_user(db_session, "user@example.com", "regular_user", "UserPass1!")
+    # Add regular_user to admin's org so admin can manage them
+    membership = OrganizationMembership(
+        id=uuid4(),
+        user_id=user.id,
+        organization_id=admin_user.default_organization_id,
+        role=OrgRole.MEMBER,
+    )
+    db_session.add(membership)
     await db_session.flush()
     await db_session.refresh(user)
     return user

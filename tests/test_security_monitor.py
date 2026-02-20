@@ -108,11 +108,11 @@ class TestCVEMitigationScore:
     """Tests for _calculate_cve_mitigation_score."""
 
     @pytest.mark.asyncio
-    async def test_no_issues_returns_zero(self, db_session, redis):
-        """No SecurityIssue records → 0 (unknown, not perfect)."""
+    async def test_no_issues_returns_max(self, db_session, redis):
+        """No SecurityIssue records → max score (air-gapped safe)."""
         monitor = SecurityMonitor(db_session, redis)
         score = await monitor._calculate_cve_mitigation_score(None)
-        assert score == 0
+        assert score == 20  # max weight — no CVEs = perfect score
 
     @pytest.mark.asyncio
     async def test_all_resolved_returns_max(self, db_session, redis):
@@ -227,13 +227,13 @@ class TestCalculateSecurityScore:
     """Tests for the full calculate_security_score method."""
 
     @pytest.mark.asyncio
-    async def test_empty_db_returns_zero_grade_f(self, db_session, redis):
-        """Empty DB → score 0, grade 'F'."""
+    async def test_empty_db_returns_cve_only_grade_f(self, db_session, redis):
+        """Empty DB → score 20 (CVE air-gapped safe bonus only), grade 'F'."""
         monitor = SecurityMonitor(db_session, redis)
         result = await monitor.calculate_security_score(None)
 
-        assert result["score"] == 0
-        assert result["grade"] == "F"
+        assert result["score"] == 20  # Only cve_mitigation contributes (air-gapped safe)
+        assert result["grade"] == "F"  # 20 < 60 → still F
         assert "breakdown" in result
 
     @pytest.mark.asyncio

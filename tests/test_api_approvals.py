@@ -115,7 +115,7 @@ class TestApprovalWorkflow:
 
     @pytest.mark.asyncio
     async def test_decide_already_decided(self, client: AsyncClient, redis: RedisClient):
-        """Re-deciding on already decided approval returns 400."""
+        """Re-deciding on already decided approval returns 409 Conflict."""
         # Create and approve
         approval_id = await create_approval_request(
             redis=redis,
@@ -139,7 +139,7 @@ class TestApprovalWorkflow:
             json={"decision": "deny"},
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 409
         assert "already" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio

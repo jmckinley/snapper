@@ -268,9 +268,9 @@ class TestRateCapOrgOverride:
     @pytest.mark.asyncio
     async def test_rate_cap_with_org_override(self, client, redis, db_session, bot_agent, target_agent, org):
         """Per-org override of max_auto_approvals_per_hour is respected."""
-        # Set org override to 5
+        # Set org override to 5 — must commit so get_db_context() can see it
         org.settings = {"max_auto_approvals_per_hour": 5}
-        await db_session.flush()
+        await db_session.commit()
 
         # Simulate counter at 6 (over the override cap of 5)
         key = f"auto_approve_hourly:{org.id}"

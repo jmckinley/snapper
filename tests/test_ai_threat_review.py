@@ -227,10 +227,13 @@ class TestFindingProcessing:
         }]
 
         # Should process 0 findings due to low confidence
-        with patch("app.tasks.ai_threat_review.get_db_context"):
-            result = await _process_findings(findings)
-            # Low confidence = skipped, so 0 actions
-            assert result == 0
+        with patch("app.database.get_db_context"):
+            with patch("app.redis_client.RedisClient") as mock_redis_cls:
+                mock_redis = AsyncMock()
+                mock_redis_cls.return_value = mock_redis
+                result = await _process_findings(findings)
+                # Low confidence = skipped, so 0 actions
+                assert result == 0
 
     @pytest.mark.asyncio
     async def test_score_adjustment_capped(self):

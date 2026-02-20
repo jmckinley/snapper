@@ -20,7 +20,13 @@ class TestEmailConfiguration:
         get_settings.cache_clear()
 
         from app.services.email import _is_configured
-        assert _is_configured() is False
+        with patch("app.services.email.get_settings") as mock_gs:
+            mock_settings = MagicMock()
+            mock_settings.SMTP_HOST = None
+            mock_settings.SMTP_USER = None
+            mock_settings.SMTP_PASSWORD = None
+            mock_gs.return_value = mock_settings
+            assert _is_configured() is False
 
     def test_is_configured_true_all_set(self, monkeypatch):
         """_is_configured() returns True when all SMTP vars are set."""
@@ -46,8 +52,14 @@ class TestEmailConfiguration:
         get_settings.cache_clear()
 
         from app.services.email import _send
-        result = _send("test@example.com", "Test Subject", "<p>Body</p>")
-        assert result is False
+        with patch("app.services.email.get_settings") as mock_gs:
+            mock_settings = MagicMock()
+            mock_settings.SMTP_HOST = None
+            mock_settings.SMTP_USER = None
+            mock_settings.SMTP_PASSWORD = None
+            mock_gs.return_value = mock_settings
+            result = _send("test@example.com", "Test Subject", "<p>Body</p>")
+            assert result is False
 
 
 class TestEmailFunctions:
@@ -59,8 +71,15 @@ class TestEmailFunctions:
         get_settings.cache_clear()
 
         from app.services.email import send_password_reset
-        result = send_password_reset("user@example.com", "fake-token-123")
-        assert result is False
+        with patch("app.services.email.get_settings") as mock_gs:
+            mock_settings = MagicMock()
+            mock_settings.SMTP_HOST = None
+            mock_settings.SMTP_USER = None
+            mock_settings.SMTP_PASSWORD = None
+            mock_settings.BASE_URL = "https://app.snapperprotect.com"
+            mock_gs.return_value = mock_settings
+            result = send_password_reset("user@example.com", "fake-token-123")
+            assert result is False
 
     def test_password_reset_url_construction(self, monkeypatch):
         """send_password_reset constructs correct reset URL in HTML body."""

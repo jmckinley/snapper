@@ -3,6 +3,12 @@
 All tests use unittest.mock — no real API calls or provider SDKs required.
 """
 
+import os
+import sys
+
+# Add the sdk/ directory to sys.path so `import snapper` resolves to sdk/snapper/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "sdk"))
+
 import json
 from unittest.mock import MagicMock, Mock, patch, PropertyMock
 

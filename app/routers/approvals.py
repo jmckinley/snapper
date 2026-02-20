@@ -567,7 +567,7 @@ async def decide_approval(
     )
 
 
-@router.get("/pending", tags=["Core"])
+@router.get("/pending", tags=["Core"], openapi_extra={"x-internal": True})
 async def list_pending_approvals(
     redis: RedisDep,
     fastapi_request: Request,
