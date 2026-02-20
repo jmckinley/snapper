@@ -17,7 +17,7 @@ from app.models.security_issues import (
     SecurityRecommendation,
 )
 from app.redis_client import redis_client
-from app.services.security_monitor import SecurityMonitor
+from app.services.security_monitor import SecurityMonitor, auto_mitigate_issue
 from app.tasks import celery_app
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,18 @@ def run_async(coro):
     """Run async coroutine in sync context."""
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(coro)
+
+
+async def _is_auto_mitigate_enabled() -> bool:
+    """Check whether auto-mitigation is enabled (Redis override > config)."""
+    try:
+        await redis_client.connect()
+        override = await redis_client.get("config:auto_mitigate_threats")
+        if override is not None:
+            return override == "1"
+    except Exception:
+        pass
+    return settings.AUTO_MITIGATE_THREATS
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=300)
@@ -84,7 +96,11 @@ async def _fetch_nvd_updates_async():
     vulnerabilities = data.get("vulnerabilities", [])
     logger.info(f"Found {len(vulnerabilities)} CVEs from NVD")
 
+    new_issue_ids = []
+
     async with get_db_context() as db:
+        from sqlalchemy import select
+
         for vuln in vulnerabilities:
             cve_data = vuln.get("cve", {})
             cve_id = cve_data.get("id")
@@ -93,7 +109,6 @@ async def _fetch_nvd_updates_async():
                 continue
 
             # Check if already exists
-            from sqlalchemy import select
             stmt = select(SecurityIssue).where(SecurityIssue.cve_id == cve_id)
             existing = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -142,8 +157,22 @@ async def _fetch_nvd_updates_async():
                 auto_generate_rules=True,
             )
             db.add(issue)
+            await db.flush()
+            new_issue_ids.append(issue.id)
 
         await db.commit()
+
+    # Auto-mitigate new issues if enabled
+    if new_issue_ids and await _is_auto_mitigate_enabled():
+        logger.info(f"Auto-mitigating {len(new_issue_ids)} new NVD issues")
+        async with get_db_context() as db:
+            for issue_id in new_issue_ids:
+                try:
+                    result = await auto_mitigate_issue(db, issue_id)
+                    logger.info(f"Auto-mitigated {issue_id}: {result.get('method')}")
+                except Exception as e:
+                    logger.warning(f"Auto-mitigation failed for {issue_id}: {e}")
+            await db.commit()
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=300)
@@ -229,6 +258,8 @@ async def _fetch_github_advisories_async():
     }
 
     from sqlalchemy import select
+
+    new_issue_ids = []
 
     async with get_db_context() as db:
         created_count = 0
@@ -316,10 +347,24 @@ async def _fetch_github_advisories_async():
                 },
             )
             db.add(issue)
+            await db.flush()
+            new_issue_ids.append(issue.id)
             created_count += 1
 
         await db.commit()
         logger.info(f"Created {created_count} new SecurityIssue records from GitHub")
+
+    # Auto-mitigate new issues if enabled
+    if new_issue_ids and await _is_auto_mitigate_enabled():
+        logger.info(f"Auto-mitigating {len(new_issue_ids)} new GitHub advisory issues")
+        async with get_db_context() as db:
+            for issue_id in new_issue_ids:
+                try:
+                    result = await auto_mitigate_issue(db, issue_id)
+                    logger.info(f"Auto-mitigated {issue_id}: {result.get('method')}")
+                except Exception as e:
+                    logger.warning(f"Auto-mitigation failed for {issue_id}: {e}")
+            await db.commit()
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=300)

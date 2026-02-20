@@ -133,6 +133,7 @@ class Settings(BaseSettings):
 
     # Threat Detection
     THREAT_DETECTION_ENABLED: bool = True
+    AUTO_MITIGATE_THREATS: bool = True  # Auto-mitigate new CVEs from threat feeds
     THREAT_DENY_THRESHOLD: float = 80.0
     THREAT_APPROVAL_THRESHOLD: float = 60.0
     THREAT_ALERT_THRESHOLD: float = 40.0

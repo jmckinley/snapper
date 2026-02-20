@@ -1,6 +1,5 @@
 """Security research and threat intelligence API endpoints."""
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -469,8 +468,9 @@ async def mitigate_vulnerability(
     2. Infer a rule type from the CVE's components/description and generate one
     3. Fall back to marking as reviewed (no rule generated)
     """
-    from app.routers.rules import RULE_TEMPLATES
+    from app.services.security_monitor import auto_mitigate_issue
 
+    # Verify the issue exists before delegating
     stmt = select(SecurityIssue).where(SecurityIssue.id == issue_id)
     issue = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -480,167 +480,9 @@ async def mitigate_vulnerability(
             detail=f"Vulnerability {issue_id} not found",
         )
 
-    created_rules = []
-    mitigation_method = "reviewed"
-
-    # Strategy 1: Match a CVE-specific template by cve_id
-    matched_template = None
-    if issue.cve_id:
-        cve_slug = issue.cve_id.lower().replace(":", "-")
-        for tmpl_id, tmpl in RULE_TEMPLATES.items():
-            if cve_slug in tmpl_id or tmpl_id in cve_slug:
-                matched_template = (tmpl_id, tmpl)
-                break
-            # Also check if CVE is in the template's tags
-            if issue.cve_id.lower() in [t.lower() for t in tmpl.get("tags", [])]:
-                matched_template = (tmpl_id, tmpl)
-                break
-
-    if matched_template:
-        tmpl_id, tmpl = matched_template
-        # Check if rule from this template already exists
-        existing_stmt = select(Rule).where(
-            Rule.source == "template",
-            Rule.source_reference == tmpl_id,
-            Rule.is_deleted == False,
-        )
-        existing = (await db.execute(existing_stmt)).scalar_one_or_none()
-
-        if existing:
-            # Template already applied — link it
-            created_rules.append(existing.id)
-            mitigation_method = "existing_rule"
-        else:
-            # Create rule from template
-            rule = Rule(
-                name=tmpl["name"],
-                description=f"Auto-generated to mitigate {issue.cve_id}: {tmpl['description']}",
-                rule_type=tmpl["rule_type"],
-                action=tmpl["default_action"],
-                priority=100 if tmpl.get("severity") == "critical" else 50,
-                parameters={**tmpl["default_parameters"]},
-                is_active=True,
-                tags=tmpl.get("tags", []) + ["auto-mitigation"],
-                source="template",
-                source_reference=tmpl_id,
-            )
-            db.add(rule)
-            await db.flush()
-            created_rules.append(rule.id)
-            mitigation_method = "template_rule"
-
-            # Audit log
-            audit_log = AuditLog(
-                action=AuditAction.RULE_CREATED,
-                severity="info",
-                rule_id=rule.id,
-                message=f"Rule auto-created to mitigate {issue.cve_id}",
-                new_value={"template_id": tmpl_id, "cve_id": issue.cve_id},
-            )
-            db.add(audit_log)
-
-    # Strategy 2: Infer rule type from CVE description/components
-    if not created_rules and issue.auto_generate_rules:
-        combined = " ".join([
-            issue.title or "",
-            issue.description or "",
-            " ".join(issue.affected_components or []),
-        ]).lower()
-
-        # Map keywords to rule types with sensible defaults
-        inference_map = [
-            (["websocket", "origin", "cross-site", "csrf"], RuleType.ORIGIN_VALIDATION, {
-                "allowed_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
-                "strict_mode": True,
-            }),
-            (["credential", "password", "secret", "token", "auth bypass", "authentication"], RuleType.CREDENTIAL_PROTECTION, {
-                "protected_patterns": [r"\.env$", r"\.pem$", r"\.key$", r"credentials"],
-            }),
-            (["skill", "plugin", "extension", "marketplace"], RuleType.SKILL_DENYLIST, {
-                "skills": [],
-                "auto_block_flagged": True,
-            }),
-            (["injection", "command injection", "rce", "remote code"], RuleType.COMMAND_DENYLIST, {
-                "patterns": [r";\s*", r"\|", r"`", r"\$\("],
-                "blocked_commands": ["eval", "exec"],
-            }),
-            (["exfiltration", "egress", "outbound", "data leak"], RuleType.NETWORK_EGRESS, {
-                "blocked_domains": [],
-                "allow_only_listed": False,
-            }),
-            (["file access", "path traversal", "directory traversal", "lfi"], RuleType.FILE_ACCESS, {
-                "blocked_patterns": [r"\.\./", r"/etc/passwd", r"/etc/shadow"],
-            }),
-        ]
-
-        for keywords, rule_type, default_params in inference_map:
-            if any(kw in combined for kw in keywords):
-                # Check if a similar rule type already exists
-                existing_stmt = select(Rule).where(
-                    Rule.rule_type == rule_type,
-                    Rule.is_active == True,
-                    Rule.is_deleted == False,
-                )
-                existing = (await db.execute(existing_stmt)).scalars().first()
-
-                if existing:
-                    created_rules.append(existing.id)
-                    mitigation_method = "existing_rule"
-                else:
-                    cve_label = issue.cve_id or f"issue-{str(issue_id)[:8]}"
-                    rule = Rule(
-                        name=f"Mitigate {cve_label}",
-                        description=f"Auto-generated from: {issue.title}",
-                        rule_type=rule_type,
-                        action=RuleAction.DENY,
-                        priority=100,
-                        parameters=default_params,
-                        is_active=True,
-                        tags=["auto-mitigation", "cve"],
-                        source="cve_mitigation",
-                        source_reference=str(issue_id),
-                    )
-                    db.add(rule)
-                    await db.flush()
-                    created_rules.append(rule.id)
-                    mitigation_method = "inferred_rule"
-
-                    audit_log = AuditLog(
-                        action=AuditAction.RULE_CREATED,
-                        severity="info",
-                        rule_id=rule.id,
-                        message=f"Rule auto-generated to mitigate {cve_label}",
-                        new_value={"cve_id": issue.cve_id, "rule_type": str(rule_type)},
-                    )
-                    db.add(audit_log)
-                break  # Use first matching keyword group
-
-    # Update the vulnerability record
-    issue.status = IssueStatus.MITIGATED
-    issue.mitigated_at = datetime.utcnow()
-    if created_rules:
-        issue.mitigation_rules = list(set(
-            (issue.mitigation_rules or []) + created_rules
-        ))
-    if not created_rules:
-        issue.mitigation_notes = "Reviewed and acknowledged — no auto-mitigation rule applicable."
-
+    result = await auto_mitigate_issue(db, issue_id)
     await db.commit()
-
-    # Publish SIEM events for any audit logs created
-    try:
-        from app.services.event_publisher import publish_from_audit_log as _publish
-        if audit_log:
-            asyncio.ensure_future(_publish(audit_log))
-    except Exception:
-        pass
-
-    return {
-        "status": "mitigated",
-        "id": str(issue_id),
-        "method": mitigation_method,
-        "rules_created": [str(r) for r in created_rules],
-    }
+    return result
 
 
 @router.get("/score/{agent_id}", response_model=SecurityScoreResponse)

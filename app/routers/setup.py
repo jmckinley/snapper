@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.agents import Agent, AgentStatus, TrustLevel, generate_api_key
 from app.models.rules import Rule
+from app.redis_client import get_redis, RedisClient
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
 
@@ -129,7 +130,10 @@ class SecurityProfile(BaseModel):
 
 
 @router.get("/status", response_model=SetupStatus)
-async def get_setup_status(db: AsyncSession = Depends(get_db)):
+async def get_setup_status(
+    db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
+):
     """Check if this is a first-run setup.
 
     Returns setup status including whether any agents are registered.
@@ -161,6 +165,16 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
     # Expose non-secret config for settings page
     from app.config import get_settings
     s = get_settings()
+
+    # Auto-mitigate: Redis override takes precedence over config
+    auto_mitigate = s.AUTO_MITIGATE_THREATS
+    try:
+        override = await redis.get("config:auto_mitigate_threats")
+        if override is not None:
+            auto_mitigate = override == "1"
+    except Exception:
+        pass
+
     config = {
         "deny_by_default": s.DENY_BY_DEFAULT,
         "learning_mode": s.LEARNING_MODE,
@@ -168,6 +182,7 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
         "validate_websocket_origin": s.VALIDATE_WEBSOCKET_ORIGIN,
         "require_localhost_only": s.REQUIRE_LOCALHOST_ONLY,
         "rate_limit_enabled": s.RATE_LIMIT_ENABLED,
+        "auto_mitigate_threats": auto_mitigate,
         # Boolean flags for configured channels (no secrets exposed)
         "smtp_host": bool(s.SMTP_HOST),
         "smtp_user": bool(s.SMTP_USER),
@@ -538,6 +553,26 @@ async def mark_setup_complete(db: AsyncSession = Depends(get_db)):
         )
 
     return {"status": "complete", "message": "Setup completed successfully"}
+
+
+class AutoMitigateRequest(BaseModel):
+    """Request to toggle auto-mitigation."""
+
+    enabled: bool
+
+
+@router.post("/auto-mitigate")
+async def toggle_auto_mitigate(
+    request: AutoMitigateRequest,
+    redis: RedisClient = Depends(get_redis),
+):
+    """Toggle auto-mitigation of new threat feed vulnerabilities.
+
+    Stores a runtime override in Redis so the setting takes effect
+    immediately without restarting the application.
+    """
+    await redis.set("config:auto_mitigate_threats", "1" if request.enabled else "0")
+    return {"auto_mitigate_threats": request.enabled}
 
 
 @router.post("/install-config", response_model=InstallConfigResponse)
