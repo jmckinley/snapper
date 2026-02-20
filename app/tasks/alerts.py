@@ -19,12 +19,11 @@ settings = get_settings()
 
 
 def _run_async(coro):
-    """Run async coroutine in sync Celery context."""
-    loop = asyncio.get_event_loop()
-    if loop.is_closed():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+    """Run async coroutine in sync Celery context.
+
+    Uses asyncio.run() to ensure a clean event loop in forked workers.
+    """
+    return asyncio.run(coro)
 
 
 async def _persist_alert(title, message, severity, channels, metadata):
@@ -41,19 +40,40 @@ async def _persist_alert(title, message, severity, channels, metadata):
             "info": AuditSeverity.INFO,
         }
 
-        # Extract agent_id from metadata if present
+        # Extract agent_id and org_id from metadata if present
         agent_id = None
+        org_id = None
         if metadata and metadata.get("agent_id"):
             try:
                 agent_id = UUID(metadata["agent_id"]) if isinstance(metadata["agent_id"], str) else None
             except (ValueError, TypeError):
                 pass
+        if metadata and metadata.get("organization_id"):
+            try:
+                org_id = UUID(metadata["organization_id"]) if isinstance(metadata["organization_id"], str) else None
+            except (ValueError, TypeError):
+                pass
 
         async with get_db_context() as db:
+            # Look up org from agent if not in metadata
+            if agent_id and not org_id:
+                try:
+                    from app.models.agents import Agent
+                    from sqlalchemy import select
+                    row = await db.execute(
+                        select(Agent.organization_id).where(Agent.id == agent_id)
+                    )
+                    _agent_org = row.scalar_one_or_none()
+                    if _agent_org:
+                        org_id = _agent_org
+                except Exception:
+                    pass
+
             alert = Alert(
                 alert_type="rule_enforcement",
                 severity=severity_map.get(severity, AuditSeverity.INFO),
                 agent_id=agent_id,
+                organization_id=org_id,
                 title=title,
                 message=message,
                 details=metadata or {},

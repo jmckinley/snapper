@@ -1,0 +1,105 @@
+{% extends "admin/base.html" %}
+{% block title %}Users — Admin{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Users</h1>
+    <p class="text-sm text-gray-500 mt-1">Search and manage users across all organizations.</p>
+</div>
+
+<!-- Search -->
+<div class="mb-4 flex gap-4">
+    <input type="text" id="search-input" placeholder="Search by email or username..." class="rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 w-72 border">
+    <select id="status-filter" class="rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border">
+        <option value="">All</option>
+        <option value="true">Active</option>
+        <option value="false">Suspended</option>
+    </select>
+    <button onclick="loadUsers()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm">Search</button>
+</div>
+
+<!-- Table -->
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Meta Admin</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organizations</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200" id="users-tbody"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadUsers() {
+    const search = document.getElementById('search-input').value;
+    const status = document.getElementById('status-filter').value;
+    let url = '/api/v1/meta/users?limit=100';
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (status) url += `&is_active=${status}`;
+
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) return;
+    const users = await res.json();
+    const tbody = document.getElementById('users-tbody');
+    tbody.innerHTML = users.map(u => `
+        <tr>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${u.email}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${u.username}</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${u.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                    ${u.is_active ? 'Active' : 'Suspended'}
+                </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                ${u.is_meta_admin ? '<span class="text-amber-600 font-medium">Yes</span>' : '<span class="text-gray-400">No</span>'}
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-500">${u.organizations.join(', ') || '—'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                ${u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : 'Never'}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                <button onclick="toggleUser('${u.id}', ${u.is_active})" class="text-${u.is_active ? 'red' : 'green'}-600 hover:underline">
+                    ${u.is_active ? 'Suspend' : 'Activate'}
+                </button>
+                <button onclick="forcePasswordReset('${u.id}')" class="text-amber-600 hover:underline">Force Reset</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No users found</td></tr>';
+}
+
+async function toggleUser(userId, isActive) {
+    const action = isActive ? 'suspend' : 'activate';
+    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} this user?`)) return;
+    const res = await fetch(`/api/v1/meta/users/${userId}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !isActive })
+    });
+    if (res.ok) loadUsers();
+    else alert('Failed');
+}
+
+async function forcePasswordReset(userId) {
+    if (!confirm('Force password reset for this user?')) return;
+    const res = await fetch(`/api/v1/meta/users/${userId}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ require_password_change: true })
+    });
+    if (res.ok) alert('Password reset flag set');
+    else alert('Failed');
+}
+
+document.getElementById('search-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadUsers(); });
+loadUsers();
+</script>
+{% endblock %}

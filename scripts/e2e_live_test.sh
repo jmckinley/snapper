@@ -1873,6 +1873,214 @@ assert_gt "$VIOLATION_COUNT" "0" "6.4 Policy violations recorded ($VIOLATION_COU
 
 
 # ============================================================
+# Phase 7: Approval Automation & Suggestions
+# ============================================================
+echo ""
+echo -e "${BOLD}=== Phase 7: Approval Automation & Suggestions ===${NC}"
+
+# Flush rate keys before this phase
+flush_rate_keys
+sleep 2
+
+# 7a. Create HUMAN_IN_LOOP rule for test agent
+log "7a Creating human_in_loop rule for approval testing..."
+HITL_RULE_ID=$(create_rule "{
+    \"name\": \"E2E Approve Destructive\",
+    \"agent_id\": \"${AGENT_UUID}\",
+    \"rule_type\": \"human_in_loop\",
+    \"action\": \"require_approval\",
+    \"priority\": 50,
+    \"parameters\": {\"patterns\": [\"^(rm|drop|delete|truncate)\\\\b\"]},
+    \"is_active\": true
+}")
+TOTAL=$((TOTAL + 1))
+if [[ -n "$HITL_RULE_ID" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7a HITL rule created ($HITL_RULE_ID)"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 7a Failed to create HITL rule"
+fi
+
+# 7b. Send command that triggers require_approval
+log "7b Triggering require_approval..."
+sleep 1
+EVAL_RESP=$(evaluate "{
+    \"agent_id\": \"${AGENT_UUID}\",
+    \"request_type\": \"command\",
+    \"command\": \"rm -rf /tmp/e2e-test\"
+}")
+EVAL_DECISION=$(echo "$EVAL_RESP" | jq -r '.decision // empty')
+APPROVAL_ID=$(echo "$EVAL_RESP" | jq -r '.approval_request_id // empty')
+TOTAL=$((TOTAL + 1))
+if [[ "$EVAL_DECISION" == "require_approval" ]] && [[ -n "$APPROVAL_ID" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7b require_approval triggered (id=$APPROVAL_ID)"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 7b Expected require_approval, got $EVAL_DECISION"
+fi
+
+# 7c. Verify /pending returns the approval
+if [[ -n "$APPROVAL_ID" ]]; then
+    log "7c Checking /pending..."
+    sleep 1
+    PENDING_RESP=$(api_curl "${API}/approvals/pending" \
+        -H "X-API-Key: ${AGENT_API_KEY}")
+    PENDING_IDS=$(echo "$PENDING_RESP" | jq -r '.pending[]?.id // empty')
+    TOTAL=$((TOTAL + 1))
+    if echo "$PENDING_IDS" | grep -q "$APPROVAL_ID"; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 7c Approval found in /pending"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 7c Approval $APPROVAL_ID not in /pending"
+    fi
+
+    # 7d. Approve via /decide
+    log "7d Approving via /decide..."
+    DECIDE_RESP=$(curl -sf -X POST "${API}/approvals/${APPROVAL_ID}/decide" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: ${AGENT_API_KEY}" \
+        -d '{"decision": "approve", "reason": "E2E test approval"}' 2>/dev/null)
+    DECIDE_STATUS=$(echo "$DECIDE_RESP" | jq -r '.status // empty')
+    TOTAL=$((TOTAL + 1))
+    if [[ "$DECIDE_STATUS" == "approved" ]]; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 7d Approval decided: approved"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 7d Expected approved, got $DECIDE_STATUS"
+    fi
+
+    # 7e. Verify /status shows approved
+    log "7e Checking /status..."
+    sleep 1
+    STATUS_RESP=$(api_curl "${API}/approvals/${APPROVAL_ID}/status")
+    STATUS_VAL=$(echo "$STATUS_RESP" | jq -r '.status // empty')
+    TOTAL=$((TOTAL + 1))
+    if [[ "$STATUS_VAL" == "approved" ]]; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 7e Status shows approved"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 7e Expected approved status, got $STATUS_VAL"
+    fi
+else
+    # Skip 7c-7e if approval wasn't created
+    log "Skipping 7c-7e (no approval ID)"
+fi
+
+# 7f. Verify 409 on double-decide
+if [[ -n "$APPROVAL_ID" ]]; then
+    log "7f Testing double-decide (409)..."
+    DOUBLE_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API}/approvals/${APPROVAL_ID}/decide" \
+        "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: ${AGENT_API_KEY}" \
+        -d '{"decision": "deny"}' 2>/dev/null)
+    TOTAL=$((TOTAL + 1))
+    if [[ "$DOUBLE_RESP" == "409" ]]; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 7f Double-decide returns 409"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 7f Expected 409, got $DOUBLE_RESP"
+    fi
+fi
+
+# 7g. Verify 410 on expired/missing approval
+log "7g Testing 410 for missing approval..."
+MISSING_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API}/approvals/nonexistent-12345/decide" \
+    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${AGENT_API_KEY}" \
+    -d '{"decision": "approve"}' 2>/dev/null)
+TOTAL=$((TOTAL + 1))
+if [[ "$MISSING_RESP" == "410" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7g Missing approval returns 410"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 7g Expected 410, got $MISSING_RESP"
+fi
+
+# 7h. Non-matching command goes through without approval
+log "7h Testing non-matching command (should allow)..."
+flush_rate_keys
+sleep 1
+SAFE_RESP=$(evaluate "{
+    \"agent_id\": \"${AGENT_UUID}\",
+    \"request_type\": \"command\",
+    \"command\": \"echo hello world\"
+}")
+SAFE_DECISION=$(echo "$SAFE_RESP" | jq -r '.decision // empty')
+TOTAL=$((TOTAL + 1))
+if [[ "$SAFE_DECISION" == "allow" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7h Non-matching command allowed"
+elif [[ "$SAFE_DECISION" == "deny" ]] && [[ "$LEARNING_MODE_ON" == "true" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7h Non-matching command (learning mode)"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 7h Expected allow, got $SAFE_DECISION"
+fi
+
+# 7i. Suggestions API returns recommendations
+log "7i Testing suggestions API..."
+sleep 1
+SUGGESTIONS_RESP=$(api_curl "${API}/suggestions")
+TOTAL=$((TOTAL + 1))
+if echo "$SUGGESTIONS_RESP" | jq -e '. | type == "array"' >/dev/null 2>&1; then
+    SUGGESTION_COUNT=$(echo "$SUGGESTIONS_RESP" | jq 'length')
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7i Suggestions API returns array ($SUGGESTION_COUNT items)"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 7i Suggestions API did not return array"
+fi
+
+# 7j. Suggestions have required fields
+TOTAL=$((TOTAL + 1))
+if [[ "$SUGGESTION_COUNT" -gt 0 ]] 2>/dev/null; then
+    FIRST_HAS_FIELDS=$(echo "$SUGGESTIONS_RESP" | jq -e '.[0] | has("id", "title", "severity", "action_url")' 2>/dev/null)
+    if [[ "$?" -eq 0 ]]; then
+        PASS=$((PASS + 1))
+        echo -e "  ${GREEN}PASS${NC} 7j Suggestions have required fields"
+    else
+        FAIL=$((FAIL + 1))
+        echo -e "  ${RED}FAIL${NC} 7j Suggestions missing required fields"
+    fi
+else
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7j No suggestions to validate (acceptable)"
+fi
+
+# 7k. Dismiss a suggestion
+TOTAL=$((TOTAL + 1))
+DISMISS_RESP=$(curl -sf -X POST "${API}/suggestions/test-dismiss-id/dismiss" \
+    "${CURL_HOST_ARGS[@]+"${CURL_HOST_ARGS[@]}"}" \
+    -H "Content-Type: application/json" 2>/dev/null)
+DISMISS_STATUS=$(echo "$DISMISS_RESP" | jq -r '.status // empty')
+if [[ "$DISMISS_STATUS" == "dismissed" ]]; then
+    PASS=$((PASS + 1))
+    echo -e "  ${GREEN}PASS${NC} 7k Suggestion dismiss returns ok"
+else
+    FAIL=$((FAIL + 1))
+    echo -e "  ${RED}FAIL${NC} 7k Expected dismissed status, got: $DISMISS_STATUS"
+fi
+
+# Clean up HITL rule
+if [[ -n "$HITL_RULE_ID" ]]; then
+    delete_rule "$HITL_RULE_ID"
+    # Remove from CREATED_RULES to avoid double-delete in cleanup
+    CREATED_RULES=("${CREATED_RULES[@]/$HITL_RULE_ID/}")
+fi
+
+
+# ============================================================
 # Summary (printed by cleanup trap)
 # ============================================================
 echo ""

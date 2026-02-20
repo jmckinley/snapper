@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: Optional[str] = None
     CLAWHUB_API_URL: str = "https://api.clawhub.io/v1"
 
+    # Base URL for email links (password reset, invitations)
+    BASE_URL: str = "https://app.snapperprotect.com"
+
     # Alerting
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587
@@ -105,9 +108,71 @@ class Settings(BaseSettings):
     PII_VAULT_TOKEN_TTL_SECONDS: int = 30  # Resolved value Redis TTL (one-time retrieval)
     REQUIRE_VAULT_AUTH: bool = False  # Require API key or internal source for vault writes
 
+    # Account lockout
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_DURATION_MINUTES: int = 30
+
+    # Audit retention
+    AUDIT_RETENTION_DAYS: int = 90
+
+    # Authentication (JWT)
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Multi-tenancy
+    SELF_HOSTED: bool = False  # When true, bypasses all plan limits
+    REGISTRATION_ENABLED: bool = True
+
+    # Meta Admin
+    META_ADMIN_ENABLED: bool = True
+    META_ADMIN_IMPERSONATION_TIMEOUT_MINUTES: int = 60
+
+    # Stripe billing
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_PRICE_PRO_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_PRO_YEARLY: Optional[str] = None
+
+    # Threat Detection
+    THREAT_DETECTION_ENABLED: bool = True
+    AUTO_MITIGATE_THREATS: bool = True  # Auto-mitigate new CVEs from threat feeds
+    SECURITY_FEEDS_ENABLED: bool = True  # Disable for air-gapped deployments
+    THREAT_DENY_THRESHOLD: float = 80.0
+    THREAT_APPROVAL_THRESHOLD: float = 60.0
+    THREAT_ALERT_THRESHOLD: float = 40.0
+    THREAT_AUTO_QUARANTINE: bool = False
+    THREAT_SIGNAL_STREAM_MAXLEN: int = 10000
+    THREAT_BASELINE_WINDOW_DAYS: int = 7
+    THREAT_SCORE_TTL_SECONDS: int = 300
+
+    # AI Threat Review
+    THREAT_AI_REVIEW_ENABLED: bool = False  # Requires ANTHROPIC_API_KEY
+    ANTHROPIC_API_KEY: Optional[str] = None
+    THREAT_AI_MODEL: str = "claude-sonnet-4-5-20250929"
+    THREAT_AI_REVIEW_INTERVAL_SECONDS: int = 900  # 15 minutes
+    THREAT_AI_MAX_EVENTS_PER_REVIEW: int = 50
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
+
+    # SIEM Integration
+    SIEM_OUTPUT: str = "none"  # none | syslog | webhook | splunk | both | all
+    SIEM_SYSLOG_HOST: Optional[str] = None
+    SIEM_SYSLOG_PORT: int = 514
+    SIEM_SYSLOG_PROTOCOL: str = "udp"  # udp | tcp
+    SIEM_WEBHOOK_URL: Optional[str] = None
+    SIEM_WEBHOOK_SECRET: Optional[str] = None
+    SIEM_SPLUNK_HEC_URL: Optional[str] = None
+    SIEM_SPLUNK_HEC_TOKEN: Optional[str] = None
+    SIEM_SPLUNK_INDEX: str = "main"
+    SIEM_SPLUNK_SOURCETYPE: str = "snapper:security"
+    SIEM_SPLUNK_VERIFY_SSL: bool = True
+
+    # Prometheus Metrics
+    METRICS_ENABLED: bool = True
 
     @property
     def allowed_origins_list(self) -> List[str]:

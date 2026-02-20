@@ -3,6 +3,7 @@
 @description Telegram bot webhook for approval handling and rule testing.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -19,6 +20,7 @@ from app.config import get_settings
 from app.database import async_session_factory
 from app.dependencies import telegram_webhook_rate_limit
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
+from app.services.event_publisher import publish_from_audit_log
 from app.models.rules import Rule, RuleType, RuleAction
 
 logger = logging.getLogger(__name__)
@@ -293,6 +295,7 @@ async def telegram_webhook(request: Request):
                     )
                     db.add(audit_log)
                     await db.commit()
+                    asyncio.ensure_future(publish_from_audit_log(audit_log))
 
                 await _answer_callback(callback_id=callback_id, text=f"Deleted {deleted_count} entries")
                 if cb_chat_id and cb_message_id:
@@ -623,10 +626,12 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
                 "action": action,
                 "approved_by": approved_by,
                 "channel": "telegram",
+                "decision_source": "human",
             },
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {"status": "processed", "success": True, "action": action, "request_id": request_id}
 
@@ -1068,6 +1073,7 @@ async def _handle_unblock_command(chat_id: int, message: dict):
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     await _send_message(
         chat_id=chat_id,
@@ -1152,6 +1158,7 @@ async def _activate_emergency_block(chat_id: int, username: str) -> dict:
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {"rule_id": str(rule_ids[0]) if rule_ids else "unknown", "status": "activated"}
 
@@ -1239,6 +1246,7 @@ async def _create_allow_rule_from_context(context_json: str, username: str) -> d
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {
         "message": f"Rule created: *{rule_name}*\n\nType: {rule_type.value}\nPriority: 500",
@@ -1517,6 +1525,7 @@ async def _handle_vault_value_reply(chat_id: int, text: str, message: dict, user
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     await redis_client.delete(f"vault_pending:{user_chat_id}")
 
@@ -1699,6 +1708,7 @@ async def _handle_pii_command(chat_id: int, text: str, message: dict):
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
         mode_emoji = "🛡️" if subcommand == "protected" else "⚡"
         if subcommand == "protected":
@@ -1995,6 +2005,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                 )
                 db.add(audit_log)
                 await db.commit()
+                asyncio.ensure_future(publish_from_audit_log(audit_log))
                 await _send_message(chat_id=chat_id, text=f"🗑️ Vault entry *{entry.label}* deleted.")
             else:
                 await _send_message(chat_id=chat_id, text="Failed to delete entry. You may not own it.")
@@ -2095,6 +2106,7 @@ async def _handle_vault_command(chat_id: int, text: str, message: dict):
                 )
                 db.add(audit_log)
                 await db.commit()
+                asyncio.ensure_future(publish_from_audit_log(audit_log))
 
             # Clean up pending state
             await redis_client.delete(f"vault_pending:{user_chat_id}")
@@ -2334,6 +2346,7 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
             )
             db.add(purge_log)
             await db.commit()
+            asyncio.ensure_future(publish_from_audit_log(purge_log))
 
         return {
             "message": (
@@ -2403,6 +2416,7 @@ async def _execute_pii_purge(agent_id_partial: str, username: str) -> dict:
         )
         db.add(purge_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(purge_log))
 
     # Clear Redis cache for this agent
     cache_keys_deleted = 0

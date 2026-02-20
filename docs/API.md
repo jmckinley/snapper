@@ -1,5 +1,7 @@
 # API Documentation
 
+> **Looking for the stable public API reference?** See [PUBLIC-API.md](PUBLIC-API.md) for the v1.0 public API surface (~35 endpoints) with versioning, rate limit headers, and SDK examples.
+
 Snapper provides a RESTful API for managing agents, rules, and evaluating requests.
 
 **Base URL:** `http://localhost:8000/api/v1`
@@ -259,7 +261,7 @@ Response:
 }
 ```
 
-The `token` is what agents use in place of raw PII. The raw value is encrypted at rest with Fernet (AES-128-CBC) and never returned via API.
+The `token` is what agents use in place of raw PII. The raw value is encrypted at rest with AES-256-GCM and never returned via API.
 
 #### Supported PII Categories
 
@@ -332,6 +334,104 @@ curl "http://localhost:8000/api/v1/audit/logs?page=1&page_size=50"
 | GET | `/api/v1/security/recommendations` | Get security recommendations |
 | POST | `/api/v1/security/recommendations/{id}/apply` | Apply recommendation |
 | GET | `/api/v1/security/threat-feed` | Get threat feed updates |
+
+### Threat Detection
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/threats` | List threat events (paginated, filterable) |
+| GET | `/api/v1/threats/summary` | Dashboard widget statistics |
+| GET | `/api/v1/threats/{threat_id}` | Get single threat event |
+| POST | `/api/v1/threats/{threat_id}/resolve` | Resolve or mark as false positive |
+| GET | `/api/v1/threats/scores/live` | Live threat scores from Redis |
+
+#### List Threat Events
+
+```bash
+curl "http://localhost:8000/api/v1/threats?severity=high&status=active&page=1&page_size=20"
+```
+
+Query parameters:
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `agent_id` | UUID | -- | Filter by agent |
+| `severity` | string | -- | Filter: `critical`, `high`, `medium`, `low` |
+| `threat_type` | string | -- | Filter by type (e.g., `data_exfiltration`, `credential_theft`) |
+| `status` | string | -- | Filter: `active`, `investigating`, `resolved`, `false_positive` |
+| `page` | int | 1 | Page number |
+| `page_size` | int | 20 | Items per page (max 100) |
+
+Response: `{ items: ThreatEvent[], total, page, page_size, pages }`
+
+#### Get Threat Summary
+
+Returns dashboard widget statistics: active threat counts by severity, resolved in last 24h, agents affected, top threat types.
+
+```bash
+curl http://localhost:8000/api/v1/threats/summary
+```
+
+Response:
+```json
+{
+  "active_count": 5,
+  "critical_count": 1,
+  "high_count": 2,
+  "medium_count": 1,
+  "low_count": 1,
+  "resolved_24h": 3,
+  "agents_affected": 2,
+  "top_threat_types": [
+    {"threat_type": "data_exfiltration", "count": 2}
+  ]
+}
+```
+
+#### Get Single Threat Event
+
+```bash
+curl http://localhost:8000/api/v1/threats/{threat_id}
+```
+
+Returns a single threat event with agent name enrichment.
+
+#### Resolve Threat Event
+
+Mark a threat as resolved or false positive.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/threats/{threat_id}/resolve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "resolved",
+    "resolution_notes": "Investigated - legitimate batch processing"
+  }'
+```
+
+`status` must be `resolved` or `false_positive`.
+
+#### Live Threat Scores
+
+Returns current threat scores for all agents from Redis (only agents with non-zero scores). Scores have a 300-second TTL.
+
+```bash
+curl http://localhost:8000/api/v1/threats/scores/live
+```
+
+Response:
+```json
+[
+  {
+    "agent_id": "uuid",
+    "agent_name": "my-agent",
+    "threat_score": 42.5,
+    "threat_level": "medium"
+  }
+]
+```
+
+Threat levels: `none` (0), `low` (<40), `medium` (<60), `high` (<80), `critical` (>=80).
 
 ### Approvals
 
@@ -683,3 +783,96 @@ Webhook payload:
   }
 }
 ```
+
+---
+
+## Authentication (SSO)
+
+### SAML 2.0
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/saml/metadata/{org_slug}` | SP metadata XML |
+| `GET` | `/auth/saml/login/{org_slug}` | Initiate SAML login |
+| `POST` | `/auth/saml/acs/{org_slug}` | Assertion Consumer Service (callback) |
+
+### OIDC
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/oidc/login/{org_slug}` | Redirect to IdP |
+| `GET` | `/auth/oidc/callback/{org_slug}` | Handle IdP callback |
+
+---
+
+## SCIM 2.0
+
+Base path: `/scim/v2`
+
+Authentication: `Authorization: Bearer <scim_token>`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/Users` | List users (supports `filter`, `startIndex`, `count`) |
+| `GET` | `/Users/{id}` | Get user |
+| `POST` | `/Users` | Create user |
+| `PUT` | `/Users/{id}` | Replace user |
+| `PATCH` | `/Users/{id}` | Update user |
+| `DELETE` | `/Users/{id}` | Deactivate user |
+
+Filter examples:
+- `?filter=userName eq "user@example.com"`
+- `?startIndex=1&count=10`
+
+---
+
+## Policy Export/Import
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/rules/export` | Export rules (JSON or YAML) |
+| `POST` | `/api/v1/rules/import` | Import rules |
+| `POST` | `/api/v1/rules/sync` | Sync from YAML (GitOps) |
+
+Export request:
+```json
+{
+  "format": "yaml",
+  "agent_id": "uuid (optional)",
+  "include_global": true
+}
+```
+
+Import request:
+```json
+{
+  "rules": [...],
+  "overwrite_existing": false,
+  "dry_run": true
+}
+```
+
+---
+
+## Metrics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/metrics` | Prometheus-format metrics |
+
+Returns text/plain with counters, histograms, and gauges for HTTP requests, rule evaluations, PII operations, and active agents.
+
+---
+
+## Organizations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/orgs` | List user's organizations |
+| `POST` | `/api/v1/orgs` | Create organization |
+| `GET` | `/api/v1/orgs/{id}` | Get organization details |
+| `PUT` | `/api/v1/orgs/{id}` | Update organization |
+| `GET` | `/api/v1/orgs/{id}/members` | List members |
+| `POST` | `/api/v1/orgs/{id}/invite` | Invite member by email |
+| `PUT` | `/api/v1/orgs/{id}/members/{user_id}` | Update member role |
+| `DELETE` | `/api/v1/orgs/{id}/members/{user_id}` | Remove member |

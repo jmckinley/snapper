@@ -378,6 +378,98 @@ class RedisClient:
 
         return await self._circuit_breaker.call(_zrem)
 
+    async def zremrangebyscore(self, name: str, min_score, max_score) -> int:
+        """Remove sorted set members with scores between min and max."""
+
+        async def _zremrangebyscore():
+            return await self._client.zremrangebyscore(name, min_score, max_score)
+
+        return await self._circuit_breaker.call(_zremrangebyscore)
+
+    async def zcard(self, name: str) -> int:
+        """Get the number of members in a sorted set."""
+
+        async def _zcard():
+            return await self._client.zcard(name)
+
+        return await self._circuit_breaker.call(_zcard)
+
+    async def hincrby(self, name: str, key: str, amount: int = 1) -> int:
+        """Increment hash field by amount."""
+
+        async def _hincrby():
+            return await self._client.hincrby(name, key, amount)
+
+        return await self._circuit_breaker.call(_hincrby)
+
+    async def hexists(self, name: str, key: str) -> bool:
+        """Check if hash field exists."""
+
+        async def _hexists():
+            return await self._client.hexists(name, key)
+
+        return await self._circuit_breaker.call(_hexists)
+
+    async def xadd(
+        self, name: str, fields: dict, maxlen: Optional[int] = None, approximate: bool = True
+    ) -> str:
+        """Add entry to a Redis Stream."""
+
+        async def _xadd():
+            return await self._client.xadd(name, fields, maxlen=maxlen, approximate=approximate)
+
+        return await self._circuit_breaker.call(_xadd)
+
+    async def xreadgroup(
+        self,
+        groupname: str,
+        consumername: str,
+        streams: dict,
+        count: Optional[int] = None,
+        block: Optional[int] = None,
+    ) -> list:
+        """Read from a stream as part of a consumer group."""
+
+        async def _xreadgroup():
+            return await self._client.xreadgroup(
+                groupname, consumername, streams, count=count, block=block
+            )
+
+        return await self._circuit_breaker.call(_xreadgroup)
+
+    async def xgroup_create(
+        self, name: str, groupname: str, id: str = "0", mkstream: bool = True
+    ) -> bool:
+        """Create a consumer group. Safe if group already exists."""
+
+        async def _xgroup_create():
+            try:
+                return await self._client.xgroup_create(
+                    name, groupname, id=id, mkstream=mkstream
+                )
+            except Exception as e:
+                if "BUSYGROUP" in str(e):
+                    return True  # Group already exists
+                raise
+
+        return await self._circuit_breaker.call(_xgroup_create)
+
+    async def xack(self, name: str, groupname: str, *ids: str) -> int:
+        """Acknowledge stream messages."""
+
+        async def _xack():
+            return await self._client.xack(name, groupname, *ids)
+
+        return await self._circuit_breaker.call(_xack)
+
+    async def xlen(self, name: str) -> int:
+        """Get stream length."""
+
+        async def _xlen():
+            return await self._client.xlen(name)
+
+        return await self._circuit_breaker.call(_xlen)
+
     @property
     def circuit_state(self) -> CircuitState:
         """Get current circuit breaker state."""

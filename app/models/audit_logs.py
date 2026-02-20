@@ -7,6 +7,7 @@ from typing import Optional
 
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
     Index,
     String,
     Text,
@@ -63,8 +64,33 @@ class AuditAction(str, Enum):
     # User actions
     USER_LOGIN = "user_login"
     USER_LOGOUT = "user_logout"
+    USER_REGISTERED = "user_registered"
+    USER_LOGIN_FAILED = "user_login_failed"
+    USER_LOCKED = "user_locked"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
+
+    # Organization actions
+    ORG_CREATED = "org_created"
+    ORG_UPDATED = "org_updated"
+    ORG_DELETED = "org_deleted"
+    ORG_MEMBER_INVITED = "org_member_invited"
+    ORG_MEMBER_REMOVED = "org_member_removed"
+    ORG_SWITCHED = "org_switched"
+
+    # Key management
+    API_KEY_ROTATED = "api_key_rotated"
+    VAULT_KEY_ROTATED = "vault_key_rotated"
+
+    # MFA
+    MFA_ENABLED = "mfa_enabled"
+    MFA_DISABLED = "mfa_disabled"
+
+    # User management
+    USER_UNLOCKED = "user_unlocked"
+    PASSWORD_CHANGED = "password_changed"
+    PROFILE_UPDATED = "profile_updated"
+    SESSION_REVOKED = "session_revoked"
 
     # PII Vault events
     PII_VAULT_CREATED = "pii_vault_created"
@@ -73,6 +99,21 @@ class AuditAction(str, Enum):
     PII_GATE_TRIGGERED = "pii_gate_triggered"
     PII_SUBMISSION_APPROVED = "pii_submission_approved"
     PII_SUBMISSION_DENIED = "pii_submission_denied"
+
+    # Meta admin events
+    META_IMPERSONATION_START = "meta_impersonation_start"
+    META_IMPERSONATION_STOP = "meta_impersonation_stop"
+    META_ORG_PROVISIONED = "meta_org_provisioned"
+    META_PLAN_CHANGED = "meta_plan_changed"
+    META_FEATURE_FLAG_CHANGED = "meta_feature_flag_changed"
+
+    # Threat detection events
+    THREAT_DETECTED = "threat_detected"
+    THREAT_SCORE_ELEVATED = "threat_score_elevated"
+    THREAT_KILL_CHAIN_COMPLETED = "threat_kill_chain_completed"
+    THREAT_AGENT_QUARANTINED = "threat_agent_quarantined"
+    THREAT_RESOLVED = "threat_resolved"
+    THREAT_FALSE_POSITIVE = "threat_false_positive"
 
 
 class AuditSeverity(str, Enum):
@@ -100,6 +141,15 @@ class AuditLog(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    # Organization scoping
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Organization this audit log belongs to",
     )
 
     # Event classification
@@ -201,6 +251,23 @@ class AuditLog(Base):
     def __repr__(self) -> str:
         return f"<AuditLog(id={self.id}, action={self.action}, severity={self.severity})>"
 
+    def to_cef(self) -> str:
+        """Format this audit log entry as a CEF string for SIEM integration."""
+        from app.services.event_publisher import format_cef
+
+        return format_cef(
+            action=self.action if isinstance(self.action, str) else self.action.value,
+            severity=self.severity if isinstance(self.severity, str) else self.severity.value,
+            message=self.message or "",
+            agent_id=str(self.agent_id) if self.agent_id else None,
+            rule_id=str(self.rule_id) if self.rule_id else None,
+            ip_address=self.ip_address,
+            user_id=str(self.user_id) if self.user_id else None,
+            request_id=self.request_id,
+            details=self.details,
+            timestamp=self.created_at,
+        )
+
 
 class PolicyViolation(Base):
     """
@@ -243,6 +310,12 @@ class PolicyViolation(Base):
     audit_log_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
+    )
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Violation details
@@ -336,6 +409,12 @@ class Alert(Base):
     violation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
+    )
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Alert content

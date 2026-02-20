@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, verify_resource_org
 from app.models.rules import Rule, RuleAction, RuleType
 from app.models.security_issues import (
     IssueSeverity,
@@ -47,6 +47,7 @@ router = APIRouter(prefix="/security", dependencies=[Depends(default_rate_limit)
 @router.get("/vulnerabilities", response_model=SecurityIssueListResponse)
 async def list_vulnerabilities(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     severity: Optional[IssueSeverity] = None,
@@ -105,6 +106,7 @@ async def list_vulnerabilities(
 async def get_vulnerability(
     issue_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get vulnerability details."""
     stmt = select(SecurityIssue).where(SecurityIssue.id == issue_id)
@@ -232,6 +234,7 @@ async def analyze_skill(
 @router.get("/recommendations", response_model=RecommendationListResponse)
 async def list_recommendations(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     agent_id: Optional[UUID] = None,
@@ -241,6 +244,13 @@ async def list_recommendations(
 ):
     """List security recommendations."""
     stmt = select(SecurityRecommendation)
+
+    # Org scoping
+    if org_id:
+        stmt = stmt.where(
+            (SecurityRecommendation.organization_id == org_id)
+            | (SecurityRecommendation.organization_id == None)
+        )
 
     if agent_id:
         stmt = stmt.where(
@@ -261,18 +271,28 @@ async def list_recommendations(
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await db.execute(count_stmt)).scalar() or 0
 
-    pending_stmt = select(func.count()).select_from(SecurityRecommendation).where(
+    pending_base = select(func.count()).select_from(SecurityRecommendation).where(
         SecurityRecommendation.is_applied == False,
         SecurityRecommendation.is_dismissed == False,
     )
-    pending_count = (await db.execute(pending_stmt)).scalar() or 0
+    if org_id:
+        pending_base = pending_base.where(
+            (SecurityRecommendation.organization_id == org_id)
+            | (SecurityRecommendation.organization_id == None)
+        )
+    pending_count = (await db.execute(pending_base)).scalar() or 0
 
-    high_impact_stmt = select(func.count()).select_from(SecurityRecommendation).where(
+    high_impact_base = select(func.count()).select_from(SecurityRecommendation).where(
         SecurityRecommendation.is_applied == False,
         SecurityRecommendation.is_dismissed == False,
         SecurityRecommendation.impact_score >= 20,
     )
-    high_impact_count = (await db.execute(high_impact_stmt)).scalar() or 0
+    if org_id:
+        high_impact_base = high_impact_base.where(
+            (SecurityRecommendation.organization_id == org_id)
+            | (SecurityRecommendation.organization_id == None)
+        )
+    high_impact_count = (await db.execute(high_impact_base)).scalar() or 0
 
     # Apply pagination
     stmt = stmt.order_by(
@@ -304,6 +324,7 @@ async def apply_recommendation(
     recommendation_id: UUID,
     request: ApplyRecommendationRequest,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Apply a security recommendation."""
     stmt = select(SecurityRecommendation).where(
@@ -316,6 +337,8 @@ async def apply_recommendation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Recommendation {recommendation_id} not found",
         )
+
+    await verify_resource_org(recommendation.organization_id, org_id)
 
     if recommendation.is_applied:
         raise HTTPException(
@@ -349,6 +372,7 @@ async def apply_recommendation(
                     name=rule_config.get("name", f"From recommendation: {recommendation.title}"),
                     description=rule_config.get("description", recommendation.description),
                     agent_id=recommendation.agent_id,
+                    organization_id=recommendation.organization_id or org_id,
                     rule_type=rule_type,
                     action=RuleAction(rule_config.get("action", "deny")),
                     priority=rule_config.get("priority", 100),
@@ -373,6 +397,7 @@ async def apply_recommendation(
                 name=f"From recommendation: {recommendation.title}",
                 description=recommendation.description,
                 agent_id=recommendation.agent_id,
+                organization_id=recommendation.organization_id or org_id,
                 rule_type=rule_type,
                 action=RuleAction.DENY,
                 priority=100,
@@ -403,6 +428,7 @@ async def dismiss_recommendation(
     recommendation_id: UUID,
     request: DismissRecommendationRequest,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Dismiss a security recommendation."""
     stmt = select(SecurityRecommendation).where(
@@ -415,6 +441,8 @@ async def dismiss_recommendation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Recommendation {recommendation_id} not found",
         )
+
+    await verify_resource_org(recommendation.organization_id, org_id)
 
     recommendation.is_dismissed = True
     await db.commit()
@@ -459,6 +487,7 @@ def _infer_rule_type_from_recommendation(
 async def mitigate_vulnerability(
     issue_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Mitigate a vulnerability by auto-generating protective rules when possible.
@@ -467,9 +496,12 @@ async def mitigate_vulnerability(
     1. Match a CVE-specific rule template and create the rule
     2. Infer a rule type from the CVE's components/description and generate one
     3. Fall back to marking as reviewed (no rule generated)
-    """
-    from app.routers.rules import RULE_TEMPLATES
 
+    In multi-tenant mode, creates per-org mitigation record via OrgIssueMitigation.
+    """
+    from app.services.security_monitor import auto_mitigate_issue
+
+    # Verify the issue exists before delegating
     stmt = select(SecurityIssue).where(SecurityIssue.id == issue_id)
     issue = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -479,159 +511,36 @@ async def mitigate_vulnerability(
             detail=f"Vulnerability {issue_id} not found",
         )
 
-    created_rules = []
-    mitigation_method = "reviewed"
+    result = await auto_mitigate_issue(db, issue_id, org_id=org_id)
 
-    # Strategy 1: Match a CVE-specific template by cve_id
-    matched_template = None
-    if issue.cve_id:
-        cve_slug = issue.cve_id.lower().replace(":", "-")
-        for tmpl_id, tmpl in RULE_TEMPLATES.items():
-            if cve_slug in tmpl_id or tmpl_id in cve_slug:
-                matched_template = (tmpl_id, tmpl)
-                break
-            # Also check if CVE is in the template's tags
-            if issue.cve_id.lower() in [t.lower() for t in tmpl.get("tags", [])]:
-                matched_template = (tmpl_id, tmpl)
-                break
+    # Create/update per-org mitigation record
+    if org_id:
+        from app.models.org_issue_mitigation import OrgIssueMitigation
+        existing_mit = (await db.execute(
+            select(OrgIssueMitigation).where(
+                OrgIssueMitigation.organization_id == org_id,
+                OrgIssueMitigation.issue_id == issue_id,
+            )
+        )).scalar_one_or_none()
 
-    if matched_template:
-        tmpl_id, tmpl = matched_template
-        # Check if rule from this template already exists
-        existing_stmt = select(Rule).where(
-            Rule.source == "template",
-            Rule.source_reference == tmpl_id,
-            Rule.is_deleted == False,
-        )
-        existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+        rule_ids = [str(r) for r in result.get("rules_created", [])]
 
-        if existing:
-            # Template already applied — link it
-            created_rules.append(existing.id)
-            mitigation_method = "existing_rule"
+        if existing_mit:
+            existing_mit.status = "mitigated"
+            existing_mit.mitigated_at = datetime.utcnow()
+            existing_mit.rule_ids = rule_ids
         else:
-            # Create rule from template
-            rule = Rule(
-                name=tmpl["name"],
-                description=f"Auto-generated to mitigate {issue.cve_id}: {tmpl['description']}",
-                rule_type=tmpl["rule_type"],
-                action=tmpl["default_action"],
-                priority=100 if tmpl.get("severity") == "critical" else 50,
-                parameters={**tmpl["default_parameters"]},
-                is_active=True,
-                tags=tmpl.get("tags", []) + ["auto-mitigation"],
-                source="template",
-                source_reference=tmpl_id,
+            mit = OrgIssueMitigation(
+                organization_id=org_id,
+                issue_id=issue_id,
+                status="mitigated",
+                mitigated_at=datetime.utcnow(),
+                rule_ids=rule_ids,
             )
-            db.add(rule)
-            await db.flush()
-            created_rules.append(rule.id)
-            mitigation_method = "template_rule"
-
-            # Audit log
-            audit_log = AuditLog(
-                action=AuditAction.RULE_CREATED,
-                severity="info",
-                rule_id=rule.id,
-                message=f"Rule auto-created to mitigate {issue.cve_id}",
-                new_value={"template_id": tmpl_id, "cve_id": issue.cve_id},
-            )
-            db.add(audit_log)
-
-    # Strategy 2: Infer rule type from CVE description/components
-    if not created_rules and issue.auto_generate_rules:
-        combined = " ".join([
-            issue.title or "",
-            issue.description or "",
-            " ".join(issue.affected_components or []),
-        ]).lower()
-
-        # Map keywords to rule types with sensible defaults
-        inference_map = [
-            (["websocket", "origin", "cross-site", "csrf"], RuleType.ORIGIN_VALIDATION, {
-                "allowed_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
-                "strict_mode": True,
-            }),
-            (["credential", "password", "secret", "token", "auth bypass", "authentication"], RuleType.CREDENTIAL_PROTECTION, {
-                "protected_patterns": [r"\.env$", r"\.pem$", r"\.key$", r"credentials"],
-            }),
-            (["skill", "plugin", "extension", "marketplace"], RuleType.SKILL_DENYLIST, {
-                "skills": [],
-                "auto_block_flagged": True,
-            }),
-            (["injection", "command injection", "rce", "remote code"], RuleType.COMMAND_DENYLIST, {
-                "patterns": [r";\s*", r"\|", r"`", r"\$\("],
-                "blocked_commands": ["eval", "exec"],
-            }),
-            (["exfiltration", "egress", "outbound", "data leak"], RuleType.NETWORK_EGRESS, {
-                "blocked_domains": [],
-                "allow_only_listed": False,
-            }),
-            (["file access", "path traversal", "directory traversal", "lfi"], RuleType.FILE_ACCESS, {
-                "blocked_patterns": [r"\.\./", r"/etc/passwd", r"/etc/shadow"],
-            }),
-        ]
-
-        for keywords, rule_type, default_params in inference_map:
-            if any(kw in combined for kw in keywords):
-                # Check if a similar rule type already exists
-                existing_stmt = select(Rule).where(
-                    Rule.rule_type == rule_type,
-                    Rule.is_active == True,
-                    Rule.is_deleted == False,
-                )
-                existing = (await db.execute(existing_stmt)).scalars().first()
-
-                if existing:
-                    created_rules.append(existing.id)
-                    mitigation_method = "existing_rule"
-                else:
-                    cve_label = issue.cve_id or f"issue-{str(issue_id)[:8]}"
-                    rule = Rule(
-                        name=f"Mitigate {cve_label}",
-                        description=f"Auto-generated from: {issue.title}",
-                        rule_type=rule_type,
-                        action=RuleAction.DENY,
-                        priority=100,
-                        parameters=default_params,
-                        is_active=True,
-                        tags=["auto-mitigation", "cve"],
-                        source="cve_mitigation",
-                        source_reference=str(issue_id),
-                    )
-                    db.add(rule)
-                    await db.flush()
-                    created_rules.append(rule.id)
-                    mitigation_method = "inferred_rule"
-
-                    audit_log = AuditLog(
-                        action=AuditAction.RULE_CREATED,
-                        severity="info",
-                        rule_id=rule.id,
-                        message=f"Rule auto-generated to mitigate {cve_label}",
-                        new_value={"cve_id": issue.cve_id, "rule_type": str(rule_type)},
-                    )
-                    db.add(audit_log)
-                break  # Use first matching keyword group
-
-    # Update the vulnerability record
-    issue.status = IssueStatus.MITIGATED
-    issue.mitigated_at = datetime.utcnow()
-    if created_rules:
-        issue.mitigation_rules = list(set(
-            (issue.mitigation_rules or []) + created_rules
-        ))
-    if not created_rules:
-        issue.mitigation_notes = "Reviewed and acknowledged — no auto-mitigation rule applicable."
+            db.add(mit)
 
     await db.commit()
-
-    return {
-        "status": "mitigated",
-        "id": str(issue_id),
-        "method": mitigation_method,
-        "rules_created": [str(r) for r in created_rules],
-    }
+    return result
 
 
 @router.get("/score/{agent_id}", response_model=SecurityScoreResponse)
@@ -639,10 +548,11 @@ async def get_security_score(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get security score for an agent."""
     monitor = SecurityMonitor(db, redis)
-    score_data = await monitor.calculate_security_score(agent_id)
+    score_data = await monitor.calculate_security_score(agent_id, org_id=org_id)
 
     return SecurityScoreResponse(**score_data)
 
@@ -651,10 +561,11 @@ async def get_security_score(
 async def get_global_security_score(
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
-    """Get global security score."""
+    """Get org-wide security score (or global if no org context)."""
     monitor = SecurityMonitor(db, redis)
-    score_data = await monitor.calculate_security_score(None)
+    score_data = await monitor.calculate_security_score(None, org_id=org_id)
 
     return SecurityScoreResponse(**score_data)
 
@@ -663,12 +574,23 @@ async def get_global_security_score(
 async def get_threat_feed(
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     limit: int = Query(20, ge=1, le=100),
 ):
-    """Get threat intelligence feed."""
+    """Get threat intelligence feed (global CVEs + skills, enriched with per-org mitigation)."""
     entries = []
 
-    # Get recent CVEs
+    # Build per-org mitigation lookup
+    org_mitigations: dict = {}
+    if org_id:
+        from app.models.org_issue_mitigation import OrgIssueMitigation
+        mit_result = await db.execute(
+            select(OrgIssueMitigation).where(OrgIssueMitigation.organization_id == org_id)
+        )
+        for m in mit_result.scalars().all():
+            org_mitigations[m.issue_id] = m.status
+
+    # Get recent CVEs (global shared intel)
     cve_stmt = select(SecurityIssue).where(
         SecurityIssue.status == IssueStatus.ACTIVE
     ).order_by(
@@ -679,6 +601,10 @@ async def get_threat_feed(
     cves = list(cve_result.scalars().all())
 
     for cve in cves:
+        # Determine if this org has mitigated it
+        mit_status = org_mitigations.get(cve.id)
+        is_actionable = cve.auto_generate_rules and mit_status != "mitigated"
+
         entries.append(ThreatFeedEntry(
             id=str(cve.id),
             type="cve",
@@ -688,8 +614,8 @@ async def get_threat_feed(
             source=cve.source,
             source_url=cve.source_url,
             published_at=cve.published_at or cve.discovered_at,
-            is_actionable=cve.auto_generate_rules,
-            recommended_action="Apply mitigation rules" if not cve.mitigation_rules else None,
+            is_actionable=is_actionable,
+            recommended_action="Apply mitigation rules" if is_actionable else None,
             related_rules=cve.mitigation_rules,
         ))
 
@@ -763,8 +689,9 @@ async def get_threat_feed(
 async def get_weekly_digest(
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
-    """Get weekly security digest."""
+    """Get weekly security digest (org-scoped for violations/recommendations)."""
     now = datetime.utcnow()
     week_ago = now - timedelta(days=7)
 
@@ -782,11 +709,17 @@ async def get_weekly_digest(
     )
     new_skills = (await db.execute(skill_stmt)).scalar() or 0
 
-    # Get pending recommendations
+    # Get pending recommendations (org-scoped)
     rec_stmt = select(SecurityRecommendation).where(
         SecurityRecommendation.is_applied == False,
         SecurityRecommendation.is_dismissed == False,
-    ).order_by(
+    )
+    if org_id:
+        rec_stmt = rec_stmt.where(
+            (SecurityRecommendation.organization_id == org_id)
+            | (SecurityRecommendation.organization_id == None)
+        )
+    rec_stmt = rec_stmt.order_by(
         SecurityRecommendation.severity,
         SecurityRecommendation.impact_score.desc(),
     ).limit(5)
@@ -811,24 +744,33 @@ async def get_weekly_digest(
         for t in threats
     ]
 
-    # Count total violations in the last 7 days
+    # Count total violations in the last 7 days (org-scoped)
     violations_stmt = select(func.count()).select_from(PolicyViolation).where(
         PolicyViolation.created_at >= week_ago
     )
+    if org_id:
+        violations_stmt = violations_stmt.where(PolicyViolation.organization_id == org_id)
     total_violations = (await db.execute(violations_stmt)).scalar() or 0
 
-    # Count blocked attacks (REQUEST_DENIED audit logs) in the last 7 days
+    # Count blocked attacks (REQUEST_DENIED audit logs) in the last 7 days (org-scoped)
     blocked_stmt = select(func.count()).select_from(AuditLog).where(
         AuditLog.action == AuditAction.REQUEST_DENIED,
         AuditLog.created_at >= week_ago,
     )
+    if org_id:
+        blocked_stmt = blocked_stmt.where(AuditLog.organization_id == org_id)
     blocked_attacks = (await db.execute(blocked_stmt)).scalar() or 0
 
-    # Count applied recommendations in the last 7 days
+    # Count applied recommendations in the last 7 days (org-scoped)
     applied_recs_stmt = select(func.count()).select_from(SecurityRecommendation).where(
         SecurityRecommendation.is_applied == True,
         SecurityRecommendation.applied_at >= week_ago,
     )
+    if org_id:
+        applied_recs_stmt = applied_recs_stmt.where(
+            (SecurityRecommendation.organization_id == org_id)
+            | (SecurityRecommendation.organization_id == None)
+        )
     applied_recommendations = (await db.execute(applied_recs_stmt)).scalar() or 0
 
     return WeeklyDigestResponse(

@@ -7,7 +7,27 @@ changes through the web UI.
 
 import re
 import time
+
+import pytest
 from playwright.sync_api import Page, expect
+
+from .conftest import _auth_api_request
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_test_agents_between_tests():
+    """Clean up test agents before each test to stay within free plan quota."""
+    agents = _auth_api_request("GET", "/api/v1/agents?page_size=100")
+    if agents and "items" in agents:
+        for agent in agents["items"]:
+            ext_id = agent.get("external_id", "")
+            # Only delete agents created by E2E tests
+            if any(p in ext_id for p in (
+                "e2e-test-agent-", "api-key-visible-", "show-key-test-",
+                "regen-key-test-", "suspend-test-", "activate-test-",
+            )):
+                _auth_api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+    yield
 
 
 class TestRegisterAgent:

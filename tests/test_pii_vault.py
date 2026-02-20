@@ -9,13 +9,18 @@ from uuid import uuid4
 from app.models.pii_vault import PIICategory, PIIVaultEntry
 from app.services.pii_vault import (
     BRUTE_FORCE_MAX_FAILURES,
+    SCHEME_AES_GCM,
+    SCHEME_FERNET,
     VAULT_TOKEN_REGEX,
+    GCM_NONCE_SIZE,
+    _detect_scheme,
     check_token_lookup_limit,
     decrypt_value,
     domain_matches,
     encrypt_value,
     find_vault_tokens,
     generate_token,
+    get_encryption_key,
     mask_value,
     record_token_lookup_failure,
     record_token_lookup_success,
@@ -23,12 +28,12 @@ from app.services.pii_vault import (
 
 
 # ============================================================================
-# Encryption round-trip tests
+# Encryption round-trip tests (AES-256-GCM)
 # ============================================================================
 
 
 class TestEncryption:
-    """Test Fernet encryption/decryption."""
+    """Test AES-256-GCM encryption/decryption."""
 
     def test_encrypt_decrypt_round_trip(self):
         """Encrypting then decrypting should return the original value."""
@@ -39,11 +44,11 @@ class TestEncryption:
         assert decrypt_value(ciphertext) == plaintext
 
     def test_encrypt_produces_different_output(self):
-        """Each encryption should produce different ciphertext (Fernet uses random IV)."""
+        """Each encryption should produce different ciphertext (random nonce)."""
         plaintext = "test-value"
         c1 = encrypt_value(plaintext)
         c2 = encrypt_value(plaintext)
-        assert c1 != c2  # Different IVs
+        assert c1 != c2  # Different nonces
 
     def test_encrypt_empty_string(self):
         """Empty string should encrypt and decrypt correctly."""
@@ -62,6 +67,70 @@ class TestEncryption:
         plaintext = "123 Main Street, Apartment 4B, Springfield, IL 62701, United States of America"
         ciphertext = encrypt_value(plaintext)
         assert decrypt_value(ciphertext) == plaintext
+
+    def test_gcm_ciphertext_format(self):
+        """AES-256-GCM ciphertext should start with 12-byte nonce."""
+        plaintext = "test-data"
+        ciphertext = encrypt_value(plaintext)
+        # nonce (12) + ciphertext (>=len(plaintext)) + tag (16)
+        assert len(ciphertext) >= GCM_NONCE_SIZE + len(plaintext) + 16
+
+    def test_gcm_tampered_ciphertext_fails(self):
+        """Modifying ciphertext should cause decryption to fail (authentication)."""
+        plaintext = "sensitive-data"
+        ciphertext = encrypt_value(plaintext)
+        # Flip a byte in the ciphertext portion (after the nonce)
+        tampered = bytearray(ciphertext)
+        tampered[GCM_NONCE_SIZE + 1] ^= 0xFF
+        with pytest.raises(Exception):
+            decrypt_value(bytes(tampered))
+
+    def test_gcm_tampered_nonce_fails(self):
+        """Modifying the nonce should cause decryption to fail."""
+        plaintext = "sensitive-data"
+        ciphertext = encrypt_value(plaintext)
+        tampered = bytearray(ciphertext)
+        tampered[0] ^= 0xFF
+        with pytest.raises(Exception):
+            decrypt_value(bytes(tampered))
+
+
+class TestFernetBackwardCompat:
+    """Test that legacy Fernet-encrypted values can still be decrypted."""
+
+    def test_fernet_decrypt_with_explicit_scheme(self):
+        """Fernet-encrypted values should decrypt when scheme='fernet'."""
+        from cryptography.fernet import Fernet as FernetLib
+        key = get_encryption_key(1)
+        f = FernetLib(key)
+        plaintext = "legacy-credit-card-4111"
+        fernet_ct = f.encrypt(plaintext.encode("utf-8"))
+        assert decrypt_value(fernet_ct, key_version=1, scheme=SCHEME_FERNET) == plaintext
+
+    def test_fernet_auto_detected(self):
+        """Fernet-encrypted values should be auto-detected and decrypted."""
+        from cryptography.fernet import Fernet as FernetLib
+        key = get_encryption_key(1)
+        f = FernetLib(key)
+        plaintext = "legacy-data"
+        fernet_ct = f.encrypt(plaintext.encode("utf-8"))
+        # Auto-detect should recognize Fernet format
+        assert _detect_scheme(fernet_ct) == SCHEME_FERNET
+        assert decrypt_value(fernet_ct) == plaintext
+
+    def test_gcm_detected_as_gcm(self):
+        """AES-256-GCM ciphertext should be detected as GCM, not Fernet."""
+        ciphertext = encrypt_value("test")
+        assert _detect_scheme(ciphertext) == SCHEME_AES_GCM
+
+    def test_versioned_key_fernet_compat(self):
+        """Fernet values encrypted with key version 2 should still decrypt."""
+        from cryptography.fernet import Fernet as FernetLib
+        key = get_encryption_key(2)
+        f = FernetLib(key)
+        plaintext = "version-2-data"
+        fernet_ct = f.encrypt(plaintext.encode("utf-8"))
+        assert decrypt_value(fernet_ct, key_version=2, scheme=SCHEME_FERNET) == plaintext
 
 
 # ============================================================================
@@ -407,6 +476,8 @@ class TestTokenResolution:
         entry.token = token
         entry.owner_chat_id = owner
         entry.encrypted_value = encrypt_value(raw_value)
+        entry.encryption_scheme = SCHEME_AES_GCM
+        entry.encryption_key_version = 1
         entry.category = PIICategory.CREDIT_CARD
         entry.label = "Test Card"
         entry.masked_value = "****-****-****-1234"

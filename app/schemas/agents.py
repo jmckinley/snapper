@@ -53,6 +53,7 @@ class AgentResponse(AgentBase):
 
     id: UUID
     external_id: str
+    organization_id: Optional[UUID] = None
     owner_chat_id: Optional[str] = None
     status: AgentStatus
     trust_level: TrustLevel
@@ -75,6 +76,7 @@ class AgentResponse(AgentBase):
             return {
                 "id": data.id,
                 "external_id": data.external_id,
+                "organization_id": data.organization_id,
                 "owner_chat_id": data.owner_chat_id,
                 "name": data.name,
                 "description": data.description,

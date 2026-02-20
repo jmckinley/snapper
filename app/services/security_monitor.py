@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agents import Agent
-from app.models.audit_logs import AuditLog, AuditSeverity, PolicyViolation
+from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
 from app.models.rules import Rule, RuleAction, RuleType
 from app.models.security_issues import (
     IssueSeverity,
@@ -51,9 +51,12 @@ class SecurityMonitor:
     async def calculate_security_score(
         self,
         agent_id: Optional[UUID] = None,
+        org_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """
         Calculate security score for an agent or globally.
+
+        When org_id is provided, scopes rule/violation queries to that org.
 
         Score ranges from 0-100 with letter grades:
         A+ (95-100), A (90-94), B+ (85-89), B (80-84),
@@ -64,7 +67,7 @@ class SecurityMonitor:
         negative_factors = []
 
         # 1. Rule Coverage (25 points)
-        rule_score = await self._calculate_rule_coverage_score(agent_id)
+        rule_score = await self._calculate_rule_coverage_score(agent_id, org_id=org_id)
         breakdown["rule_coverage"] = rule_score
         if rule_score >= 20:
             positive_factors.append("Strong rule coverage")
@@ -72,7 +75,7 @@ class SecurityMonitor:
             negative_factors.append("Insufficient security rules")
 
         # 2. CVE Mitigation (20 points)
-        cve_score = await self._calculate_cve_mitigation_score(agent_id)
+        cve_score = await self._calculate_cve_mitigation_score(agent_id, org_id=org_id)
         breakdown["cve_mitigation"] = cve_score
         if cve_score >= 18:
             positive_factors.append("All critical CVEs mitigated")
@@ -80,7 +83,7 @@ class SecurityMonitor:
             negative_factors.append("Unmitigated critical vulnerabilities")
 
         # 3. Skill Protection (20 points)
-        skill_score = await self._calculate_skill_protection_score(agent_id)
+        skill_score = await self._calculate_skill_protection_score(agent_id, org_id=org_id)
         breakdown["skill_protection"] = skill_score
         if skill_score >= 18:
             positive_factors.append("ClawHub skill protection enabled")
@@ -88,7 +91,7 @@ class SecurityMonitor:
             negative_factors.append("Malicious skills not blocked")
 
         # 4. Credential Protection (15 points)
-        cred_score = await self._calculate_credential_protection_score(agent_id)
+        cred_score = await self._calculate_credential_protection_score(agent_id, org_id=org_id)
         breakdown["credential_protection"] = cred_score
         if cred_score >= 13:
             positive_factors.append("Credential exposure protected")
@@ -96,7 +99,7 @@ class SecurityMonitor:
             negative_factors.append("Credentials may be exposed")
 
         # 5. Rate Limiting (10 points)
-        rate_score = await self._calculate_rate_limit_score(agent_id)
+        rate_score = await self._calculate_rate_limit_score(agent_id, org_id=org_id)
         breakdown["rate_limiting"] = rate_score
         if rate_score >= 8:
             positive_factors.append("Rate limiting configured")
@@ -104,7 +107,7 @@ class SecurityMonitor:
             negative_factors.append("No rate limiting")
 
         # 6. Audit Compliance (10 points)
-        audit_score = await self._calculate_audit_compliance_score(agent_id)
+        audit_score = await self._calculate_audit_compliance_score(agent_id, org_id=org_id)
         breakdown["audit_compliance"] = audit_score
         if audit_score >= 8:
             positive_factors.append("Comprehensive audit logging")
@@ -138,7 +141,7 @@ class SecurityMonitor:
         }
 
     async def _calculate_rule_coverage_score(
-        self, agent_id: Optional[UUID]
+        self, agent_id: Optional[UUID], org_id: Optional[UUID] = None,
     ) -> int:
         """Calculate score based on rule coverage."""
         max_score = self.SCORE_WEIGHTS["rule_coverage"]
@@ -151,6 +154,10 @@ class SecurityMonitor:
         if agent_id:
             stmt = stmt.where(
                 (Rule.agent_id == agent_id) | (Rule.agent_id == None)
+            )
+        if org_id:
+            stmt = stmt.where(
+                (Rule.organization_id == org_id) | (Rule.organization_id == None)
             )
 
         result = await self.db.execute(stmt)
@@ -173,7 +180,7 @@ class SecurityMonitor:
         return int(coverage * max_score)
 
     async def _calculate_cve_mitigation_score(
-        self, agent_id: Optional[UUID]
+        self, agent_id: Optional[UUID], org_id: Optional[UUID] = None,
     ) -> int:
         """Calculate score based on CVE mitigation."""
         max_score = self.SCORE_WEIGHTS["cve_mitigation"]
@@ -192,19 +199,30 @@ class SecurityMonitor:
         total_issues = total_result.scalar() or 0
 
         if not active_issues and total_issues == 0:
-            return 0  # No CVE data means unknown, not perfect
+            return max_score  # No CVEs in database — perfect score (air-gapped safe)
 
         if not active_issues:
             return max_score  # All issues resolved/mitigated = full score
 
-        # Check how many have mitigation rules
-        mitigated = sum(1 for issue in active_issues if issue.mitigation_rules)
+        # Check how many have mitigation rules (per-org if available)
+        if org_id:
+            from app.models.org_issue_mitigation import OrgIssueMitigation
+            mit_result = await self.db.execute(
+                select(OrgIssueMitigation.issue_id).where(
+                    OrgIssueMitigation.organization_id == org_id,
+                    OrgIssueMitigation.status == "mitigated",
+                )
+            )
+            mitigated_ids = {row[0] for row in mit_result}
+            mitigated = sum(1 for issue in active_issues if issue.id in mitigated_ids or issue.mitigation_rules)
+        else:
+            mitigated = sum(1 for issue in active_issues if issue.mitigation_rules)
         mitigation_rate = mitigated / len(active_issues)
 
         return int(mitigation_rate * max_score)
 
     async def _calculate_skill_protection_score(
-        self, agent_id: Optional[UUID]
+        self, agent_id: Optional[UUID], org_id: Optional[UUID] = None,
     ) -> int:
         """Calculate score based on skill protection."""
         max_score = self.SCORE_WEIGHTS["skill_protection"]
@@ -218,6 +236,10 @@ class SecurityMonitor:
         if agent_id:
             stmt = stmt.where(
                 (Rule.agent_id == agent_id) | (Rule.agent_id == None)
+            )
+        if org_id:
+            stmt = stmt.where(
+                (Rule.organization_id == org_id) | (Rule.organization_id == None)
             )
 
         result = await self.db.execute(stmt)
@@ -239,7 +261,7 @@ class SecurityMonitor:
         return max_score // 2
 
     async def _calculate_credential_protection_score(
-        self, agent_id: Optional[UUID]
+        self, agent_id: Optional[UUID], org_id: Optional[UUID] = None,
     ) -> int:
         """Calculate score based on credential protection."""
         max_score = self.SCORE_WEIGHTS["credential_protection"]
@@ -253,6 +275,10 @@ class SecurityMonitor:
         if agent_id:
             stmt = stmt.where(
                 (Rule.agent_id == agent_id) | (Rule.agent_id == None)
+            )
+        if org_id:
+            stmt = stmt.where(
+                (Rule.organization_id == org_id) | (Rule.organization_id == None)
             )
 
         result = await self.db.execute(stmt)
@@ -287,7 +313,7 @@ class SecurityMonitor:
         return int(coverage * max_score)
 
     async def _calculate_rate_limit_score(
-        self, agent_id: Optional[UUID]
+        self, agent_id: Optional[UUID], org_id: Optional[UUID] = None,
     ) -> int:
         """Calculate score based on rate limiting."""
         max_score = self.SCORE_WEIGHTS["rate_limiting"]
@@ -302,6 +328,10 @@ class SecurityMonitor:
             stmt = stmt.where(
                 (Rule.agent_id == agent_id) | (Rule.agent_id == None)
             )
+        if org_id:
+            stmt = stmt.where(
+                (Rule.organization_id == org_id) | (Rule.organization_id == None)
+            )
 
         result = await self.db.execute(stmt)
         rate_rules = list(result.scalars().all())
@@ -312,7 +342,7 @@ class SecurityMonitor:
         return 0
 
     async def _calculate_audit_compliance_score(
-        self, agent_id: Optional[UUID]
+        self, agent_id: Optional[UUID], org_id: Optional[UUID] = None,
     ) -> int:
         """Calculate score based on audit logging compliance."""
         max_score = self.SCORE_WEIGHTS["audit_compliance"]
@@ -324,6 +354,8 @@ class SecurityMonitor:
         )
         if agent_id:
             stmt = stmt.where(AuditLog.agent_id == agent_id)
+        if org_id:
+            stmt = stmt.where(AuditLog.organization_id == org_id)
 
         result = await self.db.execute(stmt)
         log_count = result.scalar() or 0
@@ -493,6 +525,7 @@ class SecurityMonitor:
     async def get_recent_violations(
         self,
         agent_id: Optional[UUID] = None,
+        org_id: Optional[UUID] = None,
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """Get recent policy violations."""
@@ -501,6 +534,8 @@ class SecurityMonitor:
         )
         if agent_id:
             stmt = stmt.where(PolicyViolation.agent_id == agent_id)
+        if org_id:
+            stmt = stmt.where(PolicyViolation.organization_id == org_id)
 
         stmt = stmt.order_by(
             PolicyViolation.created_at.desc(),
@@ -519,3 +554,191 @@ class SecurityMonitor:
             }
             for v in violations
         ]
+
+
+# ---------------------------------------------------------------------------
+# Standalone auto-mitigation (used by both API endpoint and background tasks)
+# ---------------------------------------------------------------------------
+
+# Keyword → (RuleType, default_parameters) for CVE inference (Strategy 2)
+_INFERENCE_MAP = [
+    (["websocket", "origin", "cross-site", "csrf"], RuleType.ORIGIN_VALIDATION, {
+        "allowed_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
+        "strict_mode": True,
+    }),
+    (["credential", "password", "secret", "token", "auth bypass", "authentication"], RuleType.CREDENTIAL_PROTECTION, {
+        "protected_patterns": [r"\.env$", r"\.pem$", r"\.key$", r"credentials"],
+    }),
+    (["skill", "plugin", "extension", "marketplace"], RuleType.SKILL_DENYLIST, {
+        "skills": [],
+        "auto_block_flagged": True,
+    }),
+    (["injection", "command injection", "rce", "remote code"], RuleType.COMMAND_DENYLIST, {
+        "patterns": [r";\s*", r"\|", r"`", r"\$\("],
+        "blocked_commands": ["eval", "exec"],
+    }),
+    (["exfiltration", "egress", "outbound", "data leak"], RuleType.NETWORK_EGRESS, {
+        "blocked_domains": [],
+        "allow_only_listed": False,
+    }),
+    (["file access", "path traversal", "directory traversal", "lfi"], RuleType.FILE_ACCESS, {
+        "blocked_patterns": [r"\.\./", r"/etc/passwd", r"/etc/shadow"],
+    }),
+]
+
+
+async def auto_mitigate_issue(
+    db: AsyncSession,
+    issue_id: UUID,
+    org_id: Optional[UUID] = None,
+) -> dict:
+    """Auto-mitigate a single SecurityIssue by generating protective rules.
+
+    Tries three strategies in order:
+    1. Match a CVE-specific rule template and create (or link) the rule.
+    2. Infer a rule type from the CVE title/description keywords.
+    3. Fall back to marking as "reviewed" with no rule.
+
+    When org_id is provided, scopes created rules to that organization.
+
+    Returns a dict with ``status``, ``method``, and ``rules_created``.
+    """
+    from app.routers.rules import RULE_TEMPLATES
+
+    stmt = select(SecurityIssue).where(SecurityIssue.id == issue_id)
+    issue = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not issue:
+        return {"status": "not_found", "method": "none", "rules_created": []}
+
+    created_rules: list = []
+    mitigation_method = "reviewed"
+    audit_log = None
+
+    # Strategy 1: CVE-specific template
+    matched_template = None
+    if issue.cve_id:
+        cve_slug = issue.cve_id.lower().replace(":", "-")
+        for tmpl_id, tmpl in RULE_TEMPLATES.items():
+            if cve_slug in tmpl_id or tmpl_id in cve_slug:
+                matched_template = (tmpl_id, tmpl)
+                break
+            if issue.cve_id.lower() in [t.lower() for t in tmpl.get("tags", [])]:
+                matched_template = (tmpl_id, tmpl)
+                break
+
+    if matched_template:
+        tmpl_id, tmpl = matched_template
+        existing_stmt = select(Rule).where(
+            Rule.source == "template",
+            Rule.source_reference == tmpl_id,
+            Rule.is_deleted == False,
+        )
+        existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+
+        if existing:
+            created_rules.append(existing.id)
+            mitigation_method = "existing_rule"
+        else:
+            rule = Rule(
+                name=tmpl["name"],
+                description=f"Auto-generated to mitigate {issue.cve_id}: {tmpl['description']}",
+                rule_type=tmpl["rule_type"],
+                action=tmpl["default_action"],
+                priority=100 if tmpl.get("severity") == "critical" else 50,
+                parameters={**tmpl["default_parameters"]},
+                is_active=True,
+                tags=tmpl.get("tags", []) + ["auto-mitigation"],
+                source="template",
+                source_reference=tmpl_id,
+                organization_id=org_id,
+            )
+            db.add(rule)
+            await db.flush()
+            created_rules.append(rule.id)
+            mitigation_method = "template_rule"
+
+            audit_log = AuditLog(
+                action=AuditAction.RULE_CREATED,
+                severity="info",
+                rule_id=rule.id,
+                message=f"Rule auto-created to mitigate {issue.cve_id}",
+                new_value={"template_id": tmpl_id, "cve_id": issue.cve_id},
+            )
+            db.add(audit_log)
+
+    # Strategy 2: Infer rule from keywords
+    if not created_rules and issue.auto_generate_rules:
+        combined = " ".join([
+            issue.title or "",
+            issue.description or "",
+            " ".join(issue.affected_components or []),
+        ]).lower()
+
+        for keywords, rule_type, default_params in _INFERENCE_MAP:
+            if any(kw in combined for kw in keywords):
+                existing_stmt = select(Rule).where(
+                    Rule.rule_type == rule_type,
+                    Rule.is_active == True,
+                    Rule.is_deleted == False,
+                )
+                existing = (await db.execute(existing_stmt)).scalars().first()
+
+                if existing:
+                    created_rules.append(existing.id)
+                    mitigation_method = "existing_rule"
+                else:
+                    cve_label = issue.cve_id or f"issue-{str(issue_id)[:8]}"
+                    rule = Rule(
+                        name=f"Mitigate {cve_label}",
+                        description=f"Auto-generated from: {issue.title}",
+                        rule_type=rule_type,
+                        action=RuleAction.DENY,
+                        priority=100,
+                        parameters=default_params,
+                        is_active=True,
+                        tags=["auto-mitigation", "cve"],
+                        source="cve_mitigation",
+                        source_reference=str(issue_id),
+                        organization_id=org_id,
+                    )
+                    db.add(rule)
+                    await db.flush()
+                    created_rules.append(rule.id)
+                    mitigation_method = "inferred_rule"
+
+                    audit_log = AuditLog(
+                        action=AuditAction.RULE_CREATED,
+                        severity="info",
+                        rule_id=rule.id,
+                        message=f"Rule auto-generated to mitigate {cve_label}",
+                        new_value={"cve_id": issue.cve_id, "rule_type": str(rule_type)},
+                    )
+                    db.add(audit_log)
+                break
+
+    # Update the vulnerability record
+    issue.status = IssueStatus.MITIGATED
+    issue.mitigated_at = datetime.utcnow()
+    if created_rules:
+        issue.mitigation_rules = list(set(
+            (issue.mitigation_rules or []) + created_rules
+        ))
+    if not created_rules:
+        issue.mitigation_notes = "Reviewed and acknowledged — no auto-mitigation rule applicable."
+
+    # Publish SIEM events
+    if audit_log:
+        try:
+            import asyncio
+            from app.services.event_publisher import publish_from_audit_log as _publish
+            asyncio.ensure_future(_publish(audit_log))
+        except Exception:
+            pass
+
+    return {
+        "status": "mitigated",
+        "id": str(issue_id),
+        "method": mitigation_method,
+        "rules_created": [str(r) for r in created_rules],
+    }

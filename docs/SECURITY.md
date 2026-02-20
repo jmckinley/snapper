@@ -17,6 +17,7 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 - [Network & Infrastructure](#network--infrastructure)
 - [Audit Trail](#audit-trail)
 - [Trust Scoring](#trust-scoring)
+- [Threat Detection Engine](#threat-detection-engine)
 - [Configuration Hardening](#configuration-hardening)
 - [Architecture Assumptions](#architecture-assumptions)
 
@@ -29,7 +30,7 @@ Snapper is an **Agent Application Firewall (AAF)** — it inspects and enforces 
 3. **Defense in depth** — Multiple independent layers (middleware, rule engine, PII gate, rate limiting) each enforce security independently.
 4. **Least privilege** — Agents start untrusted and must earn elevated access.
 5. **Immutable audit** — All security-relevant events are logged to the database with server-generated timestamps.
-6. **Secrets never at rest in plaintext** — PII is Fernet-encrypted, API keys are hashed for comparison, resolved data has a 30-second TTL and is deleted after one retrieval.
+6. **Secrets never at rest in plaintext** — PII is AES-256-GCM encrypted, API keys are hashed for comparison, resolved data has a 30-second TTL and is deleted after one retrieval.
 
 ---
 
@@ -147,17 +148,19 @@ The vault stores sensitive data (credit cards, addresses, SSNs, API keys) so age
 
 | Property | Value |
 |----------|-------|
-| **Cipher** | Fernet (AES-128-CBC + HMAC-SHA256) |
+| **Cipher** | AES-256-GCM (authenticated encryption) |
 | **Key derivation** | HKDF-SHA256 |
 | **Key input** | `SECRET_KEY` environment variable (minimum 32 characters) |
 | **HKDF salt** | `snapper-pii-vault-v1` (constant) |
-| **HKDF info** | `pii-vault-encryption-key` (constant) |
-| **Derived key size** | 32 bytes (base64url-encoded for Fernet) |
+| **HKDF info** | `pii-vault-encryption-key-v{version}` (versioned for key rotation) |
+| **Derived key size** | 32 bytes (256-bit, used directly by AES-256-GCM) |
+| **Nonce** | 96-bit random (per NIST SP 800-38D recommendation) |
+| **Authentication** | GCM tag (128-bit) — detects any tampering of ciphertext |
 
 ### How It Works
 
 1. User stores PII via Telegram (`/vault add`) or the REST API
-2. Snapper encrypts the value with Fernet and stores the ciphertext in PostgreSQL
+2. Snapper encrypts the value with AES-256-GCM and stores the ciphertext in PostgreSQL
 3. A vault token is generated: `{{SNAPPER_VAULT:<32-hex>}}` (128 bits of entropy from `os.urandom`)
 4. The user gives the token to their agent instead of the raw value
 5. When the agent uses the token in a tool call, Snapper's PII gate intercepts it
@@ -213,7 +216,7 @@ The PII gate extracts the destination from `tool_input.url`, `page_url`, or `nav
 
 ### What Happens If SECRET_KEY Changes
 
-Fernet encryption keys are derived from `SECRET_KEY` via HKDF. If you change `SECRET_KEY`, all existing vault entries become **permanently unrecoverable**. Back up your `SECRET_KEY`.
+Encryption keys are derived from `SECRET_KEY` via HKDF. If you change `SECRET_KEY`, all existing vault entries become **permanently unrecoverable**. Back up your `SECRET_KEY`.
 
 ---
 
@@ -650,6 +653,101 @@ New agents start at `untrusted` trust level. Agents that consistently follow rul
 
 ---
 
+## Threat Detection Engine
+
+Snapper includes a heuristic bad actor detection engine that monitors agent behavior at the tool-execution layer. It detects multi-step attack patterns that single-request inspection cannot catch.
+
+### Architecture
+
+The engine has three layers:
+
+1. **Hot-path signal extraction** (<2ms) — 13 signal types extracted from every `evaluate` call using compiled regex and pattern matching. Signals are published to Redis Streams asynchronously.
+
+2. **Background analysis** (every 2s) — A Celery worker consumes signals from Redis Streams, updating per-agent behavioral baselines (7-day rolling window), advancing kill chain state machines, and computing composite threat scores (0-100).
+
+3. **AI review** (optional, every 15min) — Claude-powered analysis of 30-minute activity windows. Disabled by default. Air-gapped safe — exits immediately without API key.
+
+### Signal Types (13)
+
+| Signal | Detection |
+|--------|-----------|
+| `FILE_READ` | File access via filesystem or storage |
+| `NETWORK_SEND` | Data sent to external endpoints |
+| `CREDENTIAL_ACCESS` | Access to API keys, tokens, passwords, SSH keys |
+| `PII_OUTBOUND` | PII detected in outbound data (requires PII_GATE rule) |
+| `PII_ACCUMULATION` | Multiple PII items gathered from different sources |
+| `ENCODING_DETECTED` | Base64, hex, URL encoding in payloads |
+| `VAULT_TOKEN_PROBE` | Attempts to enumerate vault tokens |
+| `PRIVILEGE_ESCALATION` | Privilege elevation attempts (sudo, chmod, etc.) |
+| `STEGANOGRAPHIC_CONTENT` | Zero-width characters, hidden data |
+| `TOOL_ANOMALY` | Unusual tool usage (living-off-the-land patterns) |
+| `HIGH_ENTROPY_PAYLOAD` | High-entropy payloads (potential encrypted exfil) |
+| `NEW_DESTINATION` | Data sent to previously unseen endpoint |
+| `VOLUME_SPIKE` | Outbound volume exceeds Z-score threshold |
+
+### Kill Chain State Machines (7)
+
+Multi-step attack sequences modeled as state machines with time-windowed transitions:
+
+| Kill Chain | Stages | Window | Score Boost |
+|------------|--------|--------|-------------|
+| Data Exfiltration | file_read → network_send | 60s | +40 |
+| Credential Theft | credential_access → network_send | 120s | +50 |
+| PII Harvest & Exfil | 3+ pii_outbound → network_send | 300s | +45 |
+| Encoded Exfiltration | file_read → encoding → network_send | 30s/stage | +50 |
+| Priv-Esc to Exfil | privilege_escalation → file_read → network_send | 120s+60s | +55 |
+| Vault Token Extraction | vault_token_probe → pii_outbound | 180s | +60 |
+| Living-off-the-Land | tool_anomaly → network_send | 60s | +35 |
+
+### Enforcement
+
+Composite threat scores map to graduated enforcement:
+
+| Score | Action |
+|-------|--------|
+| >= 80 | **DENY** — automatic block, overrides rule engine |
+| >= 60 | **REQUIRE_APPROVAL** — human review via Telegram/Slack |
+| >= 40 | **Alert** — notification to configured channels |
+| < 40 | **Log only** — recorded for baseline building |
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THREAT_DETECTION_ENABLED` | `true` | Enable/disable detection engine |
+| `THREAT_DENY_THRESHOLD` | `80` | Auto-deny threshold |
+| `THREAT_APPROVAL_THRESHOLD` | `60` | Approval-required threshold |
+| `THREAT_AI_REVIEW_ENABLED` | `false` | Enable Claude-powered review |
+| `ANTHROPIC_API_KEY` | (none) | Required only if AI review enabled |
+
+### SIEM Integration
+
+Threat events generate CEF-formatted events for enterprise SIEM systems:
+
+| Event ID | Description |
+|----------|-------------|
+| 800 | Threat detected |
+| 801 | Threat score elevated |
+| 802 | Kill chain completed |
+| 803 | Agent quarantined |
+| 804 | Threat resolved |
+| 805 | False positive marked |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `app/services/threat_detector.py` | Signal extraction (hot path) |
+| `app/services/behavioral_baseline.py` | Per-agent baselines |
+| `app/services/kill_chain_detector.py` | Kill chain state machines |
+| `app/tasks/threat_analysis.py` | Background analysis (Celery) |
+| `app/tasks/ai_threat_review.py` | Optional AI review |
+| `app/models/threat_events.py` | Database model |
+| `app/routers/threats.py` | API endpoints |
+| `scripts/threat_simulator.py` | Red-team testing tool |
+
+---
+
 ## Configuration Hardening
 
 ### Recommended Production Settings
@@ -751,7 +849,7 @@ Note: Hook scripts use `curl -k` (insecure mode) to accept self-signed certifica
 
 ### SECRET_KEY Is Immutable After Vault Use
 
-The `SECRET_KEY` environment variable is the root of all cryptographic operations. The PII vault derives its Fernet encryption key from `SECRET_KEY` via HKDF-SHA256 with a fixed salt (`snapper-pii-vault-v1`).
+The `SECRET_KEY` environment variable is the root of all cryptographic operations. The PII vault derives its AES-256-GCM encryption key from `SECRET_KEY` via HKDF-SHA256 with a fixed salt (`snapper-pii-vault-v1`).
 
 If `SECRET_KEY` changes after vault entries have been created:
 - **All existing vault entries become permanently unrecoverable.** There is no re-encryption mechanism.
@@ -811,3 +909,114 @@ If an attacker gains Redis access, they can clear rate limits, approve pending r
 | SECRET_KEY immutable | All vault entries lost forever | **High** |
 | Database connections local | Plaintext credentials on network | **Medium** |
 | Redis unauthenticated internal | Rate limit/approval bypass | **Medium** |
+
+---
+
+## SIEM Integration
+
+Snapper publishes security events in CEF (Common Event Format) for SIEM consumption.
+
+### CEF Format
+
+Events follow the CEF standard: `CEF:0|Snapper|AAF|version|event_id|name|severity|extensions`
+
+### Syslog Configuration
+
+```env
+SIEM_ENABLED=true
+SYSLOG_HOST=siem.corp.example.com
+SYSLOG_PORT=514
+SYSLOG_PROTOCOL=udp
+```
+
+### Webhook HMAC Verification
+
+Webhook payloads include `X-Snapper-Signature` header with `sha256=<hex-digest>`. Verify using:
+
+```python
+import hmac, hashlib
+expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+assert hmac.compare_digest(expected, signature)
+```
+
+See [Enterprise Guide](ENTERPRISE.md#siem-integration) for Splunk, QRadar, and Sentinel setup.
+
+## SSO Security
+
+### JIT Provisioning
+
+- Users are auto-created on first SSO login with `member` role
+- Email is the unique identifier (normalized to lowercase)
+- Deactivated users are re-activated on next SSO login
+
+### Session Lifetime
+
+- Access tokens: 30 minutes (configurable via `ACCESS_TOKEN_EXPIRE_MINUTES`)
+- Refresh tokens: 7 days
+- SSO sessions follow the IdP session lifetime
+
+### Attribute Mapping
+
+| SAML Attribute | OIDC Claim | Snapper Field |
+|---------------|------------|--------------|
+| `email` | `email` | `user.email` |
+| `firstName` | `given_name` | `user.full_name` (first part) |
+| `lastName` | `family_name` | `user.full_name` (last part) |
+
+## SCIM Provisioning
+
+### Bearer Token Security
+
+- SCIM endpoints require `Authorization: Bearer <token>` header
+- Token is configured per-organization in settings (`scim_bearer_token`)
+- Token should be rotated regularly (recommend 90 days)
+
+### User Lifecycle
+
+| SCIM Operation | Snapper Action |
+|---------------|---------------|
+| Create User | Create user + add to org |
+| Update User | Update email/name |
+| Deactivate | Soft-delete user |
+| Delete | Hard-delete user |
+
+## Multi-Tenant Security
+
+### Organization Isolation
+
+- All database queries include `organization_id` filter
+- Agents, rules, audit logs, and vault entries are org-scoped
+- Cross-org data access is impossible through the API
+- System-wide rules are read-only for non-admin users
+
+### Data Scoping
+
+| Resource | Scoped By | Enforcement |
+|----------|-----------|------------|
+| Agents | `organization_id` | Database query filter |
+| Rules | `organization_id` | Database query filter |
+| Audit Logs | `organization_id` | Database query filter |
+| PII Vault | `organization_id` + `owner_chat_id` | Database + ownership check |
+| Users | `OrganizationMembership` | Join table |
+
+## Browser Extension Security
+
+### Extension Permissions Model
+
+The browser extension requests minimal permissions:
+- `activeTab` — Access only the current tab (not all tabs)
+- `storage` — Store configuration locally
+- Host permissions limited to AI chat sites only
+
+### No Raw PII in Extension Context
+
+- PII scanning happens client-side (patterns only, no data sent)
+- Extension sends tool call metadata to Snapper, not user content
+- Vault tokens are resolved server-side, never in the browser
+
+### Managed Storage
+
+Enterprise admins can lock extension settings via Chrome policy:
+- Users cannot change Snapper URL or API key
+- Fail mode enforced to `closed`
+- PII scanning always enabled

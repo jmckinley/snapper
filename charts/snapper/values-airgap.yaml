@@ -1,0 +1,50 @@
+# Air-gapped deployment profile (no internet access)
+# Usage: helm install snapper charts/snapper -f charts/snapper/values-airgap.yaml
+#
+# Pre-requisites:
+#   1. Load images from offline bundle:
+#      docker load < snapper-images.tar.gz
+#      docker load < postgresql-images.tar.gz
+#      docker load < redis-images.tar.gz
+#   2. Push to internal registry or use imagePullPolicy: Never
+
+image:
+  repository: internal-registry.local/snapper
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: internal-registry-creds
+
+# Bundled dependencies (no external services)
+postgresql:
+  enabled: true
+  image:
+    registry: internal-registry.local
+  primary:
+    persistence:
+      size: 100Gi
+
+redis:
+  enabled: true
+  image:
+    registry: internal-registry.local
+
+# No ingress — direct NodePort access
+service:
+  type: NodePort
+
+ingress:
+  enabled: false
+
+# No autoscaling — fixed replicas
+autoscaling:
+  enabled: false
+replicaCount: 3
+
+config:
+  selfHosted: true
+  denyByDefault: true
+  learningMode: false
+  registrationEnabled: false
+  metricsEnabled: true
+  siemOutput: syslog

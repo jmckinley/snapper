@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit
 from app.models.audit_logs import (
     Alert,
     AuditAction,
@@ -198,6 +198,7 @@ async def get_daily_stats(
 @router.get("/logs", response_model=AuditLogListResponse)
 async def list_audit_logs(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     agent_id: Optional[UUID] = None,
@@ -210,6 +211,10 @@ async def list_audit_logs(
 ):
     """List audit logs with filtering."""
     stmt = select(AuditLog)
+
+    # Org scoping
+    if org_id:
+        stmt = stmt.where(AuditLog.organization_id == org_id)
 
     if agent_id:
         stmt = stmt.where(AuditLog.agent_id == agent_id)
@@ -252,7 +257,7 @@ async def list_audit_logs(
     )
 
 
-@router.get("/logs/stream")
+@router.get("/logs/stream", openapi_extra={"x-internal": True})
 async def stream_audit_logs(
     db: DbSessionDep,
     agent_id: Optional[UUID] = None,
@@ -363,7 +368,7 @@ async def list_violations(
     )
 
 
-@router.post("/violations/{violation_id}/resolve", response_model=ViolationResponse)
+@router.post("/violations/{violation_id}/resolve", response_model=ViolationResponse, openapi_extra={"x-internal": True})
 async def resolve_violation(
     violation_id: UUID,
     request: ViolationResolve,
@@ -444,7 +449,7 @@ async def list_alerts(
     )
 
 
-@router.post("/alerts/{alert_id}/acknowledge", response_model=AlertResponse)
+@router.post("/alerts/{alert_id}/acknowledge", response_model=AlertResponse, openapi_extra={"x-internal": True})
 async def acknowledge_alert(
     alert_id: UUID,
     request: AlertAcknowledge,
@@ -469,7 +474,7 @@ async def acknowledge_alert(
     return AlertResponse.model_validate(alert)
 
 
-@router.get("/reports/compliance", response_model=ComplianceReportResponse)
+@router.get("/reports/compliance", response_model=ComplianceReportResponse, openapi_extra={"x-internal": True})
 async def get_compliance_report(
     db: DbSessionDep,
     start_date: Optional[datetime] = None,

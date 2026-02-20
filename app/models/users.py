@@ -8,6 +8,7 @@ from typing import List, Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
+    ForeignKey,
     Index,
     String,
     func,
@@ -91,6 +92,12 @@ class User(Base):
         default=False,
         nullable=False,
     )
+    is_meta_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="McKinley Labs platform operator",
+    )
 
     # Security
     failed_login_attempts: Mapped[int] = mapped_column(
@@ -109,6 +116,23 @@ class User(Base):
         Boolean,
         default=False,
         nullable=False,
+    )
+
+    # MFA / TOTP
+    totp_secret: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Encrypted TOTP secret key",
+    )
+    totp_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    totp_backup_codes: Mapped[Optional[list]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Hashed one-time backup codes",
     )
 
     # Preferences
@@ -141,6 +165,38 @@ class User(Base):
         nullable=False,
     )
 
+    # Organization
+    default_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="User's default organization context",
+    )
+
+    # OAuth
+    oauth_provider: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="OAuth provider: github, google",
+    )
+    oauth_provider_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="User ID from OAuth provider",
+    )
+
+    # Password reset
+    email_verification_token: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    password_reset_token: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    password_reset_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Soft delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
@@ -149,6 +205,7 @@ class User(Base):
 
     __table_args__ = (
         Index("ix_users_active", "is_active", "role"),
+        Index("ix_users_oauth", "oauth_provider", "oauth_provider_id"),
     )
 
     def __repr__(self) -> str:
@@ -158,6 +215,11 @@ class User(Base):
     def is_admin(self) -> bool:
         """Check if user has admin role."""
         return self.role == UserRole.ADMIN
+
+    @property
+    def is_platform_admin(self) -> bool:
+        """Check if user is a McKinley Labs platform operator."""
+        return self.is_meta_admin
 
     @property
     def is_locked(self) -> bool:

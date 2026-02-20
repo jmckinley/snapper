@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.agents import Agent, AgentStatus, TrustLevel, generate_api_key
 from app.models.rules import Rule
+from app.redis_client import get_redis, RedisClient
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
 
@@ -64,6 +65,17 @@ class QuickRegisterRequest(BaseModel):
     name: Optional[str] = None
     agent_type: str = "custom"  # openclaw, claude-code, custom
     security_profile: str = "recommended"  # strict, recommended, permissive
+
+
+class SaveNotificationsRequest(BaseModel):
+    """Request to save notification channel configuration."""
+
+    telegram_enabled: bool = False
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    slack_enabled: bool = False
+    slack_webhook_url: Optional[str] = None
+    email_enabled: bool = False
 
 
 class InstallConfigRequest(BaseModel):
@@ -118,7 +130,10 @@ class SecurityProfile(BaseModel):
 
 
 @router.get("/status", response_model=SetupStatus)
-async def get_setup_status(db: AsyncSession = Depends(get_db)):
+async def get_setup_status(
+    db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
+):
     """Check if this is a first-run setup.
 
     Returns setup status including whether any agents are registered.
@@ -150,6 +165,25 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
     # Expose non-secret config for settings page
     from app.config import get_settings
     s = get_settings()
+
+    # Auto-mitigate: Redis override takes precedence over config
+    auto_mitigate = s.AUTO_MITIGATE_THREATS
+    try:
+        override = await redis.get("config:auto_mitigate_threats")
+        if override is not None:
+            auto_mitigate = override == "1"
+    except Exception:
+        pass
+
+    # Security feeds: Redis override takes precedence over config
+    security_feeds = s.SECURITY_FEEDS_ENABLED
+    try:
+        feeds_override = await redis.get("config:security_feeds_enabled")
+        if feeds_override is not None:
+            security_feeds = feeds_override == "1"
+    except Exception:
+        pass
+
     config = {
         "deny_by_default": s.DENY_BY_DEFAULT,
         "learning_mode": s.LEARNING_MODE,
@@ -157,6 +191,8 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
         "validate_websocket_origin": s.VALIDATE_WEBSOCKET_ORIGIN,
         "require_localhost_only": s.REQUIRE_LOCALHOST_ONLY,
         "rate_limit_enabled": s.RATE_LIMIT_ENABLED,
+        "auto_mitigate_threats": auto_mitigate,
+        "security_feeds_enabled": security_feeds,
         # Boolean flags for configured channels (no secrets exposed)
         "smtp_host": bool(s.SMTP_HOST),
         "smtp_user": bool(s.SMTP_USER),
@@ -296,6 +332,22 @@ async def quick_register_agent(
         external_id = f"cline-{hostname}"
         name = request.name or f"Cline on {hostname}"
         description = f"Cline coding agent on {hostname}"
+    elif request.agent_type == "openai":
+        external_id = f"openai-{hostname}"
+        name = request.name or f"OpenAI Agent on {hostname}"
+        description = f"OpenAI API agent protected by Snapper SDK"
+    elif request.agent_type == "anthropic":
+        external_id = f"anthropic-{hostname}"
+        name = request.name or f"Anthropic Agent on {hostname}"
+        description = f"Anthropic API agent protected by Snapper SDK"
+    elif request.agent_type == "gemini":
+        external_id = f"gemini-{hostname}"
+        name = request.name or f"Gemini Agent on {hostname}"
+        description = f"Google Gemini API agent protected by Snapper SDK"
+    elif request.agent_type == "browser-extension":
+        external_id = f"browser-ext-{hostname}"
+        name = request.name or "Browser Extension"
+        description = "Snapper browser extension for AI chat security"
     else:
         external_id = f"snapper-{request.host}-{request.port}"
         name = request.name or f"AI agent @ {request.host}:{request.port}"
@@ -513,6 +565,64 @@ async def mark_setup_complete(db: AsyncSession = Depends(get_db)):
     return {"status": "complete", "message": "Setup completed successfully"}
 
 
+class AutoMitigateRequest(BaseModel):
+    """Request to toggle auto-mitigation."""
+
+    enabled: bool
+
+
+@router.post("/auto-mitigate")
+async def toggle_auto_mitigate(
+    request_body: AutoMitigateRequest,
+    request: Request,
+    redis: RedisClient = Depends(get_redis),
+):
+    """Toggle auto-mitigation of new threat feed vulnerabilities.
+
+    Stores a runtime override in Redis so the setting takes effect
+    immediately without restarting the application.
+
+    In multi-tenant mode, requires an authenticated admin session.
+    """
+    from app.config import get_settings
+    if not get_settings().SELF_HOSTED:
+        user_id = getattr(request.state, "user_id", None)
+        role = getattr(request.state, "user_role", None)
+        if not user_id or role not in ("admin", "owner"):
+            raise HTTPException(status_code=403, detail="Admin role required for setup changes")
+
+    await redis.set("config:auto_mitigate_threats", "1" if request_body.enabled else "0")
+    return {"auto_mitigate_threats": request_body.enabled}
+
+
+class SecurityFeedsRequest(BaseModel):
+    """Request to toggle security feeds."""
+
+    enabled: bool
+
+
+@router.post("/security-feeds")
+async def toggle_security_feeds(
+    request_body: SecurityFeedsRequest,
+    request: Request,
+    redis: RedisClient = Depends(get_redis),
+):
+    """Toggle security feeds (NVD, GitHub, ClawHub).
+
+    Disable for air-gapped deployments that cannot reach external APIs.
+    Stores a runtime override in Redis.
+    """
+    from app.config import get_settings
+    if not get_settings().SELF_HOSTED:
+        user_id = getattr(request.state, "user_id", None)
+        role = getattr(request.state, "user_role", None)
+        if not user_id or role not in ("admin", "owner"):
+            raise HTTPException(status_code=403, detail="Admin role required for setup changes")
+
+    await redis.set("config:security_feeds_enabled", "1" if request_body.enabled else "0")
+    return {"security_feeds_enabled": request_body.enabled}
+
+
 @router.post("/install-config", response_model=InstallConfigResponse)
 async def install_config(request: InstallConfigRequest):
     """Attempt to write agent config directly to disk.
@@ -544,6 +654,220 @@ async def install_config(request: InstallConfigRequest):
             message="Manual configuration required for custom agents.",
             config_snippet=snippet,
         )
+
+
+# ============================================================================
+# SSO Configuration
+# ============================================================================
+
+
+class ConfigureSSORequest(BaseModel):
+    """Request to configure SSO for an organization."""
+
+    org_name: str
+    org_slug: str
+    sso_type: str = "oidc"  # oidc | saml
+    # OIDC fields
+    oidc_issuer: Optional[str] = None
+    oidc_client_id: Optional[str] = None
+    oidc_client_secret: Optional[str] = None
+    oidc_scopes: str = "openid email profile"
+    oidc_provider: str = "okta"
+    # SAML fields
+    saml_idp_entity_id: Optional[str] = None
+    saml_idp_sso_url: Optional[str] = None
+    saml_idp_x509_cert: Optional[str] = None
+    saml_idp_slo_url: Optional[str] = None
+    # SCIM
+    enable_scim: bool = False
+
+
+@router.post("/configure-sso")
+async def configure_sso(
+    request: ConfigureSSORequest,
+    req: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Configure SSO (OIDC/SAML) for an organization.
+
+    Localhost-only endpoint for initial SSO setup. Creates the organization
+    if it doesn't exist and stores IdP configuration in org settings.
+    """
+    # Localhost-only gate (same as quick-register)
+    client_host = req.client.host if req.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        from app.config import get_settings as _gs
+        if not _gs().SELF_HOSTED:
+            raise HTTPException(
+                status_code=403,
+                detail="SSO configuration is only available from localhost",
+            )
+
+    from app.models.organizations import Organization
+
+    # Find or create organization
+    result = await db.execute(
+        select(Organization).where(Organization.slug == request.org_slug)
+    )
+    org = result.scalar_one_or_none()
+
+    if not org:
+        org = Organization(
+            name=request.org_name,
+            slug=request.org_slug,
+            settings={},
+        )
+        db.add(org)
+        await db.flush()
+
+    # Build SSO config
+    sso_settings = dict(org.settings or {})
+
+    if request.sso_type == "oidc":
+        if not all([request.oidc_issuer, request.oidc_client_id, request.oidc_client_secret]):
+            raise HTTPException(
+                status_code=400,
+                detail="OIDC requires oidc_issuer, oidc_client_id, and oidc_client_secret",
+            )
+        sso_settings["oidc_issuer"] = request.oidc_issuer
+        sso_settings["oidc_client_id"] = request.oidc_client_id
+        sso_settings["oidc_client_secret"] = request.oidc_client_secret
+        sso_settings["oidc_scopes"] = request.oidc_scopes
+        sso_settings["oidc_provider"] = request.oidc_provider
+    elif request.sso_type == "saml":
+        if not all([request.saml_idp_entity_id, request.saml_idp_sso_url, request.saml_idp_x509_cert]):
+            raise HTTPException(
+                status_code=400,
+                detail="SAML requires saml_idp_entity_id, saml_idp_sso_url, and saml_idp_x509_cert",
+            )
+        sso_settings["saml_idp_entity_id"] = request.saml_idp_entity_id
+        sso_settings["saml_idp_sso_url"] = request.saml_idp_sso_url
+        sso_settings["saml_idp_x509_cert"] = request.saml_idp_x509_cert
+        if request.saml_idp_slo_url:
+            sso_settings["saml_idp_slo_url"] = request.saml_idp_slo_url
+    else:
+        raise HTTPException(status_code=400, detail="sso_type must be 'oidc' or 'saml'")
+
+    # Generate SCIM bearer token if requested
+    scim_token = None
+    if request.enable_scim:
+        import secrets
+        scim_token = secrets.token_urlsafe(32)
+        sso_settings["scim_bearer_token"] = scim_token
+
+    org.settings = sso_settings
+    await db.commit()
+
+    # Build response with Okta-side instructions
+    response = {
+        "status": "configured",
+        "org_id": str(org.id),
+        "org_slug": org.slug,
+        "sso_type": request.sso_type,
+    }
+
+    if request.sso_type == "oidc":
+        response["instructions"] = {
+            "redirect_uri": f"https://YOUR_SNAPPER_HOST/auth/oidc/callback",
+            "sign_out_redirect": f"https://YOUR_SNAPPER_HOST/auth/oidc/logout/{org.slug}",
+            "login_url": f"https://YOUR_SNAPPER_HOST/auth/oidc/login/{org.slug}",
+        }
+    elif request.sso_type == "saml":
+        response["instructions"] = {
+            "acs_url": f"https://YOUR_SNAPPER_HOST/auth/saml/acs/{org.slug}",
+            "entity_id": f"https://YOUR_SNAPPER_HOST/auth/saml/metadata/{org.slug}",
+            "login_url": f"https://YOUR_SNAPPER_HOST/auth/saml/login/{org.slug}",
+        }
+
+    if scim_token:
+        response["scim"] = {
+            "base_url": f"https://YOUR_SNAPPER_HOST/scim/v2",
+            "bearer_token": scim_token,
+        }
+
+    return response
+
+
+# ============================================================================
+# Notification Configuration
+# ============================================================================
+
+
+@router.post("/save-notifications")
+async def save_notifications(
+    request: SaveNotificationsRequest,
+    req: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Save notification channel configuration for the organization.
+
+    Stores Telegram, Slack, and email notification settings in the
+    organization's settings JSONB column. Falls back to first org
+    for self-hosted / localhost setups.
+    """
+    # Validate: if channel enabled, require its credentials
+    if request.telegram_enabled:
+        if not request.telegram_bot_token or not request.telegram_chat_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Telegram requires both bot_token and chat_id when enabled",
+            )
+    if request.slack_enabled:
+        if not request.slack_webhook_url:
+            raise HTTPException(
+                status_code=400,
+                detail="Slack requires webhook_url when enabled",
+            )
+
+    from app.models.organizations import Organization
+
+    # Resolve org: auth middleware sets org_id, or fall back to first org
+    org = None
+    org_id = getattr(req.state, "org_id", None) if hasattr(req, "state") else None
+    if org_id:
+        result = await db.execute(
+            select(Organization).where(Organization.id == org_id)
+        )
+        org = result.scalar_one_or_none()
+
+    if not org:
+        # Self-hosted fallback: use first org in DB
+        result = await db.execute(
+            select(Organization).where(Organization.deleted_at.is_(None)).limit(1)
+        )
+        org = result.scalar_one_or_none()
+
+    if not org:
+        # No org exists yet — create a default one for self-hosted
+        org = Organization(
+            name="Default",
+            slug="default",
+            settings={},
+        )
+        db.add(org)
+        await db.flush()
+
+    # Merge notification config into existing settings (preserve SSO/SCIM keys)
+    settings = dict(org.settings or {})
+
+    enabled_channels = []
+    if request.telegram_enabled:
+        enabled_channels.append("telegram")
+    if request.slack_enabled:
+        enabled_channels.append("slack")
+    if request.email_enabled:
+        enabled_channels.append("email")
+
+    settings["notification_channels"] = enabled_channels
+    settings["telegram_bot_token"] = request.telegram_bot_token if request.telegram_enabled else None
+    settings["telegram_chat_id"] = request.telegram_chat_id if request.telegram_enabled else None
+    settings["slack_webhook_url"] = request.slack_webhook_url if request.slack_enabled else None
+    settings["email_enabled"] = request.email_enabled
+
+    org.settings = settings
+    await db.commit()
+
+    return {"status": "saved", "channels": enabled_channels}
 
 
 # ============================================================================
@@ -695,6 +1019,65 @@ def _generate_config_snippet(
             f"# 2. Copy hook to ~/.cline/hooks/pre_tool_use\n"
             f"# Cline auto-discovers executable scripts in the hooks directory\n"
             f"# chmod +x ~/.cline/hooks/pre_tool_use"
+        )
+    elif agent_type == "openai":
+        return (
+            f"# pip install snapper-sdk[openai]\n"
+            f"\n"
+            f"from snapper.openai_wrapper import SnapperOpenAI\n"
+            f"\n"
+            f"client = SnapperOpenAI(\n"
+            f'    snapper_url="{rules_manager_url}",\n'
+            f'    snapper_api_key="{api_key}",\n'
+            f'    agent_id="{agent_id}",\n'
+            f")\n"
+            f"response = client.chat.completions.create(\n"
+            f'    model="gpt-4",\n'
+            f"    messages=[...],\n"
+            f"    tools=[...],\n"
+            f")"
+        )
+    elif agent_type == "anthropic":
+        return (
+            f"# pip install snapper-sdk[anthropic]\n"
+            f"\n"
+            f"from snapper.anthropic_wrapper import SnapperAnthropic\n"
+            f"\n"
+            f"client = SnapperAnthropic(\n"
+            f'    snapper_url="{rules_manager_url}",\n'
+            f'    snapper_api_key="{api_key}",\n'
+            f'    agent_id="{agent_id}",\n'
+            f")\n"
+            f"response = client.messages.create(\n"
+            f'    model="claude-sonnet-4-5-20250929",\n'
+            f"    messages=[...],\n"
+            f"    tools=[...],\n"
+            f")"
+        )
+    elif agent_type == "gemini":
+        return (
+            f"# pip install snapper-sdk[gemini]\n"
+            f"\n"
+            f"from snapper.gemini_wrapper import SnapperGemini\n"
+            f"\n"
+            f"model = SnapperGemini(\n"
+            f'    model_name="gemini-pro",\n'
+            f'    snapper_url="{rules_manager_url}",\n'
+            f'    snapper_api_key="{api_key}",\n'
+            f'    agent_id="{agent_id}",\n'
+            f")\n"
+            f'response = model.generate_content("Hello", tools=[...])'
+        )
+    elif agent_type == "browser-extension":
+        return json.dumps(
+            {
+                "snapper_url": rules_manager_url,
+                "snapper_api_key": api_key,
+                "agent_id": agent_id,
+                "fail_mode": "closed",
+                "pii_scanning": True,
+            },
+            indent=2,
         )
     else:
         return (

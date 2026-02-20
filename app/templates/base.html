@@ -54,16 +54,45 @@
                                 <a href="/" class="{% if request.url.path == '/' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Dashboard</a>
                                 <a href="/integrations" class="{% if '/integrations' in request.url.path or '/rules' in request.url.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Integrations</a>
                                 <a href="/agents" class="{% if '/agents' in request.url.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Agents</a>
+                                <a href="/approvals" class="{% if '/approvals' in request.url.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Approvals</a>
                                 <a href="/security" class="{% if '/security' in request.url.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Security</a>
                                 <a href="/audit" class="{% if '/audit' in request.url.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">Audit</a>
                             </div>
                         </div>
                     </div>
                     <div class="hidden md:block">
-                        <div class="ml-4 flex items-center md:ml-6">
+                        <div class="ml-4 flex items-center md:ml-6 space-x-2">
+                            <!-- Org Switcher -->
+                            <div class="relative" id="org-switcher">
+                                <button type="button" id="org-switcher-btn" class="flex items-center text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">
+                                    <span id="current-org-name" class="truncate max-w-[120px]">Organization</span>
+                                    <svg class="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                </button>
+                                <div id="org-switcher-dropdown" class="hidden absolute right-0 mt-1 w-56 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                                    <div class="py-1" id="org-list"></div>
+                                </div>
+                            </div>
+
                             <a href="/settings" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Settings</a>
                             <a href="/help" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Help</a>
                             <a href="/docs" class="{% if request.url.path == '/docs' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">API Docs</a>
+
+                            <!-- User Menu -->
+                            <div class="relative" id="user-menu">
+                                <button type="button" id="user-menu-btn" class="flex items-center text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">
+                                    <svg class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                    <span id="user-display-name" class="truncate max-w-[100px]">Account</span>
+                                </button>
+                                <div id="user-menu-dropdown" class="hidden absolute right-0 mt-1 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                                    <div class="py-1">
+                                        <a href="/org/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Org Settings</a>
+                                        <a href="/org/members" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Members</a>
+                                        <a href="/billing" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Billing</a>
+                                        <hr class="my-1">
+                                        <button id="logout-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Sign out</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -99,6 +128,75 @@
     <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 
     <script src="/static/js/dashboard.js"></script>
+    <script>
+    // User menu and org switcher logic
+    (function() {
+        // Toggle dropdowns
+        function setupDropdown(btnId, dropdownId) {
+            const btn = document.getElementById(btnId);
+            const dropdown = document.getElementById(dropdownId);
+            if (!btn || !dropdown) return;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dropdown.classList.toggle('hidden');
+            });
+        }
+        setupDropdown('org-switcher-btn', 'org-switcher-dropdown');
+        setupDropdown('user-menu-btn', 'user-menu-dropdown');
+
+        // Close dropdowns on outside click
+        document.addEventListener('click', () => {
+            document.querySelectorAll('#org-switcher-dropdown, #user-menu-dropdown').forEach(d => d.classList.add('hidden'));
+        });
+
+        // Load user info
+        fetch('/api/v1/auth/me', {credentials: 'same-origin'})
+            .then(r => { if (!r.ok) throw new Error('Not authed'); return r.json(); })
+            .then(data => {
+                const nameEl = document.getElementById('user-display-name');
+                if (nameEl) nameEl.textContent = data.user?.username || 'Account';
+                // Populate org switcher
+                const orgList = document.getElementById('org-list');
+                const currentOrgName = document.getElementById('current-org-name');
+                if (data.organizations && orgList) {
+                    orgList.innerHTML = '';
+                    data.organizations.forEach(org => {
+                        const isCurrent = data.user?.default_organization_id === org.org_id;
+                        if (isCurrent && currentOrgName) currentOrgName.textContent = org.org_name;
+                        const a = document.createElement('a');
+                        a.href = '#';
+                        a.className = 'block px-4 py-2 text-sm ' + (isCurrent ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-100');
+                        a.textContent = org.org_name;
+                        a.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            fetch('/api/v1/auth/switch-org', {
+                                method: 'POST', credentials: 'same-origin',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({organization_id: org.org_id})
+                            }).then(() => window.location.reload());
+                        });
+                        orgList.appendChild(a);
+                    });
+                }
+            })
+            .catch(() => {
+                // Not authenticated - hide user menu elements
+                ['org-switcher', 'user-menu'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+            });
+
+        // Logout
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                fetch('/api/v1/auth/logout', {method: 'POST', credentials: 'same-origin'})
+                    .then(() => window.location.href = '/login');
+            });
+        }
+    })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

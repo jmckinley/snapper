@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "snapper.fullname" . }}-config
+  labels:
+    {{- include "snapper.labels" . | nindent 4 }}
+data:
+  APP_NAME: {{ .Values.config.appName | quote }}
+  ENVIRONMENT: {{ .Values.config.environment | quote }}
+  DEBUG: {{ .Values.config.debug | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  DENY_BY_DEFAULT: {{ .Values.config.denyByDefault | quote }}
+  LEARNING_MODE: {{ .Values.config.learningMode | quote }}
+  REQUIRE_API_KEY: {{ .Values.config.requireApiKey | quote }}
+  JWT_ALGORITHM: {{ .Values.config.jwtAlgorithm | quote }}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: {{ .Values.config.jwtAccessTokenExpireMinutes | quote }}
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: {{ .Values.config.jwtRefreshTokenExpireDays | quote }}
+  SELF_HOSTED: {{ .Values.config.selfHosted | quote }}
+  REGISTRATION_ENABLED: {{ .Values.config.registrationEnabled | quote }}
+  RATE_LIMIT_ENABLED: {{ .Values.config.rateLimitEnabled | quote }}
+  RATE_LIMIT_DEFAULT_MAX_REQUESTS: {{ .Values.config.rateLimitDefaultMaxRequests | quote }}
+  RATE_LIMIT_DEFAULT_WINDOW_SECONDS: {{ .Values.config.rateLimitDefaultWindowSeconds | quote }}
+  PII_VAULT_TOKEN_TTL_SECONDS: {{ .Values.config.piiVaultTokenTtlSeconds | quote }}
+  SIEM_OUTPUT: {{ .Values.config.siemOutput | quote }}
+  {{- with .Values.config.siemSyslogHost }}
+  SIEM_SYSLOG_HOST: {{ . | quote }}
+  {{- end }}
+  SIEM_SYSLOG_PORT: {{ .Values.config.siemSyslogPort | quote }}
+  SIEM_SYSLOG_PROTOCOL: {{ .Values.config.siemSyslogProtocol | quote }}
+  {{- with .Values.config.siemWebhookUrl }}
+  SIEM_WEBHOOK_URL: {{ . | quote }}
+  {{- end }}
+  METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}

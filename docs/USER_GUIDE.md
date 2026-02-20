@@ -19,11 +19,12 @@ This guide walks through everything you need as a Snapper user, from first setup
 6. [PII Vault](#pii-vault)
 7. [PII Protection Modes](#pii-protection-modes)
 8. [Emergency Controls](#emergency-controls)
-9. [Agent Setup](#agent-setup)
-10. [Audit Dashboard](#audit-dashboard)
-11. [Integrations & Traffic Discovery](#integrations--traffic-discovery)
-12. [Dashboard](#dashboard)
-13. [Troubleshooting](#troubleshooting)
+9. [Threat Detection](#threat-detection)
+10. [Agent Setup](#agent-setup)
+11. [Audit Dashboard](#audit-dashboard)
+12. [Integrations & Traffic Discovery](#integrations--traffic-discovery)
+13. [Dashboard](#dashboard)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -481,7 +482,7 @@ With domain restrictions, Snapper will deny any attempt to use that token on a s
 
 ### Security Design
 
-- **Encryption:** Values are encrypted with Fernet (AES-128-CBC + HMAC-SHA256) using a key derived from your Snapper SECRET_KEY via HKDF
+- **Encryption:** Values are encrypted with AES-256-GCM (authenticated encryption) using a key derived from your Snapper SECRET_KEY via HKDF
 - **Multi-tenant:** Each user's entries are isolated by their Telegram chat ID or Slack user ID. You can only see and manage your own data.
 - **Auto-delete messages:** Every message containing raw PII is deleted from Telegram immediately after processing
 - **Masked display:** Raw values are never shown — only masked versions (e.g., `****-****-****-1234`)
@@ -554,6 +555,59 @@ Once blocked, all agent requests are denied until you unblock. A red alert appea
 - You notice unauthorized actions in the audit log
 - You need to investigate before allowing further actions
 - During an active security incident
+
+---
+
+## Threat Detection
+
+Snapper automatically monitors agent behavior to detect attack patterns. No configuration needed — it runs by default.
+
+### What Gets Detected
+
+The engine watches for multi-step attack patterns such as:
+- **Data exfiltration** — file read followed by network send
+- **Credential theft** — accessing secrets then sending them externally
+- **PII harvesting** — collecting personal data from multiple sources
+- **Encoded exfiltration** — encoding data before sending (base64, hex)
+- **Privilege escalation chains** — escalating privileges then accessing data
+- **Living-off-the-land** — using legitimate tools in suspicious sequences
+
+### How Scoring Works
+
+Each agent gets a threat score from 0 to 100:
+- **0-39**: Normal — logged for baseline building
+- **40-59**: Suspicious — alert sent to Telegram/Slack
+- **60-79**: Elevated — requires human approval
+- **80-100**: Critical — automatically denied
+
+Scores decay over time (5-minute TTL) so agents can recover after false positives.
+
+### Viewing Threats
+
+- **Dashboard**: Threat summary widget shows active threats by severity
+- **API**: `GET /api/v1/threats` lists all threat events
+- **API**: `GET /api/v1/threats/scores/live` shows current scores
+
+### Resolving Threats
+
+Threat events can be resolved via the API:
+```bash
+# Mark as resolved
+curl -X POST /api/v1/threats/{id}/resolve \
+  -d '{"status": "resolved", "resolution_notes": "False alarm"}'
+
+# Mark as false positive
+curl -X POST /api/v1/threats/{id}/resolve \
+  -d '{"status": "false_positive", "resolution_notes": "Legitimate batch job"}'
+```
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `THREAT_DETECTION_ENABLED` | `true` | Toggle the detection engine |
+| `THREAT_DENY_THRESHOLD` | `80` | Score for automatic denial |
+| `THREAT_APPROVAL_THRESHOLD` | `60` | Score for human approval |
 
 ---
 
@@ -813,3 +867,106 @@ Check the agent's `owner_chat_id`:
 - Must start with `U` (e.g., `U0ACYA78DSR`) for Slack DM routing
 - Numeric values route to Telegram instead
 - Update via dashboard (edit agent) or API
+
+---
+
+## AI Provider Setup
+
+### OpenAI SDK
+
+```bash
+pip install snapper-sdk[openai]
+```
+
+```python
+from snapper.openai_wrapper import SnapperOpenAI
+
+client = SnapperOpenAI(
+    snapper_url="https://snapper.example.com",
+    snapper_api_key="snp_xxx",
+    agent_id="myapp-openai",
+)
+# Use exactly like openai.OpenAI — tool calls auto-evaluated
+```
+
+### Anthropic SDK
+
+```bash
+pip install snapper-sdk[anthropic]
+```
+
+```python
+from snapper.anthropic_wrapper import SnapperAnthropic
+
+client = SnapperAnthropic(
+    snapper_url="https://snapper.example.com",
+    snapper_api_key="snp_xxx",
+    agent_id="myapp-anthropic",
+)
+# Use exactly like anthropic.Anthropic — tool_use blocks auto-evaluated
+```
+
+### Gemini SDK
+
+```bash
+pip install snapper-sdk[gemini]
+```
+
+```python
+from snapper.gemini_wrapper import SnapperGemini
+
+model = SnapperGemini(
+    model_name="gemini-pro",
+    snapper_url="https://snapper.example.com",
+    snapper_api_key="snp_xxx",
+    agent_id="myapp-gemini",
+)
+# Use exactly like GenerativeModel — function_call parts auto-evaluated
+```
+
+See [AI Provider Integration Guide](AI_PROVIDERS.md) for detailed examples and error handling.
+
+## Browser Extension Setup
+
+1. Load the extension from `extension/` directory:
+   - Chrome: `chrome://extensions` > Developer mode > Load unpacked
+   - Firefox: `about:debugging#/runtime/this-firefox` > Load Temporary Add-on
+
+2. Click the Snapper icon > Settings:
+   - Enter your Snapper URL
+   - Enter your API key
+   - Click "Test Connection" to verify
+
+3. Navigate to ChatGPT, Claude.ai, or Gemini — tool calls are now protected
+
+For enterprise deployment via Chrome policy, see [AI Providers Guide](AI_PROVIDERS.md#enterprise-deployment).
+
+## Enterprise Features Overview
+
+### Organizations
+
+Create and manage organizations at `/org/settings`:
+- Invite members by email
+- Assign roles: Owner, Admin, Member, Viewer
+- All agents, rules, and data are scoped to your organization
+
+### SSO (Single Sign-On)
+
+Configure SAML 2.0 or OIDC in organization settings:
+- Supports Okta, Entra ID (Azure AD), Google Workspace
+- JIT provisioning: users auto-created on first login
+- See [Enterprise Guide](ENTERPRISE.md#sso-configuration) for IdP setup
+
+### SIEM Integration
+
+Send security events to your SIEM via syslog or webhooks:
+- CEF format compatible with Splunk, QRadar, Sentinel
+- Webhook events with HMAC signature verification
+- See [Enterprise Guide](ENTERPRISE.md#siem-integration) for setup
+
+### Policy-as-Code
+
+Export/import rules as YAML for GitOps:
+- `POST /api/v1/rules/export` — export current rules
+- `POST /api/v1/rules/import` — import rules (with dry-run)
+- See [Enterprise Guide](ENTERPRISE.md#policy-as-code) for CI/CD workflow

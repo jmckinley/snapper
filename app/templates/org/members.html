@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Members - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Members</h1>
+                <p class="mt-1 text-sm text-gray-500">Manage who has access to your organization.</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <a href="/org/settings" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                    <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Org Settings
+                </a>
+                <button onclick="showInviteModal()" class="inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                    <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Invite Member
+                </button>
+            </div>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Members Table -->
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Organization Members</h3>
+        </div>
+        <div id="members-table">
+            <div class="px-6 py-8 text-center text-gray-500">
+                <div class="animate-pulse">Loading members...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Invitations -->
+    <div id="invitations-section" class="hidden bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Pending Invitations</h3>
+        </div>
+        <div id="invitations-table">
+            <div class="px-6 py-4 text-center text-gray-500 text-sm">No pending invitations.</div>
+        </div>
+    </div>
+</div>
+
+<!-- Invite Member Modal -->
+<div id="invite-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 transition-opacity" onclick="hideInviteModal()">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+            <form id="invite-form" onsubmit="submitInvite(event)">
+                <div class="bg-white px-6 pt-6 pb-4">
+                    <h3 class="text-lg font-bold text-gray-900 mb-2">Invite a Member</h3>
+                    <p class="text-sm text-gray-500 mb-4">Send an invitation link to a new team member.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="invite-email" class="block text-sm font-medium text-gray-700">Email Address</label>
+                            <input type="email" id="invite-email" name="email" required
+                                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                placeholder="colleague@example.com">
+                        </div>
+                        <div>
+                            <label for="invite-role" class="block text-sm font-medium text-gray-700">Role</label>
+                            <select id="invite-role" name="role"
+                                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                                <option value="viewer">Viewer -- Read-only access</option>
+                                <option value="member" selected>Member -- Manage agents and rules</option>
+                                <option value="admin">Admin -- Full management access</option>
+                            </select>
+                            <p class="mt-1 text-xs text-gray-400">
+                                <strong>Viewer:</strong> read-only &middot;
+                                <strong>Member:</strong> manage agents/rules &middot;
+                                <strong>Admin:</strong> invite members, manage settings
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+                    <button type="button" onclick="hideInviteModal()"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                        class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700">
+                        Send Invitation
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Change Role Modal -->
+<div id="role-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 transition-opacity" onclick="hideRoleModal()">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
+            <div class="bg-white px-6 pt-6 pb-4">
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Change Role</h3>
+                <p class="text-sm text-gray-500 mb-4">Update the role for <strong id="role-change-username"></strong>.</p>
+                <div>
+                    <label for="new-role" class="block text-sm font-medium text-gray-700">New Role</label>
+                    <select id="new-role"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm">
+                        <option value="viewer">Viewer</option>
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                        <option value="owner">Owner</option>
+                    </select>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+                <button onclick="hideRoleModal()"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+                    Cancel
+                </button>
+                <button onclick="confirmRoleChange()"
+                    class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700">
+                    Update Role
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let orgId = null;
+    let members = [];
+    let roleChangeUserId = null;
+
+    const roleBadgeClasses = {
+        owner:  'bg-purple-100 text-purple-800',
+        admin:  'bg-blue-100 text-blue-800',
+        member: 'bg-green-100 text-green-800',
+        viewer: 'bg-gray-100 text-gray-600',
+    };
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Determine org ID
+        const meta = document.querySelector('meta[name="org-id"]');
+        if (meta) {
+            orgId = meta.content;
+        } else {
+            // Fallback: list orgs and use first
+            try {
+                const resp = await fetch('/api/v1/organizations');
+                const orgs = await resp.json();
+                if (orgs.length > 0) orgId = orgs[0].id;
+            } catch (e) { /* ignore */ }
+        }
+
+        if (orgId) {
+            loadMembers();
+        } else {
+            document.getElementById('members-table').innerHTML =
+                '<div class="px-6 py-8 text-center text-gray-500">No organization found.</div>';
+        }
+    });
+
+    async function loadMembers() {
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}/members`);
+            if (!resp.ok) throw new Error('Failed to load');
+            members = await resp.json();
+            renderMembers(members);
+        } catch (err) {
+            console.error('Failed to load members:', err);
+            document.getElementById('members-table').innerHTML =
+                '<div class="px-6 py-8 text-center text-red-500">Failed to load members.</div>';
+        }
+    }
+
+    function renderMembers(membersList) {
+        const container = document.getElementById('members-table');
+
+        if (membersList.length === 0) {
+            container.innerHTML = '<div class="px-6 py-8 text-center text-gray-500">No members found.</div>';
+            return;
+        }
+
+        const rows = membersList.map(m => {
+            const initials = (m.username || m.email).substring(0, 2).toUpperCase();
+            const badgeClass = roleBadgeClasses[m.role] || roleBadgeClasses.viewer;
+            const joinedDate = m.accepted_at
+                ? new Date(m.accepted_at).toLocaleDateString()
+                : new Date(m.created_at).toLocaleDateString();
+            const isOwner = m.role === 'owner';
+
+            return `
+                <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
+                    <div class="flex items-center space-x-4">
+                        <div class="h-10 w-10 bg-gray-200 rounded-full flex items-center justify-center text-sm font-medium text-gray-600">
+                            ${initials}
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">${m.username}</p>
+                            <p class="text-sm text-gray-500">${m.email}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass}">
+                            ${m.role.charAt(0).toUpperCase() + m.role.slice(1)}
+                        </span>
+                        <span class="text-xs text-gray-400">${joinedDate}</span>
+                        ${isOwner ? '' : `
+                            <div class="relative">
+                                <button onclick="toggleDropdown('${m.user_id}')" class="p-1 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01" />
+                                    </svg>
+                                </button>
+                                <div id="dropdown-${m.user_id}" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20">
+                                    <button onclick="showRoleModal('${m.user_id}', '${m.username}', '${m.role}')"
+                                        class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        Change Role
+                                    </button>
+                                    <button onclick="removeMember('${m.user_id}', '${m.username}')"
+                                        class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = rows;
+    }
+
+    function toggleDropdown(userId) {
+        // Close all other dropdowns
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => {
+            if (el.id !== `dropdown-${userId}`) el.classList.add('hidden');
+        });
+        const dd = document.getElementById(`dropdown-${userId}`);
+        dd.classList.toggle('hidden');
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('[id^="dropdown-"]') && !e.target.closest('button')) {
+            document.querySelectorAll('[id^="dropdown-"]').forEach(el => el.classList.add('hidden'));
+        }
+    });
+
+    // --- Invite flow ---
+
+    function showInviteModal() {
+        document.getElementById('invite-modal').classList.remove('hidden');
+        document.getElementById('invite-email').value = '';
+        document.getElementById('invite-role').value = 'member';
+    }
+
+    function hideInviteModal() {
+        document.getElementById('invite-modal').classList.add('hidden');
+    }
+
+    async function submitInvite(e) {
+        e.preventDefault();
+        const email = document.getElementById('invite-email').value.trim();
+        const role = document.getElementById('invite-role').value;
+        if (!email) return;
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}/members/invite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, role }),
+            });
+
+            if (resp.ok || resp.status === 201) {
+                hideInviteModal();
+                showToast('Invitation sent', 'success');
+                loadMembers();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to send invitation', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to send invitation', 'error');
+        }
+    }
+
+    // --- Role change flow ---
+
+    function showRoleModal(userId, username, currentRole) {
+        roleChangeUserId = userId;
+        document.getElementById('role-change-username').textContent = username;
+        document.getElementById('new-role').value = currentRole;
+        document.getElementById('role-modal').classList.remove('hidden');
+        // Close any open dropdown
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => el.classList.add('hidden'));
+    }
+
+    function hideRoleModal() {
+        document.getElementById('role-modal').classList.add('hidden');
+        roleChangeUserId = null;
+    }
+
+    async function confirmRoleChange() {
+        if (!roleChangeUserId) return;
+        const newRole = document.getElementById('new-role').value;
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}/members/${roleChangeUserId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role: newRole }),
+            });
+
+            if (resp.ok) {
+                hideRoleModal();
+                showToast('Role updated', 'success');
+                loadMembers();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to update role', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to update role', 'error');
+        }
+    }
+
+    // --- Remove member ---
+
+    async function removeMember(userId, username) {
+        if (!confirm(`Remove ${username} from this organization?`)) return;
+
+        // Close any open dropdown
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => el.classList.add('hidden'));
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}/members/${userId}`, {
+                method: 'DELETE',
+            });
+
+            if (resp.ok || resp.status === 204) {
+                showToast(`${username} removed`, 'success');
+                loadMembers();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to remove member', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to remove member', 'error');
+        }
+    }
+
+    // --- Toast ---
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+        toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+</script>
+{% endblock %}

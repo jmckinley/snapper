@@ -1,0 +1,249 @@
+# Snapper Helm Chart — Default Values
+# Override per deployment tier: values-cloud.yaml, values-onprem.yaml, values-airgap.yaml
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/jmckinley/snapper
+  tag: ""  # Defaults to Chart.appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# --- Application config ---
+config:
+  appName: Snapper
+  environment: production
+  debug: false
+  logLevel: INFO
+  logFormat: json
+
+  # Security
+  denyByDefault: true
+  learningMode: false
+  requireApiKey: true
+
+  # JWT
+  jwtAlgorithm: HS256
+  jwtAccessTokenExpireMinutes: 30
+  jwtRefreshTokenExpireDays: 7
+
+  # Multi-tenancy
+  selfHosted: false
+  registrationEnabled: true
+
+  # Rate limiting
+  rateLimitEnabled: true
+  rateLimitDefaultMaxRequests: 100
+  rateLimitDefaultWindowSeconds: 60
+
+  # PII Vault
+  piiVaultTokenTtlSeconds: 30
+
+  # SIEM
+  siemOutput: "none"  # none | syslog | webhook | both
+  siemSyslogHost: ""
+  siemSyslogPort: 514
+  siemSyslogProtocol: "udp"  # udp | tcp
+  siemWebhookUrl: ""
+  siemWebhookSecret: ""
+
+  # Metrics
+  metricsEnabled: true
+
+# Secrets — reference existing K8s secrets or provide values
+secrets:
+  # Name of an existing Secret containing keys: SECRET_KEY, DATABASE_URL, REDIS_URL
+  existingSecret: ""
+  # Only used if existingSecret is empty
+  secretKey: ""  # MUST be set (min 32 chars)
+  databaseUrl: ""
+  redisUrl: ""
+
+  # Optional
+  telegramBotToken: ""
+  telegramChatId: ""
+  slackBotToken: ""
+  slackAppToken: ""
+  stripeSecretKey: ""
+  stripeWebhookSecret: ""
+
+  # SSO
+  samlEnabled: false
+  oidcEnabled: false
+
+# --- External database (when postgresql.enabled=false) ---
+externalDatabase:
+  host: ""
+  port: 5432
+  database: snapper
+  username: snapper
+  password: ""
+  sslMode: require
+
+# --- External Redis (when redis.enabled=false) ---
+externalRedis:
+  host: ""
+  port: 6379
+  password: ""
+  db: 0
+
+# --- Bundled PostgreSQL subchart ---
+postgresql:
+  enabled: true
+  auth:
+    username: snapper
+    password: snapper
+    database: snapper
+  primary:
+    persistence:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+# --- Bundled Redis subchart ---
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# --- Service ---
+service:
+  type: ClusterIP
+  port: 8000
+
+# --- Ingress ---
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: snapper.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: snapper-tls
+    #   hosts:
+    #     - snapper.example.com
+
+# --- Autoscaling ---
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# --- Pod Disruption Budget ---
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# --- Resources ---
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# --- Celery worker ---
+celeryWorker:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# --- Celery beat (single instance) ---
+celeryBeat:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# --- Database migrations (init container / Job) ---
+migrations:
+  enabled: true
+  # Run as init container (true) or standalone Job (false)
+  asInitContainer: true
+
+# --- Probes ---
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# --- ServiceMonitor for Prometheus Operator ---
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  path: /metrics
+  labels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

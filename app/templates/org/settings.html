@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+
+{% block title %}Organization Settings - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Organization Settings</h1>
+                <p class="mt-1 text-sm text-gray-500">Manage your organization's name, plan, and configuration.</p>
+            </div>
+            <a href="/org/members" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Manage Members
+            </a>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+    <!-- Organization Name -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">General</h2>
+        <form id="org-settings-form" class="space-y-4">
+            <div>
+                <label for="org-name" class="block text-sm font-medium text-gray-700">Organization Name</label>
+                <input type="text" id="org-name" name="name" required minlength="1" maxlength="255"
+                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    placeholder="My Organization">
+            </div>
+            <div>
+                <label for="org-slug" class="block text-sm font-medium text-gray-700">Slug</label>
+                <input type="text" id="org-slug" disabled
+                    class="mt-1 block w-full border border-gray-200 bg-gray-50 rounded-md shadow-sm py-2 px-3 sm:text-sm text-gray-500 font-mono cursor-not-allowed">
+                <p class="mt-1 text-xs text-gray-400">The slug is set at creation and cannot be changed.</p>
+            </div>
+            <div class="flex justify-end">
+                <button type="submit"
+                    class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Current Plan -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-medium text-gray-900">Plan</h2>
+            <span id="plan-badge" class="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-600">Loading...</span>
+        </div>
+        <div id="plan-details" class="space-y-3">
+            <div class="text-sm text-gray-500">Loading plan details...</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-200">
+            <a href="/billing" class="inline-flex items-center px-4 py-2 border border-primary-600 text-sm font-medium rounded-md text-primary-600 bg-white hover:bg-primary-50">
+                <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Manage Billing
+            </a>
+        </div>
+    </div>
+
+    <!-- Usage Overview -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Usage</h2>
+        <div id="usage-bars" class="space-y-4">
+            <div class="text-sm text-gray-500">Loading usage...</div>
+        </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="bg-white shadow rounded-lg border-2 border-red-200 p-6">
+        <h2 class="text-lg font-medium text-red-700 mb-2">Danger Zone</h2>
+        <p class="text-sm text-gray-500 mb-4">
+            Deleting this organization will deactivate all agents, rules, and vault entries.
+            This action can only be performed by the organization owner.
+        </p>
+        <button id="delete-org-btn" onclick="showDeleteModal()"
+            class="px-4 py-2 border border-red-600 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+            Delete Organization
+        </button>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-modal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 transition-opacity" onclick="hideDeleteModal()">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+            <div class="bg-white px-6 pt-6 pb-4">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.962-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900">Delete Organization</h3>
+                </div>
+                <p class="text-sm text-gray-500 mb-4">
+                    This will permanently deactivate the organization and all its resources.
+                    Type the organization name below to confirm.
+                </p>
+                <div>
+                    <label for="confirm-name" class="block text-sm font-medium text-gray-700">Organization name</label>
+                    <input type="text" id="confirm-name"
+                        class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
+                        placeholder="Type organization name to confirm">
+                </div>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+                <button onclick="hideDeleteModal()"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+                    Cancel
+                </button>
+                <button id="confirm-delete-btn" onclick="deleteOrganization()" disabled
+                    class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Delete Organization
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentOrg = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadOrgSettings();
+        loadUsage();
+
+        document.getElementById('org-settings-form').addEventListener('submit', saveOrgSettings);
+
+        // Enable delete button only when name matches
+        document.getElementById('confirm-name').addEventListener('input', (e) => {
+            const btn = document.getElementById('confirm-delete-btn');
+            btn.disabled = !currentOrg || e.target.value !== currentOrg.name;
+        });
+    });
+
+    function getOrgId() {
+        // Read org_id from cookie, query param, or page data attribute
+        const meta = document.querySelector('meta[name="org-id"]');
+        if (meta) return meta.content;
+        // Fallback: extract from URL or use a global
+        return window.__ORG_ID || null;
+    }
+
+    async function loadOrgSettings() {
+        const orgId = getOrgId();
+        if (!orgId) {
+            // Try listing orgs and using the first one
+            try {
+                const listResp = await fetch('/api/v1/organizations');
+                const orgs = await listResp.json();
+                if (orgs.length > 0) {
+                    window.__ORG_ID = orgs[0].id;
+                    currentOrg = orgs[0];
+                    populateForm(currentOrg);
+                }
+            } catch (err) {
+                console.error('Failed to load organizations:', err);
+            }
+            return;
+        }
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}`);
+            if (resp.ok) {
+                currentOrg = await resp.json();
+                populateForm(currentOrg);
+            }
+        } catch (err) {
+            console.error('Failed to load org settings:', err);
+        }
+    }
+
+    function populateForm(org) {
+        document.getElementById('org-name').value = org.name;
+        document.getElementById('org-slug').value = org.slug;
+
+        // Plan badge
+        const badge = document.getElementById('plan-badge');
+        const planColors = {
+            'free': 'bg-gray-100 text-gray-800',
+            'pro': 'bg-blue-100 text-blue-800',
+            'enterprise': 'bg-purple-100 text-purple-800',
+        };
+        badge.textContent = (org.plan_id || 'free').charAt(0).toUpperCase() + (org.plan_id || 'free').slice(1);
+        badge.className = `px-3 py-1 text-sm font-medium rounded-full ${planColors[org.plan_id] || planColors['free']}`;
+
+        // Plan details
+        const details = document.getElementById('plan-details');
+        details.innerHTML = `
+            <div class="flex items-center justify-between text-sm">
+                <span class="text-gray-600">Plan</span>
+                <span class="font-medium text-gray-900">${org.plan_id ? org.plan_id.charAt(0).toUpperCase() + org.plan_id.slice(1) : 'Free'}</span>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+                <span class="text-gray-600">Status</span>
+                <span class="font-medium ${org.is_active ? 'text-green-700' : 'text-red-700'}">${org.is_active ? 'Active' : 'Inactive'}</span>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+                <span class="text-gray-600">Created</span>
+                <span class="font-medium text-gray-900">${new Date(org.created_at).toLocaleDateString()}</span>
+            </div>
+        `;
+    }
+
+    async function loadUsage() {
+        const orgId = getOrgId() || window.__ORG_ID;
+        if (!orgId) return;
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}/usage`);
+            if (!resp.ok) return;
+            const usage = await resp.json();
+            renderUsage(usage);
+        } catch (err) {
+            console.error('Failed to load usage:', err);
+        }
+    }
+
+    function renderUsage(usage) {
+        const container = document.getElementById('usage-bars');
+        const resources = [
+            { key: 'agents', label: 'Agents' },
+            { key: 'rules', label: 'Rules' },
+            { key: 'vault_entries', label: 'Vault Entries' },
+            { key: 'team_members', label: 'Team Members' },
+            { key: 'teams', label: 'Teams' },
+        ];
+
+        container.innerHTML = resources.map(r => {
+            const stat = usage[r.key];
+            const pct = stat.is_unlimited ? 0 : (stat.limit > 0 ? Math.min(100, (stat.used / stat.limit) * 100) : 0);
+            const limitText = stat.is_unlimited ? 'Unlimited' : stat.limit;
+            const barColor = pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-yellow-500' : 'bg-primary-500';
+            return `
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="font-medium text-gray-700">${r.label}</span>
+                        <span class="text-gray-500">${stat.used} / ${limitText}</span>
+                    </div>
+                    ${stat.is_unlimited ? `
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-green-400 h-2 rounded-full" style="width: 100%"></div>
+                        </div>
+                    ` : `
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="${barColor} h-2 rounded-full transition-all" style="width: ${pct}%"></div>
+                        </div>
+                    `}
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function saveOrgSettings(e) {
+        e.preventDefault();
+        const orgId = getOrgId() || window.__ORG_ID;
+        if (!orgId) return;
+
+        const name = document.getElementById('org-name').value.trim();
+        if (!name) return;
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+
+            if (resp.ok) {
+                currentOrg = await resp.json();
+                showToast('Organization settings saved', 'success');
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to save', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to save settings', 'error');
+        }
+    }
+
+    function showDeleteModal() {
+        document.getElementById('delete-modal').classList.remove('hidden');
+        document.getElementById('confirm-name').value = '';
+        document.getElementById('confirm-delete-btn').disabled = true;
+    }
+
+    function hideDeleteModal() {
+        document.getElementById('delete-modal').classList.add('hidden');
+    }
+
+    async function deleteOrganization() {
+        const orgId = getOrgId() || window.__ORG_ID;
+        if (!orgId) return;
+
+        try {
+            const resp = await fetch(`/api/v1/organizations/${orgId}`, { method: 'DELETE' });
+            if (resp.ok || resp.status === 204) {
+                showToast('Organization deleted', 'success');
+                setTimeout(() => { window.location.href = '/'; }, 1500);
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Failed to delete', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to delete organization', 'error');
+        }
+        hideDeleteModal();
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+        toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+</script>
+{% endblock %}

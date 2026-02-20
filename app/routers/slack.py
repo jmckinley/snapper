@@ -20,6 +20,7 @@ from fastapi import APIRouter
 from app.config import get_settings
 from app.database import async_session_factory
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
+from app.services.event_publisher import publish_from_audit_log
 from app.models.rules import Rule, RuleType, RuleAction
 
 logger = logging.getLogger(__name__)
@@ -897,6 +898,7 @@ async def _cmd_vault(command, say):
                 )
                 db.add(audit_log)
                 await db.commit()
+                asyncio.ensure_future(publish_from_audit_log(audit_log))
                 await _say_and_track(say, text=f":wastebasket: Vault entry *{entry.label}* deleted.")
             else:
                 await _say_and_track(say, text="Failed to delete entry. You may not own it.")
@@ -1113,6 +1115,7 @@ async def _cmd_unblock(command, say):
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     await _say_and_track(
         say,
@@ -1183,6 +1186,7 @@ async def _cmd_pii(command, say):
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
         mode_emoji = ":shield:" if text == "protected" else ":zap:"
         desc = "Vault tokens will require human approval before being resolved." if text == "protected" else "Vault tokens will be resolved automatically without approval."
@@ -1375,6 +1379,7 @@ async def _action_vault_delall(body, respond):
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     await respond(replace_original=True, text=f":wastebasket: *Deleted {deleted_count} vault entries.*")
 
@@ -1619,6 +1624,7 @@ async def _handle_vault_value_reply(user_id: str, channel: str, text: str, pendi
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     await redis_client.delete(f"slack_vault_pending:{user_id}")
 
@@ -1743,10 +1749,12 @@ async def _process_approval(request_id: str, action: str, approved_by: str) -> d
                 "action": action,
                 "approved_by": approved_by,
                 "channel": "slack",
+                "decision_source": "human",
             },
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {"status": "processed", "success": True, "action": action, "request_id": request_id}
 
@@ -1877,6 +1885,7 @@ async def _create_allow_rule_from_context(context_json: str, username: str) -> d
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {
         "message": f"Rule created: *{rule_name}*\nType: {rule_type.value}\nPriority: 500",
@@ -1941,6 +1950,7 @@ async def _activate_emergency_block(user_id: str, username: str) -> dict:
         )
         db.add(audit_log)
         await db.commit()
+        asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {"rule_id": str(rule_ids[0]) if rule_ids else "unknown", "status": "activated"}
 

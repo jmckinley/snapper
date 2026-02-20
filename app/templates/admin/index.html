@@ -1,0 +1,119 @@
+{% extends "admin/base.html" %}
+{% block title %}Admin Overview — Snapper{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-gray-900">Platform Overview</h1>
+    <a href="/admin/provision" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium">Provision Org</a>
+</div>
+
+<!-- Stat cards -->
+<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-8" id="stats-grid">
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Organizations</dt>
+        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-orgs">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Active Orgs</dt>
+        <dd class="mt-1 text-3xl font-semibold text-green-600" id="stat-active-orgs">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Users</dt>
+        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-users">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Agents</dt>
+        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-agents">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Rules</dt>
+        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-rules">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Evals (24h)</dt>
+        <dd class="mt-1 text-3xl font-semibold text-blue-600" id="stat-evals">—</dd>
+    </div>
+</div>
+
+<!-- Recent orgs table -->
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <div class="px-4 py-5 border-b border-gray-200">
+        <h3 class="text-lg font-medium text-gray-900">Recent Organizations</h3>
+    </div>
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agents</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200" id="orgs-tbody"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStats() {
+    try {
+        const res = await fetch('/api/v1/meta/stats', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('stat-orgs').textContent = data.total_organizations;
+        document.getElementById('stat-active-orgs').textContent = data.active_organizations;
+        document.getElementById('stat-users').textContent = data.total_users;
+        document.getElementById('stat-agents').textContent = data.total_agents;
+        document.getElementById('stat-rules').textContent = data.total_rules;
+        document.getElementById('stat-evals').textContent = data.total_evaluations_24h;
+    } catch (e) { console.error('Failed to load stats:', e); }
+}
+
+async function loadOrgs() {
+    try {
+        const res = await fetch('/api/v1/meta/orgs?limit=10', { credentials: 'include' });
+        if (!res.ok) return;
+        const orgs = await res.json();
+        const tbody = document.getElementById('orgs-tbody');
+        tbody.innerHTML = orgs.map(o => `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <a href="/admin/orgs/${o.id}" class="text-amber-600 hover:text-amber-800">${o.name}</a>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.plan_id}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${o.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                        ${o.is_active ? 'Active' : 'Suspended'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.member_count}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.agent_count}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.owner_email || '—'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                    <a href="/admin/orgs/${o.id}" class="text-amber-600 hover:underline">View</a>
+                    <button onclick="impersonate('${o.id}')" class="text-red-600 hover:underline">Impersonate</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) { console.error('Failed to load orgs:', e); }
+}
+
+async function impersonate(orgId) {
+    if (!confirm('Start impersonating this organization?')) return;
+    const res = await fetch('/api/v1/meta/impersonate', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId })
+    });
+    if (res.ok) window.location.href = '/';
+    else alert('Impersonation failed');
+}
+
+loadStats();
+loadOrgs();
+</script>
+{% endblock %}

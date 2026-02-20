@@ -27,7 +27,7 @@ celery_app.conf.update(
 )
 
 # Import task modules to register them
-from app.tasks import security_research, alerts, telegram_cleanup  # noqa
+from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review  # noqa
 
 # Configure periodic tasks (Celery Beat)
 celery_app.conf.beat_schedule = {
@@ -65,5 +65,32 @@ celery_app.conf.beat_schedule = {
     "cleanup-telegram-bot-messages": {
         "task": "app.tasks.telegram_cleanup.cleanup_bot_messages",
         "schedule": 21600,  # 6 hours
+    },
+    # Clean up old audit logs daily at 3 AM UTC
+    "cleanup-old-audit-logs": {
+        "task": "app.tasks.audit_retention.cleanup_old_audit_logs",
+        "schedule": 86400,  # 24 hours
+    },
+    # Threat analysis: consume signal streams every 2 seconds
+    "analyze-threat-signals": {
+        "task": "app.tasks.threat_analysis.analyze_threat_signals",
+        "schedule": 2,
+        "options": {"time_limit": 30},
+    },
+    # Prune old baseline data daily
+    "prune-threat-baselines": {
+        "task": "app.tasks.threat_analysis.prune_baselines",
+        "schedule": 86400,  # 24 hours
+    },
+    # Detect slow-drip exfiltration every 15 minutes
+    "slow-drip-detection": {
+        "task": "app.tasks.threat_analysis.detect_slow_drip",
+        "schedule": 900,  # 15 minutes
+    },
+    # AI-powered threat review (opt-in, requires ANTHROPIC_API_KEY)
+    # Safe for air-gapped deployments: exits immediately if disabled or no key
+    "ai-threat-review": {
+        "task": "app.tasks.ai_threat_review.ai_threat_review",
+        "schedule": 900,  # 15 minutes (configurable via THREAT_AI_REVIEW_INTERVAL_SECONDS)
     },
 }

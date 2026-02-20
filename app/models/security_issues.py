@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     String,
     Text,
@@ -336,6 +337,12 @@ class SecurityRecommendation(Base):
         nullable=True,
         index=True,
         comment="Agent this recommendation applies to, null for global",
+    )
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Recommendation details

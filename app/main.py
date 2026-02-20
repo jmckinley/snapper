@@ -20,6 +20,17 @@ from app.redis_client import redis_client
 
 # Import routers
 from app.routers import agents, approvals, audit, integrations, rules, security, setup, slack, telegram, vault
+from app.routers import auth as auth_router
+from app.routers import organizations as org_router
+from app.routers import billing as billing_router
+from app.routers import saml as saml_router
+from app.routers import oidc as oidc_router
+from app.routers import scim as scim_router
+from app.routers import webhooks as webhooks_router
+from app.routers import approval_policies as approval_policies_router
+from app.routers import suggestions as suggestions_router
+from app.routers import threats as threats_router
+from app.routers import meta_admin as meta_admin_router
 
 settings = get_settings()
 
@@ -57,6 +68,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.routers.slack import start_slack_bot
         await start_slack_bot()
 
+    # Set initial active agents gauge
+    try:
+        from app.middleware.metrics import set_active_agents
+        from app.database import get_db_context
+        from app.models.agents import Agent, AgentStatus
+        from sqlalchemy import select, func
+        async with get_db_context() as db:
+            count_result = await db.execute(
+                select(func.count(Agent.id)).where(Agent.deleted_at.is_(None), Agent.status == AgentStatus.ACTIVE)
+            )
+            set_active_agents(count_result.scalar() or 0)
+        logger.info("Active agents gauge initialized")
+    except Exception as e:
+        logger.warning(f"Could not initialize active agents gauge: {e}")
+
     logger.info("Snapper started successfully")
 
     yield
@@ -87,6 +113,25 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
+    openapi_tags=[
+        # Public API tags (listed first)
+        {"name": "Core", "description": "Evaluate requests and check approval status — the primary hook integration points."},
+        {"name": "Agents", "description": "Agent lifecycle management: create, update, suspend, trust scoring."},
+        {"name": "Rules", "description": "Policy-as-code: CRUD, import/export, validate, templates."},
+        {"name": "Vault", "description": "PII vault: encrypted storage with tokenized references."},
+        {"name": "Audit", "description": "Audit logs, stats, violations, and alerts."},
+        {"name": "Webhooks", "description": "Webhook configuration for event notifications."},
+        {"name": "Integrations", "description": "Traffic discovery, MCP server detection, and rule pack management."},
+        # Internal tags
+        {"name": "Auth", "description": "Internal: User authentication and session management."},
+        {"name": "Organizations", "description": "Internal: Organization and team management."},
+        {"name": "Billing", "description": "Internal: Subscription and usage billing."},
+        {"name": "Telegram", "description": "Internal: Telegram bot webhook and commands."},
+        {"name": "Slack", "description": "Internal: Slack bot Socket Mode integration."},
+        {"name": "SSO", "description": "Internal: SAML, OIDC, and SCIM provisioning."},
+        {"name": "Security Research", "description": "Internal: Security vulnerability research and threat feeds."},
+        {"name": "Setup", "description": "Internal: First-run wizard and agent auto-discovery."},
+    ],
 )
 
 # Configure CORS
@@ -96,7 +141,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-RateLimit-Remaining", "Retry-After"],
+    expose_headers=["X-Request-ID", "X-API-Version", "X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
 )
 
 
@@ -104,10 +149,17 @@ app.add_middleware(
 from app.middleware.security import SecurityMiddleware
 from app.middleware.rule_enforcement import RuleEnforcementMiddleware
 from app.middleware.onboarding import OnboardingMiddleware
+from app.middleware.auth import AuthMiddleware
+from app.middleware.metrics import MetricsMiddleware
+from app.middleware.api_version import APIVersionMiddleware
 
 app.add_middleware(SecurityMiddleware)
+app.add_middleware(AuthMiddleware)
 app.add_middleware(RuleEnforcementMiddleware)
 app.add_middleware(OnboardingMiddleware)
+app.add_middleware(APIVersionMiddleware)
+if settings.METRICS_ENABLED:
+    app.add_middleware(MetricsMiddleware)
 
 
 # Mount static files
@@ -118,16 +170,28 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 # Include API routers
-app.include_router(agents.router, prefix=settings.API_V1_PREFIX, tags=["agents"])
-app.include_router(rules.router, prefix=settings.API_V1_PREFIX, tags=["rules"])
-app.include_router(integrations.router, prefix=settings.API_V1_PREFIX, tags=["integrations"])
-app.include_router(security.router, prefix=settings.API_V1_PREFIX, tags=["security"])
-app.include_router(audit.router, prefix=settings.API_V1_PREFIX, tags=["audit"])
-app.include_router(setup.router, tags=["setup"])
-app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["telegram"])
-app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["slack"])
-app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["approvals"])
-app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["vault"])
+app.include_router(agents.router, prefix=settings.API_V1_PREFIX, tags=["Agents"])
+app.include_router(rules.router, prefix=settings.API_V1_PREFIX, tags=["Rules"])
+app.include_router(integrations.router, prefix=settings.API_V1_PREFIX, tags=["Integrations"])
+app.include_router(security.router, prefix=settings.API_V1_PREFIX, tags=["Security Research"])
+app.include_router(audit.router, prefix=settings.API_V1_PREFIX, tags=["Audit"])
+app.include_router(setup.router, tags=["Setup"])
+app.include_router(telegram.router, prefix=settings.API_V1_PREFIX, tags=["Telegram"])
+app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["Slack"])
+app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
+app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["Vault"])
+app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX, tags=["Auth"])
+app.include_router(org_router.router, prefix=settings.API_V1_PREFIX, tags=["Organizations"])
+app.include_router(billing_router.router, prefix=settings.API_V1_PREFIX, tags=["Billing"])
+app.include_router(saml_router.router, tags=["SSO"])
+app.include_router(oidc_router.router, tags=["SSO"])
+app.include_router(scim_router.router, tags=["SSO"])
+app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=["Webhooks"])
+app.include_router(approval_policies_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
+app.include_router(suggestions_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
+app.include_router(threats_router.router, prefix=settings.API_V1_PREFIX, tags=["Threats"])
+if settings.META_ADMIN_ENABLED:
+    app.include_router(meta_admin_router.router, prefix=settings.API_V1_PREFIX, tags=["Meta Admin"])
 
 
 # Global exception handler
@@ -153,6 +217,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 async def health_check():
     """Basic health check endpoint."""
     return {"status": "healthy", "version": settings.APP_VERSION}
+
+
+@app.get("/metrics", tags=["monitoring"])
+async def metrics_endpoint():
+    """Prometheus metrics scrape target."""
+    from app.middleware.metrics import get_metrics_response
+    return get_metrics_response()
 
 
 @app.get("/health/ready", tags=["health"])
@@ -224,6 +295,15 @@ async def rules_edit_page(request: Request, rule_id: str):
     )
 
 
+@app.get("/approvals", tags=["dashboard"])
+async def approvals_page(request: Request):
+    """Approval automation management page."""
+    return templates.TemplateResponse(
+        "approvals/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
 @app.get("/security", tags=["dashboard"])
 async def security_page(request: Request):
     """Security intelligence page."""
@@ -292,5 +372,120 @@ async def docs_page(request: Request):
     """API documentation page."""
     return templates.TemplateResponse(
         "docs/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+# Auth pages (standalone, no nav auth required)
+@app.get("/login", tags=["auth"])
+async def login_page(request: Request):
+    """Login page."""
+    return templates.TemplateResponse(
+        "auth/login.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/register", tags=["auth"])
+async def register_page(request: Request):
+    """Registration page."""
+    return templates.TemplateResponse(
+        "auth/register.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/forgot-password", tags=["auth"])
+async def forgot_password_page(request: Request):
+    """Forgot password page."""
+    return templates.TemplateResponse(
+        "auth/forgot_password.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/reset-password", tags=["auth"])
+async def reset_password_page(request: Request):
+    """Password reset page."""
+    return templates.TemplateResponse(
+        "auth/reset_password.html",
+        {"request": request, "settings": settings},
+    )
+
+
+# Org management pages
+@app.get("/org/settings", tags=["dashboard"])
+async def org_settings_page(request: Request):
+    """Organization settings page."""
+    return templates.TemplateResponse(
+        "org/settings.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/org/members", tags=["dashboard"])
+async def org_members_page(request: Request):
+    """Organization members page."""
+    return templates.TemplateResponse(
+        "org/members.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/billing", tags=["dashboard"])
+async def billing_page(request: Request):
+    """Billing page."""
+    return templates.TemplateResponse(
+        "org/billing.html",
+        {"request": request, "settings": settings},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Meta Admin pages
+# ---------------------------------------------------------------------------
+
+
+@app.get("/admin", tags=["admin"])
+async def admin_page(request: Request):
+    """Meta admin overview page."""
+    return templates.TemplateResponse(
+        "admin/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/admin/orgs", tags=["admin"])
+async def admin_orgs_page(request: Request):
+    """Meta admin organizations page."""
+    return templates.TemplateResponse(
+        "admin/orgs.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/admin/orgs/{org_id}", tags=["admin"])
+async def admin_org_detail_page(request: Request, org_id: str):
+    """Meta admin org detail page."""
+    return templates.TemplateResponse(
+        "admin/org_detail.html",
+        {"request": request, "settings": settings, "org_id": org_id},
+    )
+
+
+@app.get("/admin/provision", tags=["admin"])
+async def admin_provision_page(request: Request):
+    """Meta admin provision org page."""
+    return templates.TemplateResponse(
+        "admin/provision.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/admin/users", tags=["admin"])
+async def admin_users_page(request: Request):
+    """Meta admin user management page."""
+    return templates.TemplateResponse(
+        "admin/users.html",
         {"request": request, "settings": settings},
     )

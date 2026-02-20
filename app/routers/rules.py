@@ -1,5 +1,6 @@
 """Rule management API endpoints."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -12,8 +13,10 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_rules, verify_resource_org
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity, PolicyViolation
+from app.services.event_publisher import publish_from_audit_log
+from app.services.quota import QuotaChecker
 from app.models.rules import Rule, RuleAction, RuleType, RULE_PARAMETER_SCHEMAS
 from app.schemas.rules import (
     ApplyTemplateRequest,
@@ -588,6 +591,7 @@ RULE_TEMPLATES = {
 @router.get("", response_model=RuleListResponse)
 async def list_rules(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     agent_id: Optional[UUID] = None,
@@ -598,6 +602,12 @@ async def list_rules(
 ):
     """List all rules with pagination and filtering."""
     stmt = select(Rule)
+
+    # Org scoping
+    if org_id:
+        stmt = stmt.where(
+            (Rule.organization_id == org_id) | (Rule.organization_id == None)
+        )
 
     if not include_deleted:
         stmt = stmt.where(Rule.is_deleted == False)
@@ -634,11 +644,17 @@ async def list_rules(
     )
 
 
-@router.post("", response_model=RuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=RuleResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(QuotaChecker("rules"))],
+)
 async def create_rule(
     rule_data: RuleCreate,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Create a new rule."""
     # Validate parameters against schema
@@ -666,6 +682,7 @@ async def create_rule(
         tags=rule_data.tags,
         source=rule_data.source,
         source_reference=rule_data.source_reference,
+        organization_id=org_id,
     )
 
     db.add(rule)
@@ -688,6 +705,7 @@ async def create_rule(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(rule)
 
     # Invalidate rule cache for agent
@@ -756,6 +774,7 @@ async def apply_template(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(rule)
 
     # Invalidate cache
@@ -770,6 +789,7 @@ async def apply_template(
 async def get_rule(
     rule_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get rule by ID."""
     stmt = select(Rule).where(Rule.id == rule_id, Rule.is_deleted == False)
@@ -781,6 +801,7 @@ async def get_rule(
             detail=f"Rule {rule_id} not found",
         )
 
+    await verify_resource_org(rule.organization_id, org_id)
     return RuleResponse.model_validate(rule)
 
 
@@ -790,6 +811,7 @@ async def update_rule(
     rule_data: RuleUpdate,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Update a rule."""
     stmt = select(Rule).where(Rule.id == rule_id, Rule.is_deleted == False)
@@ -800,6 +822,8 @@ async def update_rule(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Rule {rule_id} not found",
         )
+
+    await verify_resource_org(rule.organization_id, org_id)
 
     # Store old values for audit
     old_values = {
@@ -836,6 +860,7 @@ async def update_rule(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(rule)
 
     # Invalidate cache
@@ -846,11 +871,16 @@ async def update_rule(
     return RuleResponse.model_validate(rule)
 
 
-@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_delete_rules)],
+)
 async def delete_rule(
     rule_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     hard_delete: bool = False,
 ):
     """Delete a rule."""
@@ -862,6 +892,8 @@ async def delete_rule(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Rule {rule_id} not found",
         )
+
+    await verify_resource_org(rule.organization_id, org_id)
 
     agent_id = rule.agent_id
 
@@ -884,6 +916,7 @@ async def delete_rule(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     # Invalidate cache
     if agent_id:
@@ -1070,6 +1103,181 @@ async def import_rules(
 
 
 # ============================================================================
+# POLICY-AS-CODE: YAML GET EXPORT / POST IMPORT / SYNC
+# ============================================================================
+
+@router.get("/export")
+async def export_rules_yaml(
+    db: DbSessionDep,
+    agent_id: Optional[UUID] = None,
+    format: str = Query("yaml", pattern="^(yaml|json)$"),
+    include_global: bool = True,
+):
+    """Export rules as YAML or JSON (GET-based, policy-as-code friendly).
+
+    Returns human-readable YAML suitable for version control.
+    """
+    stmt = select(Rule).where(Rule.is_deleted == False, Rule.is_active == True)
+
+    if agent_id:
+        if include_global:
+            stmt = stmt.where((Rule.agent_id == agent_id) | (Rule.agent_id == None))
+        else:
+            stmt = stmt.where(Rule.agent_id == agent_id)
+
+    stmt = stmt.order_by(Rule.priority.desc())
+    result = await db.execute(stmt)
+    rules = list(result.scalars().all())
+
+    export_data = {
+        "version": "1",
+        "exported_at": datetime.utcnow().isoformat(),
+        "rules": [
+            {
+                "name": r.name,
+                "type": r.rule_type if isinstance(r.rule_type, str) else r.rule_type.value,
+                "action": r.action if isinstance(r.action, str) else r.action.value,
+                "priority": r.priority,
+                "active": r.is_active,
+                "parameters": r.parameters,
+                **({"description": r.description} if r.description else {}),
+                **({"tags": r.tags} if r.tags else {}),
+                **({"agent_id": str(r.agent_id)} if r.agent_id else {"agent": "*"}),
+            }
+            for r in rules
+        ],
+    }
+
+    if format == "yaml":
+        from fastapi.responses import Response as RawResponse
+        data_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
+        return RawResponse(
+            content=data_str,
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": "attachment; filename=snapper-rules.yaml"},
+        )
+    else:
+        return export_data
+
+
+@router.post("/sync")
+async def sync_rules_yaml(
+    request: Request,
+    db: DbSessionDep,
+    dry_run: bool = Query(False),
+):
+    """Sync rules from a YAML payload — diffs against current rules and applies changes.
+
+    Designed for CI/CD pipelines and GitOps workflows.
+    Returns a diff of what would change (or was changed).
+    """
+    body = await request.body()
+    try:
+        payload = yaml.safe_load(body.decode())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+
+    if not isinstance(payload, dict) or "rules" not in payload:
+        raise HTTPException(status_code=400, detail="YAML must contain a 'rules' key")
+
+    incoming_rules = payload["rules"]
+    if not isinstance(incoming_rules, list):
+        raise HTTPException(status_code=400, detail="'rules' must be a list")
+
+    # Load current rules
+    stmt = select(Rule).where(Rule.is_deleted == False)
+    result = await db.execute(stmt)
+    current_rules = {r.name: r for r in result.scalars().all()}
+
+    diff = {"created": [], "updated": [], "unchanged": [], "errors": []}
+
+    for rule_data in incoming_rules:
+        name = rule_data.get("name")
+        if not name:
+            diff["errors"].append({"error": "Rule missing 'name' field", "data": rule_data})
+            continue
+
+        try:
+            rule_type = rule_data.get("type", rule_data.get("rule_type"))
+            action = rule_data.get("action", "deny")
+            priority = rule_data.get("priority", 0)
+            parameters = rule_data.get("parameters", {})
+            is_active = rule_data.get("active", True)
+            description = rule_data.get("description")
+            tags = rule_data.get("tags", [])
+
+            if name in current_rules:
+                existing = current_rules[name]
+                # Check if anything changed
+                changed = False
+                changes = {}
+                if rule_type and (existing.rule_type if isinstance(existing.rule_type, str) else existing.rule_type.value) != rule_type:
+                    changes["rule_type"] = rule_type
+                    changed = True
+                if (existing.action if isinstance(existing.action, str) else existing.action.value) != action:
+                    changes["action"] = action
+                    changed = True
+                if existing.priority != priority:
+                    changes["priority"] = priority
+                    changed = True
+                if existing.parameters != parameters:
+                    changes["parameters"] = parameters
+                    changed = True
+                if existing.is_active != is_active:
+                    changes["is_active"] = is_active
+                    changed = True
+
+                if changed:
+                    if not dry_run:
+                        if rule_type:
+                            existing.rule_type = rule_type
+                        existing.action = action
+                        existing.priority = priority
+                        existing.parameters = parameters
+                        existing.is_active = is_active
+                        if description is not None:
+                            existing.description = description
+                        if tags:
+                            existing.tags = tags
+                    diff["updated"].append({"name": name, "changes": changes})
+                else:
+                    diff["unchanged"].append(name)
+            else:
+                # New rule
+                if not dry_run:
+                    new_rule = Rule(
+                        name=name,
+                        description=description,
+                        rule_type=rule_type,
+                        action=action,
+                        priority=priority,
+                        parameters=parameters,
+                        is_active=is_active,
+                        tags=tags,
+                        source="policy-as-code",
+                    )
+                    db.add(new_rule)
+                diff["created"].append(name)
+
+        except Exception as e:
+            diff["errors"].append({"name": name, "error": str(e)})
+
+    if not dry_run:
+        await db.flush()
+
+    return {
+        "dry_run": dry_run,
+        "summary": {
+            "created": len(diff["created"]),
+            "updated": len(diff["updated"]),
+            "unchanged": len(diff["unchanged"]),
+            "errors": len(diff["errors"]),
+        },
+        "diff": diff,
+    }
+
+
+# ============================================================================
 # RULE EVALUATION ENDPOINT (for hooks)
 # ============================================================================
 
@@ -1107,7 +1315,7 @@ class EvaluateResponse(BaseModel):
     resolved_data: Optional[Dict[str, Any]] = None  # Inline-resolved vault tokens (auto mode)
 
 
-@router.post("/evaluate", response_model=EvaluateResponse)
+@router.post("/evaluate", response_model=EvaluateResponse, tags=["Core"])
 async def evaluate_request(
     request: EvaluateRequest,
     fastapi_request: Request,
@@ -1258,6 +1466,25 @@ async def evaluate_request(
         if blocking_rule:
             matched_rule_name = blocking_rule.name
 
+    # Extract and publish threat signals (fire-and-forget, <2ms)
+    try:
+        from app.services.threat_detector import extract_signals, publish_signals
+        threat_signals = extract_signals(
+            agent_id=str(agent.id),
+            request_type=request.request_type,
+            command=request.command,
+            tool_name=request.tool_name,
+            tool_input=request.tool_input,
+            file_path=request.file_path,
+            target_host=target_host,
+            url=request.url,
+            pii_detected=context.metadata.get("pii_detected"),
+        )
+        if threat_signals:
+            await publish_signals(redis, threat_signals)
+    except Exception:
+        pass  # Never block the hot path
+
     # Log to audit trail (all decisions: allow, deny, require_approval)
     audit_action_map = {
         "allow": AuditAction.REQUEST_ALLOWED,
@@ -1274,6 +1501,7 @@ async def evaluate_request(
         severity=audit_severity_map.get(result.decision.value, AuditSeverity.WARNING),
         agent_id=agent.id,
         rule_id=result.blocking_rule,
+        organization_id=agent.organization_id,
         message=f"{result.decision.value.upper()}: {result.reason}",
         old_value=None,
         new_value={
@@ -1287,6 +1515,33 @@ async def evaluate_request(
     db.add(audit_log)
     await db.commit()
 
+    # Publish event to SIEM (fire-and-forget)
+    try:
+        from app.services.event_publisher import publish_event
+        from app.middleware.metrics import record_rule_evaluation
+        await publish_event(
+            action=audit_log.action if isinstance(audit_log.action, str) else audit_log.action.value,
+            severity=audit_log.severity if isinstance(audit_log.severity, str) else audit_log.severity.value,
+            message=audit_log.message,
+            agent_id=str(agent.id),
+            rule_id=str(result.blocking_rule) if result.blocking_rule else None,
+            ip_address=client_ip,
+            details={
+                "request_type": request.request_type,
+                "command": request.command,
+                "tool_name": request.tool_name,
+                "decision": result.decision.value,
+            },
+            organization_id=str(agent.organization_id) if agent.organization_id else None,
+        )
+        record_rule_evaluation(
+            rule_type=request.request_type,
+            decision=result.decision.value,
+            duration_ms=result.evaluation_time_ms,
+        )
+    except Exception:
+        pass  # SIEM/metrics are best-effort
+
     if result.decision.value in ("deny", "require_approval"):
         # Create PolicyViolation record for denials
         if result.decision.value == "deny":
@@ -1296,6 +1551,7 @@ async def evaluate_request(
                 agent_id=agent.id,
                 rule_id=result.blocking_rule,
                 audit_log_id=audit_log.id,
+                organization_id=agent.organization_id,
                 description=f"Agent '{agent.name}' denied: {result.reason}",
                 context={
                     "request_type": request.request_type,
@@ -1374,10 +1630,96 @@ async def evaluate_request(
                     command=request.command,
                     file_path=request.file_path,
                     tool_name=request.tool_name,
+                    tool_input=request.tool_input,
                     pii_context=pii_context,
                     vault_tokens=all_vault_tokens if all_vault_tokens else None,
                     owner_chat_id=vault_owner_chat_id,
+                    organization_id=str(agent.organization_id) if agent.organization_id else None,
                 )
+
+                # --- Evaluate approval policies (server-side auto-rules) ---
+                try:
+                    from app.services.approval_policies import evaluate_approval_policies
+
+                    policy_data = {
+                        "request_type": request.request_type,
+                        "command": request.command,
+                        "tool_name": request.tool_name,
+                        "tool_input": request.tool_input,
+                        "vault_tokens": all_vault_tokens if all_vault_tokens else [],
+                        "pii_context": pii_context,
+                    }
+                    auto_decision = await evaluate_approval_policies(
+                        db=db,
+                        organization_id=str(agent.organization_id) if agent.organization_id else None,
+                        approval_data=policy_data,
+                        agent=agent,
+                        redis=redis,
+                    )
+                    if auto_decision:
+                        from app.routers.approvals import update_approval_status
+                        policy_decided_by = f"policy:{auto_decision.policy_name}"
+                        new_auto_status = "approved" if auto_decision.decision == "approve" else "denied"
+                        await update_approval_status(redis, approval_request_id, new_auto_status, policy_decided_by)
+
+                        # Audit log with decision_source="policy"
+                        try:
+                            policy_audit = AuditLog(
+                                action=AuditAction.APPROVAL_GRANTED if auto_decision.decision == "approve" else AuditAction.APPROVAL_DENIED,
+                                severity=AuditSeverity.INFO,
+                                agent_id=agent.id,
+                                message=f"Request {approval_request_id} auto-{auto_decision.decision}d by policy '{auto_decision.policy_name}'",
+                                new_value={
+                                    "request_id": approval_request_id,
+                                    "action": auto_decision.decision,
+                                    "approved_by": policy_decided_by,
+                                    "channel": "policy",
+                                    "decision_source": "policy",
+                                    "policy_id": auto_decision.policy_id,
+                                    "policy_name": auto_decision.policy_name,
+                                },
+                            )
+                            db.add(policy_audit)
+                            await db.commit()
+                            asyncio.ensure_future(publish_from_audit_log(policy_audit))
+                        except Exception:
+                            pass
+
+                        # Fire webhook with automated=true, but skip Telegram/Slack notification
+                        try:
+                            from app.services.webhook_delivery import publish_to_org_webhooks as _pub_org_wh
+                            _org_id = str(agent.organization_id) if agent.organization_id else None
+                            if _org_id:
+                                _evt = "approval_granted" if auto_decision.decision == "approve" else "approval_denied"
+                                asyncio.ensure_future(_pub_org_wh(
+                                    org_id=_org_id,
+                                    event_type=_evt,
+                                    payload={
+                                        "event": _evt,
+                                        "approval_request_id": approval_request_id,
+                                        "decision": auto_decision.decision,
+                                        "decided_by": policy_decided_by,
+                                        "automated": True,
+                                        "policy_id": auto_decision.policy_id,
+                                        "timestamp": datetime.utcnow().isoformat(),
+                                    },
+                                ))
+                        except Exception:
+                            pass
+
+                        # Return immediately — skip notification
+                        response = EvaluateResponse(
+                            decision=auto_decision.decision if auto_decision.decision == "deny" else "allow",
+                            reason=f"Auto-{auto_decision.decision}d by policy: {auto_decision.policy_name}",
+                            matched_rule_id=str(result.blocking_rule) if result.blocking_rule else None,
+                            matched_rule_name=matched_rule_name,
+                            approval_request_id=approval_request_id,
+                        )
+                        return response
+                except ImportError:
+                    pass  # approval_policies module not available
+                except Exception as e:
+                    logger.warning(f"Approval policy evaluation failed (non-fatal): {e}")
 
                 if notify_settings.NOTIFY_ON_APPROVAL_REQUEST:
                     alert_metadata = {
@@ -1408,6 +1750,46 @@ async def evaluate_request(
                         severity="warning",
                         metadata=alert_metadata,
                     )
+
+                # Publish enriched event to org webhooks for bot-in-the-middle
+                try:
+                    from app.routers.approvals import DEFAULT_TIMEOUT_SECONDS
+                    from app.services.webhook_delivery import publish_to_org_webhooks
+                    from datetime import timedelta as _td
+
+                    approval_org_id = str(agent.organization_id) if agent.organization_id else None
+                    if approval_org_id:
+                        _now = datetime.utcnow()
+                        _expires = _now + _td(seconds=DEFAULT_TIMEOUT_SECONDS)
+                        webhook_details = {
+                            "approval_request_id": approval_request_id,
+                            "approval_expires_at": _expires.isoformat(),
+                            "agent_id": request.agent_id,
+                            "agent_name": agent.name,
+                            "rule_name": matched_rule_name or "Security Rule",
+                            "rule_id": str(result.blocking_rule) if result.blocking_rule else None,
+                            "request_type": request.request_type,
+                            "command": request.command,
+                            "tool_name": request.tool_name,
+                            "tool_input": request.tool_input,
+                            "trust_score": getattr(agent, "trust_score", 1.0),
+                            "pii_detected": bool(pii_context),
+                        }
+                        asyncio.ensure_future(publish_to_org_webhooks(
+                            org_id=approval_org_id,
+                            event_type="request_pending_approval",
+                            payload={
+                                "event": "request_pending_approval",
+                                "severity": "warning",
+                                "message": f"Agent '{agent.name}' requires approval: {action_desc}",
+                                "timestamp": _now.isoformat(),
+                                "source": "snapper",
+                                "organization_id": approval_org_id,
+                                "details": webhook_details,
+                            },
+                        ))
+                except Exception as e:
+                    logger.warning(f"Failed to publish approval webhook: {e}")
         except Exception as e:
             logger.warning(f"Failed to send alert notification: {e}")
 

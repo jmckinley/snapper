@@ -44,7 +44,7 @@ snapper/
 │   ├── services/              # Business logic
 │   │   ├── __init__.py
 │   │   ├── rule_engine.py     # Rule evaluation (incl. PII gate evaluator)
-│   │   ├── pii_vault.py       # Fernet encryption, token resolution, CRUD
+│   │   ├── pii_vault.py       # AES-256-GCM encryption, token resolution, CRUD
 │   │   ├── traffic_discovery.py # MCP server detection, coverage analysis
 │   │   ├── rate_limiter.py    # Rate limiting implementation
 │   │   └── security_monitor.py # Security research integration
@@ -179,7 +179,7 @@ async def protected_endpoint():
 - **Error Handling**: Provide clear error messages for rule violations
 - **Allow Once/Always**: Telegram callbacks store temporary Redis keys for one-time approvals
 - **OpenClaw Templates**: 4 pre-configured templates for safe commands, sync, dangerous blocks, and approval requirements
-- **PII Vault**: Fernet-encrypted PII storage with vault tokens (`{{SNAPPER_VAULT:<8hex>}}`). Key derived from SECRET_KEY via HKDF.
+- **PII Vault**: AES-256-GCM encrypted PII storage with vault tokens (`{{SNAPPER_VAULT:<32hex>}}`). Key derived from SECRET_KEY via HKDF.
 - **PII Gate**: Rule evaluator that scans tool_input and commands for vault tokens + raw PII patterns. Two modes: protected (require approval) and auto (inline resolution).
 - **snapper-guard Plugin**: OpenClaw plugin (`plugins/snapper-guard/`) that intercepts browser tool calls, calls evaluate endpoint, and replaces vault tokens with real values in tool params via `before_tool_call` hook.
 - **Shell Hooks**: Use `$SNAPPER_URL` and `$SNAPPER_API_KEY` env vars (not hardcoded URLs/keys). Scripts in `scripts/openclaw-hooks/`.

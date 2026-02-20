@@ -28,37 +28,37 @@ class TestRulesNavigation:
         rules_page.click("text=Create Rule")
         expect(rules_page).to_have_url(f"{base_url}/rules/create")
 
-    def test_create_rule_page_has_form(self, page: Page, base_url: str):
+    def test_create_rule_page_has_form(self, authenticated_page: Page, base_url: str):
         """Create rule page has the rule form."""
-        page.goto(f"{base_url}/rules/create")
-        page.wait_for_load_state("networkidle")
+        authenticated_page.goto(f"{base_url}/rules/create")
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Should have form fields
-        expect(page.locator("input[name='name']").first).to_be_visible()
-        expect(page.locator("select").first).to_be_visible()  # Rule type dropdown
+        expect(authenticated_page.locator("input[name='name']").first).to_be_visible()
+        expect(authenticated_page.locator("select").first).to_be_visible()  # Rule type dropdown
 
 
 class TestRuleTemplates:
     """Tests for rule templates functionality."""
 
-    def test_templates_page_loads(self, page: Page, base_url: str):
+    def test_templates_page_loads(self, authenticated_page: Page, base_url: str):
         """Templates section loads with available templates."""
-        page.goto(f"{base_url}/rules")
-        page.wait_for_load_state("networkidle")
+        authenticated_page.goto(f"{base_url}/rules")
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Click templates tab/section if it exists
-        templates_link = page.locator("text=Templates").first
+        templates_link = authenticated_page.locator("text=Templates").first
         if templates_link.is_visible():
             templates_link.click()
 
         # Should show some template options or be on templates view
-        page.wait_for_timeout(1000)  # Give time for any AJAX
+        authenticated_page.wait_for_timeout(1000)  # Give time for any AJAX
 
-    def test_template_categories_visible(self, page: Page, base_url: str):
+    def test_template_categories_visible(self, authenticated_page: Page, base_url: str):
         """Template categories are visible (if templates section exists)."""
-        page.goto(f"{base_url}/rules")
-        page.wait_for_load_state("networkidle")
+        authenticated_page.goto(f"{base_url}/rules")
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Look for common template categories
         # These might be in various formats depending on UI
-        page.wait_for_timeout(1000)
+        authenticated_page.wait_for_timeout(1000)

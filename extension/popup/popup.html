@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #374151;
+      background: #f9fafb;
+    }
+
+    .header {
+      background: #1e293b;
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header h1 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .status-dot.connected { background: #22c55e; }
+    .status-dot.disconnected { background: #ef4444; }
+    .status-dot.unconfigured { background: #9ca3af; }
+
+    .status-text { font-size: 12px; color: #6b7280; }
+
+    .section {
+      padding: 12px 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #9ca3af;
+      margin-bottom: 8px;
+    }
+
+    .decision-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 12px;
+    }
+
+    .decision-badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-allow { background: #dcfce7; color: #166534; }
+    .badge-deny { background: #fee2e2; color: #991b1b; }
+    .badge-approval { background: #fef3c7; color: #92400e; }
+
+    .decision-tool {
+      font-family: monospace;
+      font-size: 11px;
+      color: #1f2937;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .decision-time {
+      font-size: 10px;
+      color: #9ca3af;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #9ca3af;
+      padding: 20px;
+      font-size: 12px;
+    }
+
+    .footer {
+      padding: 8px 16px;
+      border-top: 1px solid #e5e7eb;
+      background: white;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .footer a {
+      font-size: 11px;
+      color: #3b82f6;
+      text-decoration: none;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span>&#128034;</span>
+    <h1>Snapper AI Firewall</h1>
+  </div>
+
+  <div class="status-bar">
+    <div id="status-dot" class="status-dot unconfigured"></div>
+    <span id="status-text" class="status-text">Checking...</span>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Recent Decisions</div>
+    <div id="decisions-list">
+      <div class="empty-state">No decisions yet</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a id="dashboard-link" href="#">Dashboard</a>
+    <a href="options/options.html" id="settings-link">Settings</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

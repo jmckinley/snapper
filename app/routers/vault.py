@@ -1,5 +1,6 @@
 """PII Vault REST API endpoints."""
 
+import asyncio
 import logging
 from typing import List, Optional
 from uuid import UUID
@@ -8,10 +9,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit, vault_write_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, vault_write_rate_limit, require_manage_vault, verify_resource_org
+from app.services.quota import QuotaChecker
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.pii_vault import PIICategory, PIIVaultEntry
+from app.middleware.metrics import record_pii_operation
 from app.services import pii_vault
+from app.services.event_publisher import publish_from_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +124,12 @@ class VaultDomainUpdate(BaseModel):
     "/entries",
     response_model=VaultEntryResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access)],
+    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access), Depends(QuotaChecker("vault_entries"))],
 )
 async def create_vault_entry(
     request: VaultEntryCreate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep = None,
 ):
     """
     Create a new encrypted vault entry.
@@ -145,6 +150,11 @@ async def create_vault_entry(
         placeholder_value=request.placeholder_value,
     )
 
+    # Set organization_id if available
+    if org_id and hasattr(entry, "organization_id"):
+        entry.organization_id = org_id
+        await db.flush()
+
     # Audit log
     audit_log = AuditLog(
         action=AuditAction.PII_VAULT_CREATED,
@@ -159,6 +169,8 @@ async def create_vault_entry(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
+    record_pii_operation("create")
 
     return VaultEntryResponse(
         id=str(entry.id),
@@ -179,6 +191,7 @@ async def create_vault_entry(
 @router.get("/entries", response_model=List[VaultEntryResponse])
 async def list_vault_entries(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep = None,
     owner_chat_id: str = Query(..., description="Telegram chat ID of the owner"),
 ):
     """
@@ -187,6 +200,10 @@ async def list_vault_entries(
     Returns masked values only - decrypted values are never exposed via this endpoint.
     """
     entries = await pii_vault.list_entries(db=db, owner_chat_id=owner_chat_id)
+
+    # Filter by org if context is available
+    if org_id:
+        entries = [e for e in entries if getattr(e, "organization_id", None) == org_id or getattr(e, "organization_id", None) is None]
 
     return [
         VaultEntryResponse(
@@ -215,6 +232,7 @@ async def list_vault_entries(
 async def delete_vault_entry(
     entry_id: str,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     owner_chat_id: str = Query(..., description="Chat ID for ownership verification"),
 ):
     """
@@ -222,6 +240,19 @@ async def delete_vault_entry(
 
     Only the owner (by chat_id) can delete their entries.
     """
+    # Org boundary check for the vault entry
+    from sqlalchemy import select as sa_select
+    try:
+        from uuid import UUID as UUIDType
+        entry_uuid = UUIDType(entry_id)
+        entry_row = (await db.execute(
+            sa_select(PIIVaultEntry).where(PIIVaultEntry.id == entry_uuid, PIIVaultEntry.is_deleted == False)
+        )).scalar_one_or_none()
+        if entry_row:
+            await verify_resource_org(entry_row.organization_id, org_id)
+    except (ValueError, AttributeError):
+        pass
+
     success = await pii_vault.delete_entry(
         db=db,
         entry_id=entry_id,
@@ -246,8 +277,58 @@ async def delete_vault_entry(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
+    record_pii_operation("delete")
 
     return {"status": "deleted", "entry_id": entry_id}
+
+
+@router.post(
+    "/rotate-key",
+    dependencies=[Depends(vault_write_rate_limit), Depends(verify_vault_access)],
+)
+async def rotate_vault_key(
+    db: DbSessionDep,
+    org_id: OptionalOrgIdDep = None,
+):
+    """
+    Rotate the PII vault encryption key.
+
+    Re-encrypts all vault entries with a new key version.
+    """
+    # Determine current max version
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    max_version_result = await db.execute(
+        sa_select(sa_func.max(PIIVaultEntry.encryption_key_version))
+    )
+    current_version = max_version_result.scalar() or 1
+    new_version = current_version + 1
+
+    count = await pii_vault.rotate_vault_key(db, new_version)
+
+    # Audit log
+    audit_log = AuditLog(
+        action=AuditAction.VAULT_KEY_ROTATED,
+        severity=AuditSeverity.WARNING,
+        message=f"Vault encryption key rotated to version {new_version}",
+        organization_id=org_id,
+        details={
+            "old_version": current_version,
+            "new_version": new_version,
+            "entries_re_encrypted": count,
+        },
+    )
+    db.add(audit_log)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "old_version": current_version,
+        "new_version": new_version,
+        "entries_re_encrypted": count,
+    }
 
 
 @router.put("/entries/{entry_id}/domains")
@@ -255,6 +336,7 @@ async def update_vault_domains(
     entry_id: str,
     request: VaultDomainUpdate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     owner_chat_id: str = Query(..., description="Chat ID for ownership verification"),
 ):
     """Update the allowed domains for a vault entry."""
@@ -275,6 +357,8 @@ async def update_vault_domains(
 
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+
+    await verify_resource_org(entry.organization_id, org_id)
 
     if entry.owner_chat_id != str(owner_chat_id):
         raise HTTPException(status_code=403, detail="Not authorized to modify this entry")

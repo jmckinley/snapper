@@ -29,6 +29,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {
         "/health",
         "/health/ready",
+        "/metrics",
         "/api/docs",
         "/api/redoc",
         "/api/openapi.json",

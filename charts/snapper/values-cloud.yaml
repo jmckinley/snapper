@@ -1,0 +1,57 @@
+# Cloud deployment profile (AWS/Azure/GCP managed K8s)
+# Usage: helm install snapper charts/snapper -f charts/snapper/values-cloud.yaml
+
+# Use managed database and Redis
+postgresql:
+  enabled: false
+redis:
+  enabled: false
+
+# Point to managed services
+externalDatabase:
+  host: ""  # Set to your RDS/Cloud SQL endpoint
+  port: 5432
+  database: snapper
+  username: snapper
+  password: ""  # Use existingSecret instead
+  sslMode: require
+
+externalRedis:
+  host: ""  # Set to your ElastiCache/MemoryStore endpoint
+  port: 6379
+  password: ""
+  db: 0
+
+# Cloud-native ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: snapper.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: snapper-tls
+      hosts:
+        - snapper.example.com
+
+# Scale up
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+
+# Enable Prometheus Operator discovery
+serviceMonitor:
+  enabled: true
+  interval: 15s
+
+config:
+  denyByDefault: true
+  learningMode: false
+  requireApiKey: true
+  metricsEnabled: true

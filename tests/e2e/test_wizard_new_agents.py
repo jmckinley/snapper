@@ -8,27 +8,40 @@ Run with:
     E2E_BASE_URL=http://localhost:8000 pytest tests/e2e/test_wizard_new_agents.py -v
 """
 
-import os
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from .conftest import _api_request
+from .conftest import _auth_api_request
 
-BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 
 def _delete_agents_by_prefix(prefix: str):
     """Delete agents whose external_id starts with prefix."""
-    agents = _api_request("GET", "/api/v1/agents?page_size=100")
+    agents = _auth_api_request("GET", "/api/v1/agents?page_size=100")
     if not agents or "items" not in agents:
         return
     for agent in agents["items"]:
         ext_id = agent.get("external_id", "")
         if ext_id.startswith(prefix):
-            _api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+            _auth_api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_all_agents_for_quota():
+    """Delete ALL agents before each wizard test to stay within free plan quota.
+
+    Uses cleanup-test endpoint first (hard-deletes wizard agents globally,
+    including from other test-user orgs), then deletes remaining org agents.
+    """
+    _auth_api_request("POST", "/api/v1/agents/cleanup-test?confirm=true")
+    agents = _auth_api_request("GET", "/api/v1/agents?page_size=100")
+    if agents and "items" in agents:
+        for agent in agents["items"]:
+            _auth_api_request("DELETE", f"/api/v1/agents/{agent['id']}")
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -37,9 +50,9 @@ def screenshot_dir():
 
 
 @pytest.fixture
-def wizard_page(page: Page) -> Page:
-    page.goto(f"{BASE_URL}/wizard", wait_until="networkidle")
-    return page
+def wizard_page(authenticated_page: Page, base_url: str) -> Page:
+    authenticated_page.goto(f"{base_url}/wizard", wait_until="networkidle")
+    return authenticated_page
 
 
 def _navigate_to_step2(page: Page) -> Page:
@@ -172,6 +185,6 @@ class TestWizardClaudeCodeFlow:
         _delete_agents_by_prefix("claude-code-")
         page = _complete_wizard_flow(wizard_page, "claude-code", "Claude Code")
 
-        # Claude Code snippet should mention .claude or PreToolUse
+        # Claude Code snippet should mention claude or PreToolUse
         snippet = page.locator("#config-snippet").text_content()
         assert "claude" in snippet.lower() or "PreToolUse" in snippet

@@ -4,6 +4,7 @@ Discovery-first approach: rules come from live traffic detection or manual
 "Add MCP Server" input. No template catalog browsing.
 """
 
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.rule_packs import RULE_PACKS, get_rule_pack
 from app.database import get_db
+from app.dependencies import OptionalOrgIdDep
 from app.models.audit_logs import AuditLog, AuditAction, AuditSeverity
 from app.models.rules import Rule, RuleType, RuleAction
 from app.services.traffic_discovery import (
@@ -98,7 +100,7 @@ async def get_traffic_insights(
     return _insights_to_dict(insights)
 
 
-@router.get("/traffic/coverage")
+@router.get("/traffic/coverage", openapi_extra={"x-internal": True})
 async def get_traffic_coverage(
     command: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
@@ -125,6 +127,7 @@ async def get_traffic_coverage(
 async def create_rule_from_traffic(
     request: CreateRuleFromTrafficRequest,
     db: AsyncSession = Depends(get_db),
+    org_id: OptionalOrgIdDep = None,
 ):
     """Create a rule from a discovered command/tool name.
 
@@ -151,6 +154,7 @@ async def create_rule_from_traffic(
         priority=rule_def["priority"],
         parameters=rule_def["parameters"],
         agent_id=request.agent_id,
+        organization_id=org_id,
         is_active=True,
         source="traffic_discovery",
         source_reference=request.command,
@@ -175,6 +179,7 @@ async def create_rule_from_traffic(
 async def create_rules_for_server(
     request: CreateRulesForServerRequest,
     db: AsyncSession = Depends(get_db),
+    org_id: OptionalOrgIdDep = None,
 ):
     """Create rules for an MCP server.
 
@@ -206,6 +211,7 @@ async def create_rules_for_server(
             priority=rule_def.get("priority", 0),
             parameters=rule_def.get("parameters", {}),
             agent_id=request.agent_id,
+            organization_id=org_id,
             is_active=True,
             source=source,
             source_reference=source_ref,
@@ -254,7 +260,7 @@ async def list_known_servers():
 # Active packs & disable endpoints (new)
 # ---------------------------------------------------------------------------
 
-@router.get("/active-packs")
+@router.get("/active-packs", openapi_extra={"x-internal": True})
 async def get_active_packs(
     db: AsyncSession = Depends(get_db),
     agent_id: Optional[UUID] = None,
@@ -320,7 +326,7 @@ async def get_active_packs(
     return list(groups.values())
 
 
-@router.post("/traffic/disable-server-rules")
+@router.post("/traffic/disable-server-rules", openapi_extra={"x-internal": True})
 async def disable_server_rules(
     request: DisableServerRulesRequest,
     db: AsyncSession = Depends(get_db),
@@ -381,6 +387,11 @@ async def disable_server_rules(
     db.add(audit_entry)
 
     await db.commit()
+    try:
+        from app.services.event_publisher import publish_from_audit_log
+        asyncio.ensure_future(publish_from_audit_log(audit_entry))
+    except Exception:
+        pass
 
     try:
         from app.redis_client import redis_client

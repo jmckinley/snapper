@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+{% block title %}Organizations — Admin{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-gray-900">Organizations</h1>
+    <a href="/admin/provision" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium">Provision New Org</a>
+</div>
+
+<!-- Filters -->
+<div class="mb-4 flex gap-4">
+    <input type="text" id="search-input" placeholder="Search by name or slug..." class="rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 w-64 border">
+    <select id="plan-filter" class="rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border">
+        <option value="">All Plans</option>
+        <option value="free">Free</option>
+        <option value="pro">Pro</option>
+        <option value="enterprise">Enterprise</option>
+    </select>
+    <select id="status-filter" class="rounded-md border-gray-300 shadow-sm text-sm px-3 py-2 border">
+        <option value="">All Status</option>
+        <option value="true">Active</option>
+        <option value="false">Suspended</option>
+    </select>
+    <button onclick="loadOrgs()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm">Search</button>
+</div>
+
+<!-- Table -->
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Slug</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agents</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200" id="orgs-tbody"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadOrgs() {
+    const search = document.getElementById('search-input').value;
+    const plan = document.getElementById('plan-filter').value;
+    const status = document.getElementById('status-filter').value;
+    let url = '/api/v1/meta/orgs?limit=100';
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (plan) url += `&plan_id=${plan}`;
+    if (status) url += `&is_active=${status}`;
+
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) return;
+    const orgs = await res.json();
+    const tbody = document.getElementById('orgs-tbody');
+    tbody.innerHTML = orgs.map(o => `
+        <tr>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <a href="/admin/orgs/${o.id}" class="text-amber-600 hover:text-amber-800">${o.name}</a>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.slug}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">${o.plan_id}</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${o.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                    ${o.is_active ? 'Active' : 'Suspended'}
+                </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.member_count}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.agent_count}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.owner_email || '—'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(o.created_at).toLocaleDateString()}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                <a href="/admin/orgs/${o.id}" class="text-amber-600 hover:underline">View</a>
+                <button onclick="impersonate('${o.id}')" class="text-red-600 hover:underline">Impersonate</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No organizations found</td></tr>';
+}
+
+async function impersonate(orgId) {
+    if (!confirm('Start impersonating this organization?')) return;
+    const res = await fetch('/api/v1/meta/impersonate', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId })
+    });
+    if (res.ok) window.location.href = '/';
+    else alert('Impersonation failed');
+}
+
+document.getElementById('search-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadOrgs(); });
+loadOrgs();
+</script>
+{% endblock %}

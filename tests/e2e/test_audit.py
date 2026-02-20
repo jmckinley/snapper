@@ -14,13 +14,11 @@ Run with:
     E2E_BASE_URL=http://localhost:8000 pytest tests/e2e/test_audit.py -v
 """
 
-import os
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
-BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 
@@ -30,9 +28,9 @@ def screenshot_dir():
 
 
 @pytest.fixture
-def audit_page(page: Page) -> Page:
-    page.goto(f"{BASE_URL}/audit", wait_until="networkidle")
-    return page
+def audit_page(authenticated_page: Page, base_url: str) -> Page:
+    authenticated_page.goto(f"{base_url}/audit", wait_until="networkidle")
+    return authenticated_page
 
 
 class TestAuditPageLoads:

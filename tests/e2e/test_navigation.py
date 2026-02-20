@@ -12,6 +12,7 @@ class TestGlobalNavigation:
 
     def test_navbar_has_all_nav_items(self, dashboard_page: Page):
         """Navbar contains all main navigation items."""
+        # Scope to the top-level nav bar links (not dropdown menu items)
         nav = dashboard_page.locator("nav")
 
         expect(nav.locator("a:has-text('Dashboard')")).to_be_visible()
@@ -19,12 +20,13 @@ class TestGlobalNavigation:
         expect(nav.locator("a:has-text('Agents')")).to_be_visible()
         expect(nav.locator("a:has-text('Security')")).to_be_visible()
         expect(nav.locator("a:has-text('Audit')")).to_be_visible()
-        expect(nav.locator("a:has-text('Settings')")).to_be_visible()
+        # "Settings" appears in both nav bar and user dropdown — check the nav bar one
+        expect(nav.locator("a[href='/settings']")).to_be_visible()
 
-    def test_navbar_navigation_works(self, page: Page, base_url: str):
+    def test_navbar_navigation_works(self, authenticated_page: Page, base_url: str):
         """Each navbar link navigates to correct page."""
-        page.goto(base_url)
-        page.wait_for_load_state("networkidle")
+        authenticated_page.goto(base_url)
+        authenticated_page.wait_for_load_state("networkidle")
 
         nav_items = [
             ("Dashboard", "/"),
@@ -36,9 +38,9 @@ class TestGlobalNavigation:
         ]
 
         for link_text, expected_path in nav_items:
-            page.click(f"nav a:has-text('{link_text}')")
-            page.wait_for_load_state("networkidle")
-            current_url = page.url
+            authenticated_page.click(f"nav a[href='{expected_path}']")
+            authenticated_page.wait_for_load_state("networkidle")
+            current_url = authenticated_page.url
             if expected_path == "/":
                 assert current_url.rstrip("/") == base_url.rstrip("/"), \
                     f"Expected {base_url}, got {current_url}"
@@ -46,15 +48,15 @@ class TestGlobalNavigation:
                 assert expected_path in current_url, \
                     f"Expected {expected_path} in {current_url}"
 
-    def test_logo_links_to_dashboard(self, page: Page, base_url: str):
+    def test_logo_links_to_dashboard(self, authenticated_page: Page, base_url: str):
         """Clicking logo returns to dashboard."""
-        page.goto(f"{base_url}/settings")
-        page.wait_for_load_state("networkidle")
+        authenticated_page.goto(f"{base_url}/settings")
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Click on Snapper logo/brand (the link with the logo image)
-        page.click("nav a:has(img)")
-        page.wait_for_load_state("networkidle")
-        expect(page).to_have_url(base_url + "/")
+        authenticated_page.click("nav a:has(img)")
+        authenticated_page.wait_for_load_state("networkidle")
+        expect(authenticated_page).to_have_url(base_url + "/")
 
 
 class TestHealthEndpoints:
@@ -80,59 +82,59 @@ class TestHealthEndpoints:
 class TestPageTitles:
     """Tests for page titles."""
 
-    def test_dashboard_title(self, page: Page, base_url: str):
+    def test_dashboard_title(self, authenticated_page: Page, base_url: str):
         """Dashboard has correct title."""
-        page.goto(base_url)
-        expect(page).to_have_title("Dashboard - Snapper")
+        authenticated_page.goto(base_url)
+        expect(authenticated_page).to_have_title("Dashboard - Snapper")
 
-    def test_agents_title(self, page: Page, base_url: str):
+    def test_agents_title(self, authenticated_page: Page, base_url: str):
         """Agents page has correct title."""
-        page.goto(f"{base_url}/agents")
-        expect(page).to_have_title("Connect Your AI - Snapper")
+        authenticated_page.goto(f"{base_url}/agents")
+        expect(authenticated_page).to_have_title("Connect Your AI - Snapper")
 
-    def test_rules_title(self, page: Page, base_url: str):
+    def test_rules_title(self, authenticated_page: Page, base_url: str):
         """Rules page has correct title."""
-        page.goto(f"{base_url}/rules")
-        page.wait_for_load_state("networkidle")
-        title = page.title()
+        authenticated_page.goto(f"{base_url}/rules")
+        authenticated_page.wait_for_load_state("networkidle")
+        title = authenticated_page.title()
         assert "Snapper" in title
 
 
 class TestResponsiveDesign:
     """Tests for responsive design."""
 
-    def test_mobile_viewport(self, page: Page, base_url: str):
+    def test_mobile_viewport(self, authenticated_page: Page, base_url: str):
         """Page works on mobile viewport."""
-        page.set_viewport_size({"width": 375, "height": 667})
-        page.goto(base_url)
-        page.wait_for_load_state("networkidle")
+        authenticated_page.set_viewport_size({"width": 375, "height": 667})
+        authenticated_page.goto(base_url)
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Page should still show main content - use h2 for more specific match
-        page.wait_for_selector("h2:has-text('Welcome to Snapper')", timeout=10000)
-        expect(page.locator("h2:has-text('Welcome to Snapper')")).to_be_visible()
+        authenticated_page.wait_for_selector("h2:has-text('Welcome to Snapper')", timeout=10000)
+        expect(authenticated_page.locator("h2:has-text('Welcome to Snapper')")).to_be_visible()
 
-    def test_tablet_viewport(self, page: Page, base_url: str):
+    def test_tablet_viewport(self, authenticated_page: Page, base_url: str):
         """Page works on tablet viewport."""
-        page.set_viewport_size({"width": 768, "height": 1024})
-        page.goto(base_url)
-        page.wait_for_load_state("networkidle")
+        authenticated_page.set_viewport_size({"width": 768, "height": 1024})
+        authenticated_page.goto(base_url)
+        authenticated_page.wait_for_load_state("networkidle")
 
         # Page should show main content - use h2 for more specific match
-        page.wait_for_selector("h2:has-text('Welcome to Snapper')", timeout=10000)
-        expect(page.locator("h2:has-text('Welcome to Snapper')")).to_be_visible()
+        authenticated_page.wait_for_selector("h2:has-text('Welcome to Snapper')", timeout=10000)
+        expect(authenticated_page.locator("h2:has-text('Welcome to Snapper')")).to_be_visible()
 
 
 class TestAccessibility:
     """Basic accessibility tests."""
 
-    def test_page_has_main_heading(self, page: Page, base_url: str):
+    def test_page_has_main_heading(self, authenticated_page: Page, base_url: str):
         """Each page has an h1 heading."""
         pages = ["/", "/agents", "/rules", "/security", "/audit", "/settings"]
 
         for path in pages:
-            page.goto(f"{base_url}{path}")
-            page.wait_for_load_state("networkidle")
-            h1_count = page.locator("h1").count()
+            authenticated_page.goto(f"{base_url}{path}")
+            authenticated_page.wait_for_load_state("networkidle")
+            h1_count = authenticated_page.locator("h1").count()
             assert h1_count >= 1, f"Page {path} should have at least one h1 heading"
 
     def test_images_have_alt_text(self, dashboard_page: Page):

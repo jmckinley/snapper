@@ -236,6 +236,26 @@ class RuleEngine:
 
             result.matched_rules = matched_rules
 
+            # --- Threat score override (best-effort) ---
+            # If the result is ALLOW, check if the agent's threat score
+            # warrants overriding to DENY or REQUIRE_APPROVAL.
+            if result.decision == EvaluationDecision.ALLOW and not result.learning_mode:
+                try:
+                    from app.services.threat_detector import get_threat_score
+                    threat_score = await get_threat_score(self.redis, str(context.agent_id))
+                    if threat_score >= settings.THREAT_DENY_THRESHOLD:
+                        result.decision = EvaluationDecision.DENY
+                        result.reason = f"Threat score {threat_score:.0f} exceeds deny threshold ({settings.THREAT_DENY_THRESHOLD})"
+                        result.details["threat_score"] = threat_score
+                        result.details["threat_override"] = "deny"
+                    elif threat_score >= settings.THREAT_APPROVAL_THRESHOLD:
+                        result.decision = EvaluationDecision.REQUIRE_APPROVAL
+                        result.reason = f"Threat score {threat_score:.0f} exceeds approval threshold ({settings.THREAT_APPROVAL_THRESHOLD})"
+                        result.details["threat_score"] = threat_score
+                        result.details["threat_override"] = "require_approval"
+                except Exception:
+                    pass  # Threat scoring is best-effort
+
         except Exception as e:
             logger.exception(f"Error during rule evaluation: {e}")
             result.decision = EvaluationDecision.DENY
@@ -260,14 +280,32 @@ class RuleEngine:
         return result
 
     async def _load_rules(self, agent_id: UUID) -> List[Rule]:
-        """Load rules for agent with inheritance (global + agent-specific)."""
+        """Load rules for agent with inheritance (global + agent-specific).
+
+        Rules are scoped by organization: if the agent belongs to an org,
+        only rules from that org (or system-wide rules with org_id=NULL)
+        are loaded.
+        """
+        # Determine agent's organization for scoping
+        agent_stmt = select(Agent.organization_id).where(Agent.id == agent_id)
+        agent_result = await self.db.execute(agent_stmt)
+        agent_org_id = agent_result.scalar_one_or_none()
+
         # Always load fresh from database - caching disabled for security
         # This ensures rule changes take effect immediately
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.is_active == True,
             (Rule.agent_id == agent_id) | (Rule.agent_id == None),
-        ).order_by(Rule.priority.desc())
+        )
+
+        # Org scoping: only load rules from the agent's org or system-wide rules
+        if agent_org_id:
+            stmt = stmt.where(
+                (Rule.organization_id == agent_org_id) | (Rule.organization_id == None)
+            )
+
+        stmt = stmt.order_by(Rule.priority.desc())
 
         result = await self.db.execute(stmt)
         rules = list(result.scalars().all())

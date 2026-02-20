@@ -1,5 +1,6 @@
 """Agent management API endpoints."""
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -10,7 +11,10 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import DbSessionDep, RedisDep, default_rate_limit
+from app.dependencies import DbSessionDep, OptionalOrgIdDep, RedisDep, default_rate_limit, require_delete_agents, verify_resource_org
+from app.middleware.metrics import set_active_agents
+from app.services.event_publisher import publish_from_audit_log
+from app.services.quota import QuotaChecker
 from app.models.agents import Agent, AgentStatus, TrustLevel
 from app.models.audit_logs import AuditAction, AuditLog, AuditSeverity
 from app.models.rules import Rule
@@ -32,6 +36,7 @@ router = APIRouter(prefix="/agents", dependencies=[Depends(default_rate_limit)])
 @router.get("", response_model=AgentListResponse)
 async def list_agents(
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status_filter: Optional[AgentStatus] = Query(None, alias="status"),
@@ -42,6 +47,10 @@ async def list_agents(
     """List all agents with pagination and filtering."""
     # Build query
     stmt = select(Agent)
+
+    # Org scoping
+    if org_id:
+        stmt = stmt.where(Agent.organization_id == org_id)
 
     if not include_deleted:
         stmt = stmt.where(Agent.is_deleted == False)
@@ -77,10 +86,16 @@ async def list_agents(
     )
 
 
-@router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=AgentResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(QuotaChecker("agents"))],
+)
 async def create_agent(
     agent_data: AgentCreate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Register a new agent."""
     # Check for existing external_id
@@ -119,6 +134,7 @@ async def create_agent(
         rate_limit_max_requests=agent_data.rate_limit_max_requests,
         rate_limit_window_seconds=agent_data.rate_limit_window_seconds,
         owner_chat_id=agent_data.owner_chat_id,
+        organization_id=org_id,
     )
 
     db.add(agent)
@@ -139,7 +155,14 @@ async def create_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
+
+    # Update active agents gauge
+    count_result = await db.execute(
+        select(func.count(Agent.id)).where(Agent.deleted_at.is_(None), Agent.status == AgentStatus.ACTIVE)
+    )
+    set_active_agents(count_result.scalar() or 0)
 
     logger.info(f"Agent created: {agent.id} ({agent.name})")
     return AgentResponse.model_validate(agent)
@@ -149,6 +172,7 @@ async def create_agent(
 async def get_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get agent details by ID."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -160,6 +184,7 @@ async def get_agent(
             detail=f"Agent {agent_id} not found",
         )
 
+    await verify_resource_org(agent.organization_id, org_id)
     return AgentResponse.model_validate(agent)
 
 
@@ -168,6 +193,7 @@ async def update_agent(
     agent_id: UUID,
     agent_data: AgentUpdate,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Update an agent."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -178,6 +204,8 @@ async def update_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     # Store old values for audit
     old_values = {
@@ -207,16 +235,22 @@ async def update_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.info(f"Agent updated: {agent.id}")
     return AgentResponse.model_validate(agent)
 
 
-@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_delete_agents)],
+)
 async def delete_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     hard_delete: bool = False,
 ):
     """Delete an agent (soft delete by default)."""
@@ -228,6 +262,8 @@ async def delete_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     if hard_delete:
         await db.delete(agent)
@@ -246,6 +282,14 @@ async def delete_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
+
+    # Update active agents gauge
+    count_result = await db.execute(
+        select(func.count(Agent.id)).where(Agent.deleted_at.is_(None), Agent.status == AgentStatus.ACTIVE)
+    )
+    set_active_agents(count_result.scalar() or 0)
+
     logger.info(f"Agent deleted: {agent_id}")
 
 
@@ -254,6 +298,7 @@ async def get_agent_status(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Get real-time agent status."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -264,6 +309,8 @@ async def get_agent_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     # Get active rules count
     rules_stmt = select(func.count()).select_from(Rule).where(
@@ -304,7 +351,7 @@ async def get_agent_status(
     )
 
 
-@router.post("/bulk", response_model=BulkAgentResponse)
+@router.post("/bulk", response_model=BulkAgentResponse, openapi_extra={"x-internal": True})
 async def bulk_create_agents(
     bulk_data: BulkAgentCreate,
     db: DbSessionDep,
@@ -375,6 +422,7 @@ async def bulk_create_agents(
 async def suspend_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Suspend an agent."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -385,6 +433,8 @@ async def suspend_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_status = agent.status
     agent.status = AgentStatus.SUSPENDED
@@ -401,6 +451,7 @@ async def suspend_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     return AgentResponse.model_validate(agent)
@@ -410,6 +461,7 @@ async def suspend_agent(
 async def activate_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Activate an agent."""
     stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
@@ -420,6 +472,8 @@ async def activate_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_status = agent.status
     agent.status = AgentStatus.ACTIVE
@@ -436,15 +490,17 @@ async def activate_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     return AgentResponse.model_validate(agent)
 
 
-@router.post("/{agent_id}/quarantine", response_model=AgentResponse)
+@router.post("/{agent_id}/quarantine", response_model=AgentResponse, openapi_extra={"x-internal": True})
 async def quarantine_agent(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
     reason: Optional[str] = None,
 ):
     """Quarantine an agent due to security concerns."""
@@ -456,6 +512,8 @@ async def quarantine_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_status = agent.status
     agent.status = AgentStatus.QUARANTINED
@@ -472,6 +530,7 @@ async def quarantine_agent(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.warning(f"Agent quarantined: {agent_id} - {reason}")
@@ -482,6 +541,7 @@ async def quarantine_agent(
 async def regenerate_api_key(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Regenerate an agent's API key.
@@ -504,24 +564,29 @@ async def regenerate_api_key(
             detail=f"Agent {agent_id} not found",
         )
 
+    await verify_resource_org(agent.organization_id, org_id)
+
+    from datetime import datetime as dt, timezone as tz
     old_key_prefix = agent.api_key[:12] + "..."  # Log prefix only
 
     # Generate new key
     agent.api_key = generate_api_key()
     agent.api_key_last_used = None  # Reset last used
+    agent.api_key_rotated_at = dt.now(tz.utc)
 
     # Audit log
     audit_log = AuditLog(
-        action=AuditAction.AGENT_UPDATED,
+        action=AuditAction.API_KEY_ROTATED,
         severity=AuditSeverity.WARNING,
         agent_id=agent.id,
-        message=f"API key regenerated for agent '{agent.name}'",
+        message=f"API key rotated for agent '{agent.name}'",
         old_value={"api_key_prefix": old_key_prefix},
         new_value={"api_key_prefix": agent.api_key[:12] + "..."},
     )
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.info(f"API key regenerated for agent: {agent_id}")
@@ -535,11 +600,12 @@ async def regenerate_api_key(
     }
 
 
-@router.post("/{agent_id}/purge-pii")
+@router.post("/{agent_id}/purge-pii", openapi_extra={"x-internal": True})
 async def purge_agent_pii(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     confirm: bool = False,
 ):
     """
@@ -576,6 +642,8 @@ async def purge_agent_pii(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     # PII patterns to search for and redact
     # Use comprehensive PII patterns (US, UK, Canada, Australia)
@@ -663,6 +731,7 @@ async def purge_agent_pii(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     logger.info(f"PII purge completed for agent {agent_id}: {len(purge_results['actions_taken'])} actions taken")
 
@@ -674,12 +743,13 @@ async def purge_agent_pii(
     }
 
 
-@router.post("/{agent_id}/whitelist-ip")
+@router.post("/{agent_id}/whitelist-ip", openapi_extra={"x-internal": True})
 async def whitelist_ip(
     agent_id: UUID,
     ip_address: str,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
     ttl_hours: int = 24,
 ):
     """
@@ -711,6 +781,8 @@ async def whitelist_ip(
             detail=f"Agent {agent_id} not found",
         )
 
+    await verify_resource_org(agent.organization_id, org_id)
+
     # Add to whitelist set in Redis with TTL
     whitelist_key = f"network_whitelist:{agent_id}"
     await redis.sadd(whitelist_key, ip_address)
@@ -726,6 +798,7 @@ async def whitelist_ip(
     )
     db.add(audit_log)
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
 
     return {
         "status": "success",
@@ -740,8 +813,16 @@ async def remove_whitelisted_ip(
     ip_address: str,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """Remove an IP address from the whitelist."""
+    # Verify agent belongs to caller's org
+    stmt = select(Agent).where(Agent.id == agent_id, Agent.is_deleted == False)
+    agent = (await db.execute(stmt)).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    await verify_resource_org(agent.organization_id, org_id)
+
     whitelist_key = f"network_whitelist:{agent_id}"
     removed = await redis.srem(whitelist_key, ip_address)
 
@@ -771,7 +852,7 @@ async def list_whitelisted_ips(
     }
 
 
-@router.post("/verify-key")
+@router.post("/verify-key", openapi_extra={"x-internal": True})
 async def verify_api_key(
     db: DbSessionDep,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -810,7 +891,7 @@ async def verify_api_key(
     }
 
 
-@router.post("/cleanup-test")
+@router.post("/cleanup-test", openapi_extra={"x-internal": True})
 async def cleanup_test_agents(
     db: DbSessionDep,
     confirm: bool = Query(False),
@@ -839,10 +920,15 @@ async def cleanup_test_agents(
         "Quick Test",
         "Delete Test",
         "Duplicate Test",
+        "ThreatSim",
     )
+    # Also match wizard agent names (created by setup wizard E2E tests)
+    wizard_names = ("OpenClaw", "Claude Code", "Cursor", "Windsurf", "Cline")
+    wizard_conditions = [Agent.name == n for n in wizard_names]
 
-    # Find agents matching any test prefix
+    # Find agents matching any test prefix or wizard name
     conditions = [Agent.name.ilike(f"{p}%") for p in test_prefixes]
+    conditions.extend(wizard_conditions)
     stmt = select(Agent).where(or_(*conditions))
     result = await db.execute(stmt)
     agents = list(result.scalars().all())
@@ -867,6 +953,7 @@ async def reset_agent_trust(
     agent_id: UUID,
     db: DbSessionDep,
     redis: RedisDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Reset an agent's adaptive trust score to 1.0.
@@ -882,6 +969,8 @@ async def reset_agent_trust(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    await verify_resource_org(agent.organization_id, org_id)
 
     old_trust = agent.trust_score
 
@@ -904,6 +993,7 @@ async def reset_agent_trust(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     logger.info(f"Trust score reset for agent {agent_id}: {old_trust} -> 1.0")
@@ -919,6 +1009,7 @@ async def reset_agent_trust(
 async def toggle_agent_trust(
     agent_id: UUID,
     db: DbSessionDep,
+    org_id: OptionalOrgIdDep,
 ):
     """
     Toggle adaptive trust enforcement for an agent.
@@ -936,6 +1027,8 @@ async def toggle_agent_trust(
             detail=f"Agent {agent_id} not found",
         )
 
+    await verify_resource_org(agent.organization_id, org_id)
+
     old_value = agent.auto_adjust_trust
     agent.auto_adjust_trust = not old_value
 
@@ -950,6 +1043,7 @@ async def toggle_agent_trust(
     db.add(audit_log)
 
     await db.commit()
+    asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(agent)
 
     return {

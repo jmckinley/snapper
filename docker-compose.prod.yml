@@ -35,3 +35,11 @@ services:
     build:
       target: production
     volumes: !reset []
+
+  # Production monitoring overrides
+  grafana:
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SERVER_ROOT_URL=https://${SERVER_LABEL:-localhost}:${SNAPPER_PORT:-8443}/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true

@@ -29,7 +29,42 @@ Snapper is an Agent Application Firewall — it inspects and enforces policy on 
 | **Cursor** | preToolUse hook (hooks.json) | Yes |
 | **Windsurf** | pre_run_command / pre_write_code hooks | Yes |
 | **Cline** | Auto-discovered script in hooks dir | Yes |
+| **OpenAI API** | Python SDK wrapper (`snapper-sdk[openai]`) | Yes |
+| **Anthropic API** | Python SDK wrapper (`snapper-sdk[anthropic]`) | Yes |
+| **Gemini API** | Python SDK wrapper (`snapper-sdk[gemini]`) | Yes |
+| **Browser Extension** | Chrome/Firefox extension (Manifest V3) | Yes |
 | **Custom** | Manual config snippet | No |
+
+### Enterprise Features
+
+| Feature | Description |
+|---------|-------------|
+| **Kubernetes** | Helm chart with 4 deployment profiles |
+| **SSO** | SAML 2.0 + OIDC (Okta, Entra ID, Google) |
+| **SCIM** | Automated user provisioning |
+| **SIEM** | CEF/syslog + webhook events |
+| **Observability** | Prometheus metrics + Grafana dashboard |
+| **Policy-as-Code** | YAML export/import for GitOps workflows |
+| **Multi-tenant** | Organizations, teams, role-based access |
+
+See [Enterprise Deployment Guide](docs/ENTERPRISE.md) for details.
+
+### AI Provider Integration
+
+Protect any AI application with drop-in SDK wrappers:
+
+```python
+# pip install snapper-sdk[openai]
+from snapper.openai_wrapper import SnapperOpenAI
+
+client = SnapperOpenAI(snapper_url="https://snapper.example.com", agent_id="myapp")
+response = client.chat.completions.create(model="gpt-4", messages=[...], tools=[...])
+# Tool calls automatically evaluated against Snapper policy
+```
+
+Or protect browser-based AI usage with the [Snapper Browser Extension](docs/AI_PROVIDERS.md#browser-extension) for ChatGPT, Claude.ai, and Gemini.
+
+See [AI Provider Integration Guide](docs/AI_PROVIDERS.md) for all providers.
 
 ## Prerequisites
 
@@ -320,6 +355,10 @@ Snapper passively detects MCP servers and tools from live agent traffic, then su
 | `POST /agents/{id}/whitelist-ip` | Whitelist IP for network egress |
 | `GET /agents/{id}/whitelist-ip` | List whitelisted IPs |
 | `DELETE /agents/{id}/whitelist-ip` | Remove whitelisted IP |
+| `GET /api/v1/threats` | List threat events with filtering |
+| `GET /api/v1/threats/summary` | Dashboard threat summary stats |
+| `GET /api/v1/threats/scores/live` | Live per-agent threat scores from Redis |
+| `POST /api/v1/threats/{id}/resolve` | Resolve or mark false positive |
 
 ---
 
@@ -439,6 +478,35 @@ Each agent has adaptive trust metrics:
 - **Toggle:** Enforcement can be toggled via API (`POST /agents/{id}/toggle-trust`), Telegram (`/trust enable [name]`/`/trust disable [name]`), Slack (`/snapper-trust enable [name]`), or dashboard
 - **Scoping:** Telegram `/trust` and Slack `/snapper-trust` operate on all agents owned by your user ID; append an agent name to target one specifically
 
+### Bad Actor Detection Engine
+
+Snapper includes a heuristic threat detection engine that analyzes agent behavior in real time to detect multi-step attack patterns. Unlike prompt-level security, this operates at the tool-execution layer — detecting attacks by what agents **do**, not what they say.
+
+**How it works:**
+1. Every `evaluate` call extracts 13 signal types in <2ms (file reads, network sends, credential access, PII patterns, encoding, privilege escalation, etc.)
+2. Signals are published to Redis Streams asynchronously (no hot-path blocking)
+3. A Celery worker consumes signals every 2 seconds, maintaining per-agent behavioral baselines over 7-day rolling windows
+4. 7 kill chain state machines detect multi-step attack sequences (data exfiltration, credential theft, PII harvest, encoded exfil, privilege escalation, vault extraction, living-off-the-land)
+5. A composite threat score (0-100) feeds back into the rule engine for graduated enforcement
+
+| Score Range | Action |
+|-------------|--------|
+| >= 80 | **Automatic DENY** — overrides rule engine |
+| >= 60 | **REQUIRE_APPROVAL** — human-in-the-loop via Telegram/Slack |
+| >= 40 | **Alert** — notification sent |
+| < 40 | **Log only** — recorded for baseline building |
+
+**Configuration:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THREAT_DETECTION_ENABLED` | `true` | Enable/disable the detection engine |
+| `THREAT_DENY_THRESHOLD` | `80` | Score at which requests are auto-denied |
+| `THREAT_APPROVAL_THRESHOLD` | `60` | Score requiring human approval |
+| `THREAT_AI_REVIEW_ENABLED` | `false` | Enable optional Claude-powered review |
+
+See [Bad Actor Detection](docs/BAD_ACTOR_DETECTION.md) for the full technical deep-dive and competitive landscape analysis.
+
 ### Security Summary
 
 **Inbound protection** (threats targeting the agent):
@@ -460,11 +528,12 @@ Each agent has adaptive trust metrics:
 |-------|------------|
 | **Commands** | Block RCE, reverse shells, destructive operations |
 | **PII Detection** | 30+ regex patterns catch raw PII from any source (DLP) |
-| **PII Vault** | Fernet-encrypted storage with per-field approval for browser form fills |
+| **PII Vault** | AES-256-GCM encrypted storage with per-field approval for browser form fills |
 | **Files** | Protect credentials (.env, .pem, SSH keys), require approval for sensitive files |
 | **Network** | Block exfiltration domains, backdoor ports, with IP whitelist |
 | **Approval Workflow** | Human-in-the-loop for sensitive operations |
 | **Trust Scoring** | Adaptive trust based on agent behavior |
+| **Threat Detection** | 13 signal types, 7 kill chain state machines, per-agent behavioral baselines, composite scoring |
 | **Audit Trail** | Immutable logging of all security events |
 
 ### Architecture Requirements
@@ -512,6 +581,9 @@ GET    /api/v1/audit/logs         # Get audit logs
 GET    /api/v1/audit/stats        # Aggregated stats + hourly breakdown
 GET    /api/v1/integrations/traffic/insights  # Discovered MCP servers + coverage
 POST   /api/v1/integrations/traffic/create-server-rules  # Smart default rules
+GET    /api/v1/threats              # Threat events (filter by agent, severity, type)
+GET    /api/v1/threats/summary      # Dashboard widget stats
+GET    /api/v1/threats/scores/live  # Live threat scores from Redis
 POST   /api/v1/setup/quick-register   # Quick-register any supported agent
 POST   /api/v1/setup/install-config   # Auto-install hook config
 GET    /health                    # Health check
@@ -561,6 +633,9 @@ export SNAPPER_API_KEY=snp_your_key_here
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,app` | Accepted Host headers |
 | `ALLOWED_ORIGINS` | `http://localhost:8000,...` | CORS/WebSocket origins (HTTP + HTTPS) |
 | `DEBUG` | `false` | Debug mode |
+| `THREAT_DETECTION_ENABLED` | `true` | Enable heuristic bad actor detection |
+| `THREAT_DENY_THRESHOLD` | `80` | Auto-deny score threshold |
+| `THREAT_APPROVAL_THRESHOLD` | `60` | Human approval score threshold |
 
 See `.env.example` for the full list including database, Redis, Celery, alerting, and notification settings.
 
@@ -681,15 +756,33 @@ Integration E2E tests cover (109 tests across 11 phases):
 - **Phase 9:** Traffic insights with real data
 - **Phase 10:** Rule pattern verification (shell + GitHub templates vs evaluate)
 
+### Threat Simulator
+
+Red-team tool that exercises every detection pathway against a live instance:
+
+```bash
+# Run all 13 scenarios against VPS
+python scripts/threat_simulator.py --all --url https://your-server:8443 --no-verify-ssl
+
+# Run specific scenarios
+python scripts/threat_simulator.py --scenario data_exfil credential_theft
+
+# List available scenarios
+python scripts/threat_simulator.py --list
+```
+
+13 scenarios covering: data exfiltration, credential theft, PII harvest, encoded exfil, privilege escalation, vault extraction, living-off-the-land, baseline deviation, slow drip, encoding stacking, steganographic exfil, signal storm, and benign control (negative test).
+
 ### Test Results
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 588 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery |
+| Unit tests | 636 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery, threat detection |
 | E2E tests (Playwright) | 120 | Browser-based UI testing (skipped without browser) |
 | Live E2E integration | 47 | API-level rule engine, approvals, PII vault, emergency block, audit, deployment infra (skips OpenClaw if unavailable) |
 | Live E2E integrations | 109 | Traffic discovery, templates, custom MCP, legacy rules, coverage analysis |
-| **Total** | **864** | Full coverage across unit, UI, and live integration layers |
+| Threat simulator | 13 | Red-team scenarios: kill chains, baselines, encoding, slow drip, signal storm, benign control |
+| **Total** | **925** | Full coverage across unit, UI, and live integration layers |
 
 ## Common Commands
 
