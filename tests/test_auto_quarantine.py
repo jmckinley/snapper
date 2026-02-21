@@ -49,8 +49,8 @@ async def test_quarantine_sets_agent_status():
     agent = _make_agent()
     db = _make_db(agent)
 
-    with patch("app.services.auto_quarantine.publish_event", new_callable=AsyncMock), \
-         patch("app.services.auto_quarantine.send_alert"):
+    with patch("app.services.event_publisher.publish_event", new_callable=AsyncMock), \
+         patch("app.tasks.alerts.send_alert"):
         result = await quarantine_agent(db, agent.id, "test reason", "test")
 
     assert result is True
@@ -63,8 +63,8 @@ async def test_quarantine_creates_audit_log():
     agent = _make_agent()
     db = _make_db(agent)
 
-    with patch("app.services.auto_quarantine.publish_event", new_callable=AsyncMock), \
-         patch("app.services.auto_quarantine.send_alert"):
+    with patch("app.services.event_publisher.publish_event", new_callable=AsyncMock), \
+         patch("app.tasks.alerts.send_alert"):
         await quarantine_agent(db, agent.id, "high threat", "threat_score")
 
     # Check that db.add was called with an AuditLog
@@ -100,8 +100,8 @@ async def test_quarantine_preserves_old_status():
     agent = _make_agent(status=AgentStatus.ACTIVE)
     db = _make_db(agent)
 
-    with patch("app.services.auto_quarantine.publish_event", new_callable=AsyncMock), \
-         patch("app.services.auto_quarantine.send_alert"):
+    with patch("app.services.event_publisher.publish_event", new_callable=AsyncMock), \
+         patch("app.tasks.alerts.send_alert"):
         await quarantine_agent(db, agent.id, "test", "threat_score")
 
     added = [call.args[0] for call in db.add.call_args_list]
@@ -116,8 +116,8 @@ async def test_quarantine_sends_alert():
     db = _make_db(agent)
 
     mock_alert = MagicMock()
-    with patch("app.services.auto_quarantine.publish_event", new_callable=AsyncMock), \
-         patch("app.services.auto_quarantine.send_alert", mock_alert):
+    with patch("app.services.event_publisher.publish_event", new_callable=AsyncMock), \
+         patch("app.tasks.alerts.send_alert", mock_alert):
         await quarantine_agent(db, agent.id, "threat score 95", "threat_score")
 
     mock_alert.delay.assert_called_once()
@@ -132,8 +132,8 @@ async def test_quarantine_triggered_by_recorded():
     agent = _make_agent()
     db = _make_db(agent)
 
-    with patch("app.services.auto_quarantine.publish_event", new_callable=AsyncMock), \
-         patch("app.services.auto_quarantine.send_alert"):
+    with patch("app.services.event_publisher.publish_event", new_callable=AsyncMock), \
+         patch("app.tasks.alerts.send_alert"):
         await quarantine_agent(db, agent.id, "kill chain complete", "kill_chain")
 
     added = [call.args[0] for call in db.add.call_args_list]
@@ -147,8 +147,8 @@ async def test_quarantine_commits_db():
     agent = _make_agent()
     db = _make_db(agent)
 
-    with patch("app.services.auto_quarantine.publish_event", new_callable=AsyncMock), \
-         patch("app.services.auto_quarantine.send_alert"):
+    with patch("app.services.event_publisher.publish_event", new_callable=AsyncMock), \
+         patch("app.tasks.alerts.send_alert"):
         await quarantine_agent(db, agent.id, "test", "test")
 
     db.commit.assert_awaited_once()
@@ -161,8 +161,8 @@ async def test_quarantine_publishes_siem_event():
     db = _make_db(agent)
 
     mock_publish = AsyncMock()
-    with patch("app.services.auto_quarantine.publish_event", mock_publish), \
-         patch("app.services.auto_quarantine.send_alert"):
+    with patch("app.services.event_publisher.publish_event", mock_publish), \
+         patch("app.tasks.alerts.send_alert"):
         await quarantine_agent(db, agent.id, "siem test", "threat_score")
 
     mock_publish.assert_awaited_once()
