@@ -87,6 +87,12 @@ CEF_EVENT_MAP = {
     "threat_agent_quarantined": ("803", "Agent Quarantined by Threat Engine"),
     "threat_resolved": ("804", "Threat Resolved"),
     "threat_false_positive": ("805", "Threat Marked False Positive"),
+    # Unknown agent protection events
+    "unknown_agent_attempt": ("810", "Unknown Agent Attempt"),
+    "unknown_agent_lockout": ("811", "Unknown Agent IP Lockout"),
+    # Shadow AI detection events
+    "shadow_ai_detected": ("820", "Shadow AI Detected"),
+    "shadow_ai_resolved": ("821", "Shadow AI Resolved"),
 }
 
 # Map severity to CEF severity (0-10)

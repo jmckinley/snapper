@@ -244,7 +244,27 @@ async def _analyze_signals_async():
 
                 await set_threat_score(redis, agent_id, blended)
 
-                # 5. Fire alert if threshold crossed
+                # 5. Auto-quarantine on very high threat score
+                if (
+                    settings.THREAT_AUTO_QUARANTINE
+                    and blended >= settings.QUARANTINE_ON_THREAT_SCORE
+                ):
+                    try:
+                        from app.services.auto_quarantine import quarantine_agent as _quarantine
+                        from app.database import get_db_context
+                        from uuid import UUID as _UUID
+
+                        async with get_db_context() as qdb:
+                            await _quarantine(
+                                qdb,
+                                _UUID(agent_id),
+                                reason=f"Auto-quarantined: threat score {blended:.0f} >= {settings.QUARANTINE_ON_THREAT_SCORE}",
+                                triggered_by="threat_score",
+                            )
+                    except Exception as e:
+                        logger.warning(f"Auto-quarantine failed for {agent_id}: {e}")
+
+                # 6. Fire alert if threshold crossed
                 if blended >= settings.THREAT_ALERT_THRESHOLD:
                     threat_level = classify_threat_level(blended)
                     await _fire_threat_alert(

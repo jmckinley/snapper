@@ -115,6 +115,14 @@ class AuditAction(str, Enum):
     THREAT_RESOLVED = "threat_resolved"
     THREAT_FALSE_POSITIVE = "threat_false_positive"
 
+    # Unknown agent protection events
+    UNKNOWN_AGENT_ATTEMPT = "unknown_agent_attempt"
+    UNKNOWN_AGENT_LOCKOUT = "unknown_agent_lockout"
+
+    # Shadow AI detection events
+    SHADOW_AI_DETECTED = "shadow_ai_detected"
+    SHADOW_AI_RESOLVED = "shadow_ai_resolved"
+
 
 class AuditSeverity(str, Enum):
     """Severity levels for audit events."""

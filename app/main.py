@@ -19,7 +19,7 @@ from app.database import check_db_health, close_db, init_db
 from app.redis_client import redis_client
 
 # Import routers
-from app.routers import agents, approvals, audit, integrations, rules, security, setup, slack, telegram, vault
+from app.routers import agents, approvals, audit, devices, integrations, rules, security, setup, shadow_ai, slack, telegram, vault
 from app.routers import auth as auth_router
 from app.routers import organizations as org_router
 from app.routers import billing as billing_router
@@ -181,6 +181,7 @@ app.include_router(slack.router, prefix=settings.API_V1_PREFIX, tags=["Slack"])
 app.include_router(approvals.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
 app.include_router(vault.router, prefix=settings.API_V1_PREFIX, tags=["Vault"])
 app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX, tags=["Auth"])
+app.include_router(devices.router, prefix=settings.API_V1_PREFIX, tags=["Devices"])
 app.include_router(org_router.router, prefix=settings.API_V1_PREFIX, tags=["Organizations"])
 app.include_router(billing_router.router, prefix=settings.API_V1_PREFIX, tags=["Billing"])
 app.include_router(saml_router.router, tags=["SSO"])
@@ -190,6 +191,7 @@ app.include_router(webhooks_router.router, prefix=settings.API_V1_PREFIX, tags=[
 app.include_router(approval_policies_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
 app.include_router(suggestions_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
 app.include_router(threats_router.router, prefix=settings.API_V1_PREFIX, tags=["Threats"])
+app.include_router(shadow_ai.router, prefix=settings.API_V1_PREFIX, tags=["Shadow AI"])
 if settings.META_ADMIN_ENABLED:
     app.include_router(meta_admin_router.router, prefix=settings.API_V1_PREFIX, tags=["Meta Admin"])
 
@@ -300,6 +302,24 @@ async def approvals_page(request: Request):
     """Approval automation management page."""
     return templates.TemplateResponse(
         "approvals/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/shadow-ai", tags=["dashboard"])
+async def shadow_ai_page(request: Request):
+    """Shadow AI detection page."""
+    return templates.TemplateResponse(
+        "shadow_ai/index.html",
+        {"request": request, "settings": settings},
+    )
+
+
+@app.get("/devices", tags=["dashboard"])
+async def devices_page(request: Request):
+    """Device management page."""
+    return templates.TemplateResponse(
+        "devices/index.html",
         {"request": request, "settings": settings},
     )
 

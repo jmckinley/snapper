@@ -154,6 +154,21 @@ class Settings(BaseSettings):
     THREAT_AI_REVIEW_INTERVAL_SECONDS: int = 900  # 15 minutes
     THREAT_AI_MAX_EVENTS_PER_REVIEW: int = 50
 
+    # Unknown agent protection
+    UNKNOWN_AGENT_ALERT_THRESHOLD: int = 10       # Alert after N attempts in window
+    UNKNOWN_AGENT_LOCKOUT_THRESHOLD: int = 20     # IP lockout after N attempts
+    UNKNOWN_AGENT_LOCKOUT_SECONDS: int = 900      # 15min lockout
+    UNKNOWN_AGENT_WINDOW_SECONDS: int = 300       # 5min sliding window
+
+    # Auto-quarantine thresholds (THREAT_AUTO_QUARANTINE toggle already above)
+    QUARANTINE_ON_THREAT_SCORE: int = 90          # Auto-quarantine at this threat score
+    QUARANTINE_ON_DEVICE_ANOMALY: bool = False    # Auto-quarantine on device IP mismatch
+
+    # Shadow AI detection
+    SHADOW_AI_DETECTION_ENABLED: bool = False      # Off by default (needs host access)
+    SHADOW_AI_SCAN_INTERVAL_SECONDS: int = 300    # 5min scan interval
+    SHADOW_AI_KNOWN_AI_DOMAINS: str = ""          # Comma-separated extra domains
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

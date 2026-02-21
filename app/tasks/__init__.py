@@ -27,7 +27,7 @@ celery_app.conf.update(
 )
 
 # Import task modules to register them
-from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review  # noqa
+from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review, shadow_ai_scan, mcp_catalog_sync  # noqa
 
 # Configure periodic tasks (Celery Beat)
 celery_app.conf.beat_schedule = {
@@ -92,5 +92,17 @@ celery_app.conf.beat_schedule = {
     "ai-threat-review": {
         "task": "app.tasks.ai_threat_review.ai_threat_review",
         "schedule": 900,  # 15 minutes (configurable via THREAT_AI_REVIEW_INTERVAL_SECONDS)
+    },
+    # Shadow AI detection scan (opt-in, requires SHADOW_AI_DETECTION_ENABLED=true)
+    "shadow-ai-scan": {
+        "task": "shadow-ai-scan",
+        "schedule": settings.SHADOW_AI_SCAN_INTERVAL_SECONDS,
+        "options": {"time_limit": 60},
+    },
+    # MCP server catalog sync (daily)
+    "mcp-catalog-sync": {
+        "task": "mcp-catalog-sync",
+        "schedule": 86400,  # 24 hours
+        "options": {"time_limit": 120},
     },
 }

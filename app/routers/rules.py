@@ -680,6 +680,7 @@ async def create_rule(
         parameters=rule_data.parameters,
         is_active=rule_data.is_active,
         tags=rule_data.tags,
+        target_roles=rule_data.target_roles,
         source=rule_data.source,
         source_reference=rule_data.source_reference,
         organization_id=org_id,
@@ -1375,7 +1376,75 @@ async def evaluate_request(
         agent = (await db.execute(stmt)).scalar_one_or_none()
 
     if not agent:
-        # Unknown agent - deny by default
+        # --- Unknown agent audit + IP lockout ---
+        from app.services.unknown_agent_protection import record_attempt, is_locked_out
+
+        client_ip = (
+            fastapi_request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or (fastapi_request.client.host if fastapi_request.client else "unknown")
+        )
+
+        # Fast-path: already locked out
+        if await is_locked_out(redis, client_ip):
+            return EvaluateResponse(
+                decision="deny",
+                reason="IP temporarily locked out due to repeated unknown agent attempts",
+            )
+
+        # Record attempt + check thresholds
+        attempt_info = await record_attempt(redis, client_ip, request.agent_id or "none")
+
+        # Create audit log (closes the visibility gap for unknown agents)
+        audit_log = AuditLog(
+            action=AuditAction.UNKNOWN_AGENT_ATTEMPT,
+            severity=AuditSeverity.WARNING,
+            ip_address=client_ip if client_ip != "unknown" else None,
+            user_agent=fastapi_request.headers.get("User-Agent", "")[:500] or None,
+            message=f"Unknown agent attempt: {request.agent_id} (attempt #{attempt_info['count']} from {client_ip})",
+            new_value={
+                "agent_id": request.agent_id,
+                "request_type": request.request_type,
+                "command": request.command,
+                "ip_address": client_ip,
+                "attempt_count": attempt_info["count"],
+            },
+        )
+        db.add(audit_log)
+
+        # Lockout audit on threshold
+        if attempt_info["should_lockout"]:
+            lockout_audit = AuditLog(
+                action=AuditAction.UNKNOWN_AGENT_LOCKOUT,
+                severity=AuditSeverity.CRITICAL,
+                ip_address=client_ip if client_ip != "unknown" else None,
+                message=(
+                    f"IP {client_ip} locked out: {attempt_info['count']} unknown agent attempts "
+                    f"in {settings.UNKNOWN_AGENT_WINDOW_SECONDS}s"
+                ),
+            )
+            db.add(lockout_audit)
+
+        await db.commit()
+
+        # Fire alert (Telegram/Slack) when alert threshold first crossed
+        if attempt_info["should_alert"] or attempt_info["should_lockout"]:
+            try:
+                from app.tasks.alerts import send_alert
+                severity = "critical" if attempt_info["should_lockout"] else "warning"
+                send_alert.delay(
+                    title="Unknown Agent Probing Detected",
+                    message=(
+                        f"IP `{client_ip}` has made {attempt_info['count']} unknown agent "
+                        f"attempts in {settings.UNKNOWN_AGENT_WINDOW_SECONDS}s.\n"
+                        f"Agent ID tried: `{request.agent_id}`\n"
+                        + ("*IP has been locked out.*" if attempt_info["should_lockout"] else "")
+                    ),
+                    severity=severity,
+                    metadata={"ip_address": client_ip, "agent_id": request.agent_id},
+                )
+            except Exception:
+                pass
+
         return EvaluateResponse(
             decision="deny",
             reason=f"Unknown agent: {request.agent_id}",
@@ -1393,6 +1462,83 @@ async def evaluate_request(
             decision="deny",
             reason="Agent is quarantined due to security concerns",
         )
+
+    # Optional: extract user identity from JWT (browser extension auth)
+    user_id = None
+    user_role = None
+    user_email = None
+    auth_header = fastapi_request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer ") and not auth_header[7:].startswith("snp_"):
+        try:
+            from app.services.auth import verify_token
+            payload = verify_token(auth_header[7:])
+            if payload and payload.get("type") == "access":
+                user_id = payload.get("sub")
+                user_role = payload.get("role")
+        except Exception:
+            pass  # JWT is optional on evaluate — don't fail
+
+    # Device identification (browser extension sends X-Device-Id)
+    device_id_header = fastapi_request.headers.get("X-Device-Id")
+    device = None
+    if device_id_header:
+        from app.models.devices import Device, DeviceStatus
+        stmt = select(Device).where(Device.device_id == device_id_header)
+        device = (await db.execute(stmt)).scalar_one_or_none()
+
+        if device and device.status == DeviceStatus.BLOCKED:
+            return EvaluateResponse(
+                decision="deny",
+                reason="Device is blocked by administrator",
+            )
+
+        if device:
+            device.last_seen_at = datetime.utcnow()
+
+            # Device anomaly check: IP changed to a different /16 subnet
+            if settings.QUARANTINE_ON_DEVICE_ANOMALY:
+                current_ip = fastapi_request.client.host if fastapi_request.client else None
+                if current_ip:
+                    dev_ip_key = f"device_last_ip:{device.device_id}"
+                    last_ip = await redis.get(dev_ip_key)
+                    if last_ip and last_ip != current_ip:
+                        old_parts = last_ip.split(".")[:2]
+                        new_parts = current_ip.split(".")[:2]
+                        if old_parts != new_parts:
+                            try:
+                                from app.services.auto_quarantine import quarantine_agent as _dev_quarantine
+                                await _dev_quarantine(
+                                    db,
+                                    agent.id,
+                                    reason=f"Device IP anomaly: {last_ip} -> {current_ip} (different /16 subnet)",
+                                    triggered_by="device_anomaly",
+                                )
+                            except Exception:
+                                pass
+                    # Always update last known IP (7-day TTL)
+                    await redis.set(dev_ip_key, current_ip, ex=604800)
+        elif user_id:
+            # Auto-register new device for authenticated users
+            import json as _json
+            device_meta = {}
+            meta_header = fastapi_request.headers.get("X-Device-Meta")
+            if meta_header:
+                try:
+                    device_meta = _json.loads(meta_header)
+                except Exception:
+                    pass
+
+            device = Device(
+                device_id=device_id_header,
+                user_id=UUID(user_id),
+                organization_id=agent.organization_id,
+                platform=device_meta.get("platform"),
+                browser=fastapi_request.headers.get("User-Agent", "")[:200],
+                metadata_json=device_meta or None,
+                first_seen_at=datetime.utcnow(),
+                last_seen_at=datetime.utcnow(),
+            )
+            db.add(device)
 
     # Parse URL for network requests
     target_host = None
@@ -1437,6 +1583,8 @@ async def evaluate_request(
         metadata={"tool_name": request.tool_name, "tool_input": request.tool_input} if request.tool_name else {},
         auto_adjust_trust=agent.auto_adjust_trust,
         owner_chat_id=getattr(agent, "owner_chat_id", None),
+        user_id=user_id,
+        user_role=user_role,
     )
 
     # Create rule engine and evaluate
@@ -1500,6 +1648,9 @@ async def evaluate_request(
         agent_id=agent.id,
         rule_id=result.blocking_rule,
         organization_id=agent.organization_id,
+        user_id=UUID(user_id) if user_id else None,
+        ip_address=client_ip,
+        user_agent=fastapi_request.headers.get("User-Agent", "")[:500] or None,
         message=f"{result.decision.value.upper()}: {result.reason}",
         old_value=None,
         new_value={
@@ -1508,6 +1659,9 @@ async def evaluate_request(
             "file_path": request.file_path,
             "tool_name": request.tool_name,
             "decision": result.decision.value,
+            "device_id": device_id_header,
+            "user_role": user_role,
+            "source": "browser_extension" if device_id_header else None,
         },
     )
     db.add(audit_log)
@@ -1572,6 +1726,17 @@ async def evaluate_request(
             pii_action = pii_ctx.get("action") if pii_ctx else None
             action_desc = pii_action or request.command or request.file_path or request.tool_name or request.request_type
 
+            # User/device context for alert enrichment
+            _ext_ctx = {}
+            if user_id:
+                _ext_ctx["user_id"] = user_id
+                _ext_ctx["user_role"] = user_role
+            if device_id_header:
+                _ext_ctx["device_id"] = device_id_header
+                if device:
+                    _ext_ctx["device_name"] = device.name
+                    _ext_ctx["device_platform"] = device.platform
+
             if result.decision.value == "deny" and notify_settings.NOTIFY_ON_BLOCK:
                 send_alert.delay(
                     title=f"Action Blocked: {matched_rule_name or 'Security Rule'}",
@@ -1586,6 +1751,7 @@ async def evaluate_request(
                         "rule_name": matched_rule_name,
                         "rule_id": str(result.blocking_rule) if result.blocking_rule else None,
                         "agent_owner_chat_id": getattr(agent, "owner_chat_id", None),
+                        **_ext_ctx,
                     },
                 )
             elif result.decision.value == "require_approval":
@@ -1730,6 +1896,7 @@ async def evaluate_request(
                         "request_id": approval_request_id,
                         "requires_approval": True,
                         "agent_owner_chat_id": getattr(agent, "owner_chat_id", None),
+                        **_ext_ctx,
                     }
 
                     # Add PII context for rich Telegram notification
