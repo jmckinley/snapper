@@ -332,10 +332,12 @@ async def fetch_smithery_servers(max_entries: int = 5000) -> List[Dict[str, Any]
     try:
         async with httpx.AsyncClient(timeout=FETCH_TIMEOUT) as client:
             page = 1
+            # Smithery only supports pageSize=10 (their default)
+            # Overriding it causes empty pages after page 1
             max_pages = max_entries // 10 + 1
 
             while page <= max_pages and len(results) < max_entries:
-                resp = await client.get(SMITHERY_API, params={"page": page, "pageSize": 100})
+                resp = await client.get(SMITHERY_API, params={"page": page})
                 if resp.status_code != 200:
                     logger.debug(f"Smithery returned {resp.status_code}")
                     break
