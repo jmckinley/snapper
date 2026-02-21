@@ -246,6 +246,8 @@ class AuditLog(Base):
         Index("ix_audit_logs_agent_action", "agent_id", "action"),
         Index("ix_audit_logs_severity_time", "severity", "created_at"),
         Index("ix_audit_logs_time_range", "created_at", postgresql_using="brin"),
+        Index("ix_audit_logs_org_action_time", "organization_id", "action", "created_at"),
+        Index("ix_audit_logs_org_time", "organization_id", "created_at"),
     )
 
     def __repr__(self) -> str:

@@ -708,10 +708,9 @@ async def create_rule(
     asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(rule)
 
-    # Invalidate rule cache for agent
-    if rule.agent_id:
-        engine = RuleEngine(db, redis)
-        await engine.invalidate_cache(rule.agent_id)
+    # Invalidate rule cache (agent-specific or all if global rule)
+    engine = RuleEngine(db, redis)
+    await engine.invalidate_cache(rule.agent_id)
 
     logger.info(f"Rule created: {rule.id} ({rule.name})")
     return RuleResponse.model_validate(rule)
@@ -777,10 +776,9 @@ async def apply_template(
     asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(rule)
 
-    # Invalidate cache
-    if rule.agent_id:
-        engine = RuleEngine(db, redis)
-        await engine.invalidate_cache(rule.agent_id)
+    # Invalidate cache (agent-specific or all if global rule)
+    engine = RuleEngine(db, redis)
+    await engine.invalidate_cache(rule.agent_id)
 
     return RuleResponse.model_validate(rule)
 
@@ -863,10 +861,9 @@ async def update_rule(
     asyncio.ensure_future(publish_from_audit_log(audit_log))
     await db.refresh(rule)
 
-    # Invalidate cache
-    if rule.agent_id:
-        engine = RuleEngine(db, redis)
-        await engine.invalidate_cache(rule.agent_id)
+    # Invalidate cache (agent-specific or all if global rule)
+    engine = RuleEngine(db, redis)
+    await engine.invalidate_cache(rule.agent_id)
 
     return RuleResponse.model_validate(rule)
 
@@ -918,10 +915,9 @@ async def delete_rule(
     await db.commit()
     asyncio.ensure_future(publish_from_audit_log(audit_log))
 
-    # Invalidate cache
-    if agent_id:
-        engine = RuleEngine(db, redis)
-        await engine.invalidate_cache(agent_id)
+    # Invalidate cache (agent-specific or all if global rule)
+    engine = RuleEngine(db, redis)
+    await engine.invalidate_cache(agent_id)
 
 
 @router.post("/validate", response_model=RuleValidateResponse)
@@ -1439,6 +1435,8 @@ async def evaluate_request(
         origin=request.origin,
         ip_address=client_ip,
         metadata={"tool_name": request.tool_name, "tool_input": request.tool_input} if request.tool_name else {},
+        auto_adjust_trust=agent.auto_adjust_trust,
+        owner_chat_id=getattr(agent, "owner_chat_id", None),
     )
 
     # Create rule engine and evaluate

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import Optional
 from uuid import uuid4
 
@@ -42,6 +43,7 @@ SCHEME_AES_GCM = "aes-256-gcm"
 GCM_NONCE_SIZE = 12
 
 
+@lru_cache(maxsize=4)
 def _get_raw_key(version: int = 1) -> bytes:
     """
     Derive a 256-bit encryption key from SECRET_KEY using HKDF.
@@ -608,6 +610,67 @@ def extract_label_from_ref(ref: str) -> str:
     if ref.lower().startswith("vault:"):
         return ref[6:]
     return ref
+
+
+async def batch_get_entries_by_tokens(
+    db: AsyncSession,
+    tokens: list[str],
+) -> dict[str, PIIVaultEntry]:
+    """Batch lookup vault entries by tokens. Returns {token: entry}."""
+    if not tokens:
+        return {}
+    stmt = select(PIIVaultEntry).where(
+        PIIVaultEntry.token.in_(tokens),
+        PIIVaultEntry.is_deleted == False,
+    )
+    result = await db.execute(stmt)
+    return {e.token: e for e in result.scalars().all()}
+
+
+async def batch_get_entries_by_placeholders(
+    db: AsyncSession,
+    placeholder_values: list[str],
+    owner_chat_id: Optional[str] = None,
+) -> dict[str, PIIVaultEntry]:
+    """Batch lookup by placeholder values. Returns {placeholder_value: first_entry}."""
+    if not placeholder_values:
+        return {}
+    stmt = select(PIIVaultEntry).where(
+        PIIVaultEntry.placeholder_value.in_(placeholder_values),
+        PIIVaultEntry.is_deleted == False,
+    )
+    if owner_chat_id:
+        stmt = stmt.where(PIIVaultEntry.owner_chat_id == str(owner_chat_id))
+    result = await db.execute(stmt)
+    entries_map = {}
+    for e in result.scalars().all():
+        if e.placeholder_value not in entries_map:
+            entries_map[e.placeholder_value] = e
+    return entries_map
+
+
+async def batch_get_entries_by_labels(
+    db: AsyncSession,
+    labels: list[str],
+    owner_chat_id: Optional[str] = None,
+) -> dict[str, PIIVaultEntry]:
+    """Batch lookup by labels (case-insensitive). Returns {lower_label: first_entry}."""
+    if not labels:
+        return {}
+    lower_labels = [l.lower() for l in labels]
+    stmt = select(PIIVaultEntry).where(
+        func.lower(PIIVaultEntry.label).in_(lower_labels),
+        PIIVaultEntry.is_deleted == False,
+    )
+    if owner_chat_id:
+        stmt = stmt.where(PIIVaultEntry.owner_chat_id == str(owner_chat_id))
+    result = await db.execute(stmt)
+    entries_map = {}
+    for e in result.scalars().all():
+        key = e.label.lower()
+        if key not in entries_map:
+            entries_map[key] = e
+    return entries_map
 
 
 async def get_entries_by_label(

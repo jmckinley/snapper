@@ -61,6 +61,10 @@ class EvaluationContext:
     # Additional metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # Pre-loaded agent fields (avoid redundant DB queries in evaluators)
+    auto_adjust_trust: bool = False
+    owner_chat_id: Optional[str] = None
+
 
 @dataclass
 class EvaluationResult:
@@ -86,9 +90,10 @@ class RuleEngine:
     effect immediately (caching disabled for security).
     """
 
-    # Rule caching disabled for security - rules must always be evaluated fresh
-    # to ensure changes take effect immediately
-    CACHE_ENABLED = False
+    # Rule cache with short TTL — immediate invalidation on mutation ensures
+    # changes take effect within seconds, while reducing DB load at scale.
+    CACHE_ENABLED = True
+    CACHE_TTL_SECONDS = 10
 
     def __init__(self, db: AsyncSession, redis: RedisClient):
         self.db = db
@@ -285,14 +290,38 @@ class RuleEngine:
         Rules are scoped by organization: if the agent belongs to an org,
         only rules from that org (or system-wide rules with org_id=NULL)
         are loaded.
+
+        Uses Redis cache with short TTL to reduce DB load. Cache is
+        immediately invalidated on rule mutations.
         """
+        cache_key = f"rules:{agent_id}"
+
+        # 1. Try Redis cache first
+        if self.CACHE_ENABLED:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached:
+                    rule_ids = json.loads(cached)
+                    if rule_ids:
+                        # Load by IDs (fast primary key lookup)
+                        id_list = [UUID(rid) for rid in rule_ids]
+                        stmt = select(Rule).where(Rule.id.in_(id_list))
+                        result = await self.db.execute(stmt)
+                        rules = list(result.scalars().all())
+                        if rules:
+                            rules.sort(key=lambda r: r.priority, reverse=True)
+                            return rules
+                    else:
+                        return []
+            except Exception:
+                pass  # Cache miss or error — fall through to DB
+
+        # 2. Cache miss — full query
         # Determine agent's organization for scoping
         agent_stmt = select(Agent.organization_id).where(Agent.id == agent_id)
         agent_result = await self.db.execute(agent_stmt)
         agent_org_id = agent_result.scalar_one_or_none()
 
-        # Always load fresh from database - caching disabled for security
-        # This ensures rule changes take effect immediately
         stmt = select(Rule).where(
             Rule.is_deleted == False,
             Rule.is_active == True,
@@ -310,12 +339,42 @@ class RuleEngine:
         result = await self.db.execute(stmt)
         rules = list(result.scalars().all())
 
+        # 3. Store rule IDs in Redis with TTL
+        if self.CACHE_ENABLED:
+            try:
+                rule_ids = [str(r.id) for r in rules]
+                await self.redis.set(cache_key, json.dumps(rule_ids), expire=self.CACHE_TTL_SECONDS)
+            except Exception:
+                pass  # Caching is best-effort
+
         return rules
 
     async def invalidate_cache(self, agent_id: Optional[UUID] = None):
-        """No-op: Rule caching is disabled for security."""
-        # Caching disabled - rules are always loaded fresh from database
-        pass
+        """Invalidate cached rules for an agent, or all agents if agent_id is None."""
+        if not self.CACHE_ENABLED:
+            return
+        try:
+            if agent_id:
+                await self.redis.delete(f"rules:{agent_id}")
+            else:
+                # Global rule changed — flush all rule caches
+                await self._invalidate_all_rule_caches()
+        except Exception:
+            pass  # Cache invalidation is best-effort
+
+    async def _invalidate_all_rule_caches(self):
+        """Flush all rules:* cache keys (for global rule changes)."""
+        try:
+            cursor = 0
+            while True:
+                cursor, keys = await self.redis.scan(cursor, match="rules:*", count=100)
+                if keys:
+                    for key in keys:
+                        await self.redis.delete(key)
+                if cursor == 0:
+                    break
+        except Exception:
+            pass
 
     async def _check_once_allow(self, context: EvaluationContext) -> Optional[EvaluationResult]:
         """
@@ -471,15 +530,7 @@ class RuleEngine:
             key = f"rate:{context.agent_id}:{context.ip_address or 'unknown'}"
 
         # Check per-agent opt-in for adaptive trust enforcement
-        use_adaptive = False
-        try:
-            stmt = select(Agent).where(Agent.id == context.agent_id)
-            result = await self.db.execute(stmt)
-            agent = result.scalar_one_or_none()
-            if agent and agent.auto_adjust_trust:
-                use_adaptive = True
-        except Exception:
-            pass
+        use_adaptive = context.auto_adjust_trust
 
         if use_adaptive:
             # Adaptive: adjusts max_requests by trust score
@@ -886,6 +937,9 @@ class RuleEngine:
             find_vault_labels,
             extract_label_from_ref,
             get_entries_by_label,
+            batch_get_entries_by_tokens,
+            batch_get_entries_by_placeholders,
+            batch_get_entries_by_labels,
         )
         from app.utils.pii_patterns import PII_PATTERNS, detect_pii
 
@@ -950,20 +1004,20 @@ class RuleEngine:
         if detect_vault:
             vault_tokens = find_vault_tokens(scan_text)
             if vault_tokens:
-                from app.services.pii_vault import get_entry_by_token
+                try:
+                    token_entries = await batch_get_entries_by_tokens(self.db, vault_tokens)
+                except Exception:
+                    token_entries = {}
                 for token in vault_tokens:
-                    try:
-                        entry = await get_entry_by_token(self.db, token)
-                        if entry:
-                            vault_token_details.append({
-                                "token": token,
-                                "label": entry.label,
-                                "category": entry.category.value if hasattr(entry.category, "value") else str(entry.category),
-                                "masked_value": entry.masked_value,
-                            })
-                        else:
-                            vault_token_details.append({"token": token})
-                    except Exception:
+                    entry = token_entries.get(token)
+                    if entry:
+                        vault_token_details.append({
+                            "token": token,
+                            "label": entry.label,
+                            "category": entry.category.value if hasattr(entry.category, "value") else str(entry.category),
+                            "masked_value": entry.masked_value,
+                        })
+                    else:
                         vault_token_details.append({"token": token})
 
         # Detect raw PII
@@ -977,32 +1031,24 @@ class RuleEngine:
             if scan_patterns:
                 raw_pii_findings = detect_pii(scan_text, scan_patterns)
 
-        # Determine owner_chat_id from agent (shared by placeholder + label lookups)
-        owner_chat_id = None
-        try:
-            stmt = select(Agent).where(Agent.id == context.agent_id)
-            result = await self.db.execute(stmt)
-            agent_obj = result.scalar_one_or_none()
-            if agent_obj:
-                owner_chat_id = getattr(agent_obj, "owner_chat_id", None)
-        except Exception:
-            pass
+        # Use pre-loaded owner_chat_id from context (populated in evaluate_request)
+        owner_chat_id = context.owner_chat_id
 
         # Check raw PII findings against placeholder values in vault
         placeholder_matches = {}  # detected_value -> vault_token
         non_placeholder_pii = list(raw_pii_findings)  # Default: all raw PII is non-placeholder
         if raw_pii_findings:
             try:
-                from app.services.pii_vault import get_entries_by_placeholder
+                placeholder_values = [f["match"] for f in raw_pii_findings]
+                ph_entries = await batch_get_entries_by_placeholders(
+                    self.db, placeholder_values, owner_chat_id
+                )
 
                 non_placeholder_pii = []
                 for finding in raw_pii_findings:
-                    entries = await get_entries_by_placeholder(
-                        self.db, finding["match"], owner_chat_id
-                    )
-                    if entries:
-                        # Matched a placeholder — map detected value to vault token
-                        placeholder_matches[finding["match"]] = entries[0].token
+                    entry = ph_entries.get(finding["match"])
+                    if entry:
+                        placeholder_matches[finding["match"]] = entry.token
                     else:
                         non_placeholder_pii.append(finding)
             except Exception as e:
@@ -1013,25 +1059,27 @@ class RuleEngine:
         label_matches = {}  # "vault:Label" -> vault_token
         vault_label_refs = find_vault_labels(scan_text)
         if vault_label_refs:
+            label_names = [extract_label_from_ref(ref) for ref in vault_label_refs]
+            try:
+                label_entries = await batch_get_entries_by_labels(
+                    self.db, label_names, owner_chat_id
+                )
+            except Exception as e:
+                logger.debug(f"Batch label lookup failed (non-critical): {e}")
+                label_entries = {}
+
             for ref in vault_label_refs:
                 label_name = extract_label_from_ref(ref)
-                try:
-                    entries = await get_entries_by_label(
-                        self.db, label_name, owner_chat_id
-                    )
-                    if entries:
-                        label_matches[ref] = entries[0].token
-                        # Enrich vault_token_details for rich Telegram alerts
-                        entry = entries[0]
-                        vault_token_details.append({
-                            "token": entry.token,
-                            "label": entry.label,
-                            "category": entry.category.value if hasattr(entry.category, "value") else str(entry.category),
-                            "masked_value": entry.masked_value,
-                            "source": "label_ref",
-                        })
-                except Exception as e:
-                    logger.debug(f"Label lookup failed for '{ref}': {e}")
+                entry = label_entries.get(label_name.lower())
+                if entry:
+                    label_matches[ref] = entry.token
+                    vault_token_details.append({
+                        "token": entry.token,
+                        "label": entry.label,
+                        "category": entry.category.value if hasattr(entry.category, "value") else str(entry.category),
+                        "masked_value": entry.masked_value,
+                        "source": "label_ref",
+                    })
 
         # Nothing found
         if not vault_tokens and not raw_pii_findings and not label_matches:

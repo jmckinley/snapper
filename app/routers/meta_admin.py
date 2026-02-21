@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -34,6 +34,10 @@ from app.models.organizations import (
 from app.models.rules import Rule
 from app.models.users import User
 from app.schemas.meta_admin import (
+    AgentTypeBreakdown,
+    DashboardResponse,
+    FunnelStats,
+    HourlyEvalBucket,
     ImpersonateRequest,
     ImpersonateResponse,
     MetaFeatureUpdate,
@@ -42,6 +46,8 @@ from app.schemas.meta_admin import (
     MetaOrgUpdate,
     MetaUserItem,
     MetaUserUpdate,
+    OrgUsageRow,
+    PerformanceStats,
     PlatformStats,
     ProvisionOrgRequest,
     ProvisionOrgResponse,
@@ -137,6 +143,383 @@ async def platform_stats(
 
 
 # ---------------------------------------------------------------------------
+# 1b. Dashboard (consolidated)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard", response_model=DashboardResponse)
+async def dashboard(
+    admin: RequireMetaAdminDep,
+    db: DbSessionDep,
+):
+    """Consolidated dashboard data: counts, hourly evals, org usage, agent types, funnel."""
+    now = datetime.now(timezone.utc)
+    since_24h = now - timedelta(hours=24)
+    since_7d = now - timedelta(days=7)
+    since_30d = now - timedelta(days=30)
+
+    # --- 1. Top-level counts ---
+    total_orgs = (await db.execute(
+        select(func.count(Organization.id)).where(Organization.deleted_at.is_(None))
+    )).scalar() or 0
+
+    active_orgs = (await db.execute(
+        select(func.count(Organization.id)).where(
+            Organization.deleted_at.is_(None), Organization.is_active == True
+        )
+    )).scalar() or 0
+
+    total_users = (await db.execute(
+        select(func.count(User.id)).where(User.deleted_at.is_(None))
+    )).scalar() or 0
+
+    total_agents = (await db.execute(
+        select(func.count(Agent.id)).where(Agent.is_deleted == False)
+    )).scalar() or 0
+
+    total_rules = (await db.execute(
+        select(func.count(Rule.id)).where(Rule.is_deleted == False)
+    )).scalar() or 0
+
+    # --- 2. Eval + denial counts (24h) ---
+    eval_actions = [
+        AuditAction.REQUEST_ALLOWED,
+        AuditAction.REQUEST_DENIED,
+        AuditAction.REQUEST_PENDING_APPROVAL,
+    ]
+    eval_rows = (await db.execute(
+        select(AuditLog.action, func.count(AuditLog.id))
+        .where(AuditLog.action.in_(eval_actions), AuditLog.created_at >= since_24h)
+        .group_by(AuditLog.action)
+    )).all()
+
+    eval_counts = {row[0]: row[1] for row in eval_rows}
+    evals_24h = sum(eval_counts.values())
+    denied_24h = eval_counts.get(AuditAction.REQUEST_DENIED, 0)
+
+    # --- 3. Active threats ---
+    from app.models.threat_events import ThreatStatus
+
+    active_threats = (await db.execute(
+        select(func.count(ThreatEvent.id)).where(
+            ThreatEvent.status.in_([ThreatStatus.ACTIVE, ThreatStatus.INVESTIGATING])
+        )
+    )).scalar() or 0
+
+    # --- 4. Hourly time series (24h) ---
+    hourly_rows = (await db.execute(
+        select(
+            func.date_trunc(literal_column("'hour'"), AuditLog.created_at).label("hour"),
+            func.count(case(
+                (AuditLog.action == AuditAction.REQUEST_ALLOWED, 1),
+            )).label("allowed"),
+            func.count(case(
+                (AuditLog.action == AuditAction.REQUEST_DENIED, 1),
+            )).label("denied"),
+            func.count(case(
+                (AuditLog.action == AuditAction.REQUEST_PENDING_APPROVAL, 1),
+            )).label("pending"),
+        )
+        .where(AuditLog.action.in_(eval_actions), AuditLog.created_at >= since_24h)
+        .group_by("hour")
+        .order_by("hour")
+    )).all()
+
+    # Build map of actual data
+    hourly_map = {}
+    for row in hourly_rows:
+        h = row[0]
+        hourly_map[h.strftime("%Y-%m-%dT%H:00")] = (row[1], row[2], row[3])
+
+    # Pre-fill all 24 hours
+    hourly_evals = []
+    for i in range(24):
+        h = (now - timedelta(hours=23 - i)).replace(minute=0, second=0, microsecond=0)
+        key = h.strftime("%Y-%m-%dT%H:00")
+        allowed, denied, pending = hourly_map.get(key, (0, 0, 0))
+        hourly_evals.append(HourlyEvalBucket(
+            hour=key, allowed=allowed, denied=denied, pending=pending
+        ))
+
+    # --- 5. Per-org usage (consolidated via subqueries) ---
+    agent_counts_sq = (
+        select(
+            Agent.organization_id.label("org_id"),
+            func.count(Agent.id).label("cnt"),
+        )
+        .where(Agent.is_deleted == False)
+        .group_by(Agent.organization_id)
+    ).subquery("agent_counts")
+
+    rule_counts_sq = (
+        select(
+            Rule.organization_id.label("org_id"),
+            func.count(Rule.id).label("cnt"),
+        )
+        .where(Rule.is_deleted == False)
+        .group_by(Rule.organization_id)
+    ).subquery("rule_counts")
+
+    member_counts_sq = (
+        select(
+            OrganizationMembership.organization_id.label("org_id"),
+            func.count(OrganizationMembership.id).label("cnt"),
+        )
+        .group_by(OrganizationMembership.organization_id)
+    ).subquery("member_counts")
+
+    eval_stats_sq = (
+        select(
+            AuditLog.organization_id.label("org_id"),
+            func.count(case((AuditLog.action.in_(eval_actions), 1))).label("evals"),
+            func.count(case((AuditLog.action == AuditAction.REQUEST_DENIED, 1))).label("denied"),
+            func.max(AuditLog.created_at).label("last_act"),
+        )
+        .where(AuditLog.created_at >= since_24h, AuditLog.organization_id.isnot(None))
+        .group_by(AuditLog.organization_id)
+    ).subquery("eval_stats")
+
+    threat_counts_sq = (
+        select(
+            ThreatEvent.organization_id.label("org_id"),
+            func.count(ThreatEvent.id).label("cnt"),
+        )
+        .where(ThreatEvent.status.in_([ThreatStatus.ACTIVE, ThreatStatus.INVESTIGATING]))
+        .group_by(ThreatEvent.organization_id)
+    ).subquery("threat_counts")
+
+    org_stmt = (
+        select(
+            Organization,
+            func.coalesce(agent_counts_sq.c.cnt, 0).label("agent_cnt"),
+            func.coalesce(rule_counts_sq.c.cnt, 0).label("rule_cnt"),
+            func.coalesce(member_counts_sq.c.cnt, 0).label("member_cnt"),
+            func.coalesce(eval_stats_sq.c.evals, 0).label("org_evals"),
+            func.coalesce(eval_stats_sq.c.denied, 0).label("org_denied"),
+            func.coalesce(threat_counts_sq.c.cnt, 0).label("org_threats"),
+            eval_stats_sq.c.last_act.label("last_activity"),
+        )
+        .outerjoin(agent_counts_sq, Organization.id == agent_counts_sq.c.org_id)
+        .outerjoin(rule_counts_sq, Organization.id == rule_counts_sq.c.org_id)
+        .outerjoin(member_counts_sq, Organization.id == member_counts_sq.c.org_id)
+        .outerjoin(eval_stats_sq, Organization.id == eval_stats_sq.c.org_id)
+        .outerjoin(threat_counts_sq, Organization.id == threat_counts_sq.c.org_id)
+        .where(Organization.deleted_at.is_(None))
+        .order_by(func.coalesce(eval_stats_sq.c.evals, 0).desc())
+        .limit(50)
+    )
+
+    org_rows = (await db.execute(org_stmt)).all()
+
+    org_usage = [
+        OrgUsageRow(
+            org_id=row[0].id,
+            org_name=row[0].name,
+            plan_id=row[0].plan_id,
+            is_active=row[0].is_active,
+            agent_count=row[1],
+            rule_count=row[2],
+            user_count=row[3],
+            evals_24h=row[4],
+            denied_24h=row[5],
+            threats_active=row[6],
+            last_activity=row[7],
+        )
+        for row in org_rows
+    ]
+
+    # --- 6. Agent type breakdown ---
+    type_rows = (await db.execute(
+        select(
+            func.coalesce(Agent.agent_type, "unknown").label("atype"),
+            func.count(Agent.id).label("total"),
+            func.count(case(
+                (Agent.status == "active", 1),
+            )).label("active"),
+        )
+        .where(Agent.is_deleted == False)
+        .group_by("atype")
+        .order_by(func.count(Agent.id).desc())
+    )).all()
+
+    agent_types = [
+        AgentTypeBreakdown(agent_type=r[0], count=r[1], active_count=r[2])
+        for r in type_rows
+    ]
+
+    # --- 7. Customer funnel ---
+    inv_sent = (await db.execute(
+        select(func.count(Invitation.id)).where(Invitation.created_at >= since_30d)
+    )).scalar() or 0
+
+    inv_accepted = (await db.execute(
+        select(func.count(Invitation.id)).where(
+            Invitation.status == InvitationStatus.ACCEPTED,
+            Invitation.created_at >= since_30d,
+        )
+    )).scalar() or 0
+
+    registrations = (await db.execute(
+        select(func.count(User.id)).where(
+            User.deleted_at.is_(None),
+            User.created_at >= since_30d,
+        )
+    )).scalar() or 0
+
+    # Orgs that have at least one eval ever
+    orgs_with_eval = (await db.execute(
+        select(func.count(func.distinct(AuditLog.organization_id))).where(
+            AuditLog.action.in_(eval_actions),
+            AuditLog.organization_id.isnot(None),
+        )
+    )).scalar() or 0
+
+    # Orgs active in last 7 days
+    orgs_active_7d = (await db.execute(
+        select(func.count(func.distinct(AuditLog.organization_id))).where(
+            AuditLog.action.in_(eval_actions),
+            AuditLog.organization_id.isnot(None),
+            AuditLog.created_at >= since_7d,
+        )
+    )).scalar() or 0
+
+    funnel = FunnelStats(
+        invitations_sent_30d=inv_sent,
+        invitations_accepted_30d=inv_accepted,
+        registrations_30d=registrations,
+        orgs_with_first_eval=orgs_with_eval,
+        orgs_active_7d=orgs_active_7d,
+    )
+
+    return DashboardResponse(
+        total_orgs=total_orgs,
+        active_orgs=active_orgs,
+        total_users=total_users,
+        total_agents=total_agents,
+        total_rules=total_rules,
+        evals_24h=evals_24h,
+        denied_24h=denied_24h,
+        active_threats=active_threats,
+        hourly_evals=hourly_evals,
+        org_usage=org_usage,
+        agent_types=agent_types,
+        funnel=funnel,
+        generated_at=now,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 1c. Performance stats (Prometheus)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/perf", response_model=PerformanceStats)
+async def dashboard_perf(
+    admin: RequireMetaAdminDep,
+):
+    """Performance metrics derived from in-process Prometheus histograms."""
+    from app.middleware.metrics import PROMETHEUS_AVAILABLE
+
+    if not PROMETHEUS_AVAILABLE:
+        return PerformanceStats()
+
+    from app.middleware.metrics import (
+        REQUEST_COUNT,
+        REQUEST_LATENCY,
+        RULE_EVALUATION_LATENCY,
+        RULE_EVALUATIONS,
+    )
+
+    def _histogram_stats(histogram) -> tuple[float, float, float]:
+        """Extract avg, p95, and total count from a Prometheus Histogram.
+
+        Returns (avg_ms, p95_ms, total_count).
+        """
+        total_sum = 0.0
+        total_count = 0.0
+        # Collect all bucket data for P95 calculation
+        all_buckets = []
+
+        for metric in histogram.collect():
+            for sample in metric.samples:
+                if sample.name.endswith("_sum"):
+                    total_sum += sample.value
+                elif sample.name.endswith("_count"):
+                    total_count += sample.value
+                elif sample.name.endswith("_bucket"):
+                    le = sample.labels.get("le", "")
+                    if le != "+Inf":
+                        try:
+                            all_buckets.append((float(le), sample.value))
+                        except (ValueError, TypeError):
+                            pass
+
+        if total_count == 0:
+            return 0.0, 0.0, 0.0
+
+        avg_ms = (total_sum / total_count) * 1000.0
+
+        # P95 from cumulative histogram buckets
+        p95_ms = 0.0
+        target = total_count * 0.95
+        # Sort by boundary
+        all_buckets.sort(key=lambda x: x[0])
+        prev_count = 0.0
+        prev_bound = 0.0
+        for bound, cum_count in all_buckets:
+            if cum_count >= target:
+                # Linear interpolation within this bucket
+                bucket_count = cum_count - prev_count
+                if bucket_count > 0:
+                    fraction = (target - prev_count) / bucket_count
+                    p95_ms = (prev_bound + fraction * (bound - prev_bound)) * 1000.0
+                else:
+                    p95_ms = bound * 1000.0
+                break
+            prev_count = cum_count
+            prev_bound = bound
+        else:
+            # All samples beyond last bucket
+            p95_ms = avg_ms
+
+        return avg_ms, p95_ms, total_count
+
+    req_avg, req_p95, req_total = _histogram_stats(REQUEST_LATENCY)
+    eval_avg, eval_p95, eval_total = _histogram_stats(RULE_EVALUATION_LATENCY)
+
+    # Error rate: count 5xx status codes vs total
+    total_requests = 0.0
+    error_requests = 0.0
+    for metric in REQUEST_COUNT.collect():
+        for sample in metric.samples:
+            if sample.name.endswith("_total"):
+                val = sample.value
+                total_requests += val
+                status = sample.labels.get("status", "")
+                if status.startswith("5"):
+                    error_requests += val
+
+    error_rate = (error_requests / total_requests * 100.0) if total_requests > 0 else 0.0
+
+    # Rough requests/min: assume process uptime is proportional to histogram data
+    # Use a simple heuristic: total requests / (time since startup in minutes)
+    # Since we don't track process start time here, just report raw totals as rate proxy
+    # The frontend can compute deltas between refreshes for true rate
+    req_per_min = total_requests  # Total count (frontend computes delta)
+    eval_per_min = eval_total
+
+    return PerformanceStats(
+        avg_request_latency_ms=round(req_avg, 2),
+        p95_request_latency_ms=round(req_p95, 2),
+        avg_eval_latency_ms=round(eval_avg, 2),
+        p95_eval_latency_ms=round(eval_p95, 2),
+        requests_per_minute=round(req_per_min, 1),
+        evals_per_minute=round(eval_per_min, 1),
+        error_rate_pct=round(error_rate, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
 # 2. List all orgs
 # ---------------------------------------------------------------------------
 
@@ -164,58 +547,68 @@ async def list_orgs(
     if is_active is not None:
         stmt = stmt.where(Organization.is_active == is_active)
 
-    stmt = stmt.order_by(Organization.created_at.desc()).offset(offset).limit(limit)
-    result = await db.execute(stmt)
-    orgs = result.scalars().all()
-
-    items = []
-    for org in orgs:
-        # Count members
-        member_count = (
-            await db.execute(
-                select(func.count(OrganizationMembership.id)).where(
-                    OrganizationMembership.organization_id == org.id
-                )
-            )
-        ).scalar() or 0
-
-        # Count agents
-        agent_count = (
-            await db.execute(
-                select(func.count(Agent.id)).where(
-                    Agent.organization_id == org.id,
-                    Agent.is_deleted == False,
-                )
-            )
-        ).scalar() or 0
-
-        # Find owner
-        owner_row = await db.execute(
-            select(User.email)
-            .join(OrganizationMembership, OrganizationMembership.user_id == User.id)
-            .where(
-                OrganizationMembership.organization_id == org.id,
-                OrganizationMembership.role == OrgRole.OWNER,
-            )
-            .limit(1)
+    # Pre-compute counts via subqueries to avoid N+1 per-org queries
+    member_counts_sq = (
+        select(
+            OrganizationMembership.organization_id.label("org_id"),
+            func.count(OrganizationMembership.id).label("cnt"),
         )
-        owner_email = owner_row.scalar_one_or_none()
+        .group_by(OrganizationMembership.organization_id)
+    ).subquery("member_counts")
 
-        items.append(
-            MetaOrgListItem(
-                id=org.id,
-                name=org.name,
-                slug=org.slug,
-                plan_id=org.plan_id,
-                is_active=org.is_active,
-                member_count=member_count,
-                agent_count=agent_count,
-                owner_email=owner_email,
-                created_at=org.created_at,
-            )
+    agent_counts_sq = (
+        select(
+            Agent.organization_id.label("org_id"),
+            func.count(Agent.id).label("cnt"),
         )
+        .where(Agent.is_deleted == False)
+        .group_by(Agent.organization_id)
+    ).subquery("agent_counts")
 
-    return items
+    # Get owner email per org (first OWNER member)
+    owner_sq = (
+        select(
+            OrganizationMembership.organization_id.label("org_id"),
+            func.min(User.email).label("owner_email"),
+        )
+        .join(User, OrganizationMembership.user_id == User.id)
+        .where(OrganizationMembership.role == OrgRole.OWNER)
+        .group_by(OrganizationMembership.organization_id)
+    ).subquery("owners")
+
+    joined_stmt = (
+        select(
+            Organization,
+            func.coalesce(member_counts_sq.c.cnt, 0).label("member_cnt"),
+            func.coalesce(agent_counts_sq.c.cnt, 0).label("agent_cnt"),
+            owner_sq.c.owner_email,
+        )
+        .outerjoin(member_counts_sq, Organization.id == member_counts_sq.c.org_id)
+        .outerjoin(agent_counts_sq, Organization.id == agent_counts_sq.c.org_id)
+        .outerjoin(owner_sq, Organization.id == owner_sq.c.org_id)
+        .where(stmt.whereclause)
+        .order_by(Organization.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    result = await db.execute(joined_stmt)
+    rows = result.all()
+
+    return [
+        MetaOrgListItem(
+            id=row[0].id,
+            name=row[0].name,
+            slug=row[0].slug,
+            plan_id=row[0].plan_id,
+            is_active=row[0].is_active,
+            member_count=row[1],
+            agent_count=row[2],
+            owner_email=row[3],
+            created_at=row[0].created_at,
+        )
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

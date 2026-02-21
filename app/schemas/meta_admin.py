@@ -7,6 +7,84 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
+# ---------------------------------------------------------------------------
+# Dashboard schemas
+# ---------------------------------------------------------------------------
+
+
+class HourlyEvalBucket(BaseModel):
+    """One hour of evaluation volume data."""
+
+    hour: str  # ISO format "2026-02-20T14:00"
+    allowed: int = 0
+    denied: int = 0
+    pending: int = 0
+
+
+class OrgUsageRow(BaseModel):
+    """Per-org usage summary for the dashboard table."""
+
+    org_id: UUID
+    org_name: str
+    plan_id: str
+    is_active: bool
+    agent_count: int = 0
+    rule_count: int = 0
+    user_count: int = 0
+    evals_24h: int = 0
+    denied_24h: int = 0
+    threats_active: int = 0
+    last_activity: Optional[datetime] = None
+
+
+class AgentTypeBreakdown(BaseModel):
+    """Agent count grouped by framework type."""
+
+    agent_type: str  # "claude-code", "cursor", "openclaw", "unknown"
+    count: int
+    active_count: int = 0
+
+
+class FunnelStats(BaseModel):
+    """Customer acquisition funnel for the last 30 days."""
+
+    invitations_sent_30d: int = 0
+    invitations_accepted_30d: int = 0
+    registrations_30d: int = 0
+    orgs_with_first_eval: int = 0
+    orgs_active_7d: int = 0
+
+
+class DashboardResponse(BaseModel):
+    """Consolidated dashboard data for the admin overview."""
+
+    total_orgs: int
+    active_orgs: int
+    total_users: int
+    total_agents: int
+    total_rules: int
+    evals_24h: int = 0
+    denied_24h: int = 0
+    active_threats: int = 0
+    hourly_evals: List[HourlyEvalBucket]
+    org_usage: List[OrgUsageRow]
+    agent_types: List[AgentTypeBreakdown]
+    funnel: FunnelStats
+    generated_at: datetime
+
+
+class PerformanceStats(BaseModel):
+    """Performance metrics from Prometheus histograms."""
+
+    avg_request_latency_ms: float = 0.0
+    p95_request_latency_ms: float = 0.0
+    avg_eval_latency_ms: float = 0.0
+    p95_eval_latency_ms: float = 0.0
+    requests_per_minute: float = 0.0
+    evals_per_minute: float = 0.0
+    error_rate_pct: float = 0.0
+
+
 class ProvisionOrgRequest(BaseModel):
     """Request body for provisioning a new organization."""
 

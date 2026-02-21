@@ -1,107 +1,399 @@
 {% extends "admin/base.html" %}
 {% block title %}Admin Overview — Snapper{% endblock %}
 
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% endblock %}
+
 {% block content %}
-<div class="mb-8 flex items-center justify-between">
-    <h1 class="text-2xl font-bold text-gray-900">Platform Overview</h1>
-    <a href="/admin/provision" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium">Provision Org</a>
+<!-- Row 1: Header + auto-refresh -->
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Platform Overview</h1>
+        <p class="text-sm text-gray-500 mt-1">
+            Last updated: <span id="last-updated">—</span>
+        </p>
+    </div>
+    <div class="flex items-center space-x-3">
+        <button id="pause-btn" onclick="togglePause()" class="text-sm px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">Pause</button>
+        <a href="/admin/provision" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium">Provision Org</a>
+    </div>
 </div>
 
-<!-- Stat cards -->
-<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-8" id="stats-grid">
+<!-- Row 2: 8 Stat Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="stats-grid">
     <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
-        <dt class="text-sm font-medium text-gray-500 truncate">Organizations</dt>
-        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-orgs">—</dd>
-    </div>
-    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
-        <dt class="text-sm font-medium text-gray-500 truncate">Active Orgs</dt>
-        <dd class="mt-1 text-3xl font-semibold text-green-600" id="stat-active-orgs">—</dd>
+        <dt class="text-sm font-medium text-gray-500 truncate">Orgs</dt>
+        <dd class="mt-1">
+            <span class="text-2xl font-semibold text-green-600" id="stat-active-orgs">—</span>
+            <span class="text-sm text-gray-400"> / </span>
+            <span class="text-lg text-gray-500" id="stat-orgs">—</span>
+        </dd>
     </div>
     <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
         <dt class="text-sm font-medium text-gray-500 truncate">Users</dt>
-        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-users">—</dd>
+        <dd class="mt-1 text-2xl font-semibold text-gray-900" id="stat-users">—</dd>
     </div>
     <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
         <dt class="text-sm font-medium text-gray-500 truncate">Agents</dt>
-        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-agents">—</dd>
+        <dd class="mt-1 text-2xl font-semibold text-gray-900" id="stat-agents">—</dd>
     </div>
     <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
         <dt class="text-sm font-medium text-gray-500 truncate">Rules</dt>
-        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="stat-rules">—</dd>
+        <dd class="mt-1 text-2xl font-semibold text-gray-900" id="stat-rules">—</dd>
     </div>
     <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
         <dt class="text-sm font-medium text-gray-500 truncate">Evals (24h)</dt>
-        <dd class="mt-1 text-3xl font-semibold text-blue-600" id="stat-evals">—</dd>
+        <dd class="mt-1 text-2xl font-semibold text-blue-600" id="stat-evals">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Denied (24h)</dt>
+        <dd class="mt-1 text-2xl font-semibold text-red-600" id="stat-denied">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Active Threats</dt>
+        <dd class="mt-1 text-2xl font-semibold" id="stat-threats">—</dd>
+    </div>
+    <div class="bg-white overflow-hidden shadow rounded-lg px-4 py-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Avg Latency</dt>
+        <dd class="mt-1 text-2xl font-semibold text-amber-600" id="stat-latency">—</dd>
     </div>
 </div>
 
-<!-- Recent orgs table -->
-<div class="bg-white shadow rounded-lg overflow-hidden">
-    <div class="px-4 py-5 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">Recent Organizations</h3>
+<!-- Row 3: Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <!-- Evaluation Volume Chart (2/3 width) -->
+    <div class="lg:col-span-2 bg-white shadow rounded-lg p-4">
+        <h3 class="text-sm font-medium text-gray-700 mb-3">Evaluation Volume (24h)</h3>
+        <div style="height: 220px;">
+            <canvas id="eval-chart"></canvas>
+        </div>
     </div>
-    <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agents</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="bg-white divide-y divide-gray-200" id="orgs-tbody"></tbody>
-    </table>
+    <!-- Agent Types Doughnut (1/3 width) -->
+    <div class="bg-white shadow rounded-lg p-4">
+        <h3 class="text-sm font-medium text-gray-700 mb-3">Agent Types</h3>
+        <div style="height: 220px;">
+            <canvas id="agent-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Row 4: Customer Funnel -->
+<div class="bg-white shadow rounded-lg p-4 mb-6">
+    <h3 class="text-sm font-medium text-gray-700 mb-3">Customer Funnel (30d)</h3>
+    <div id="funnel-container" class="flex items-end space-x-1 h-16">
+        <!-- Populated by JS -->
+    </div>
+</div>
+
+<!-- Row 5: Per-Org Usage Table -->
+<div class="bg-white shadow rounded-lg overflow-hidden mb-6">
+    <div class="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h3 class="text-sm font-medium text-gray-700">Per-Organization Usage</h3>
+        <span class="text-xs text-gray-400" id="org-count-label"></span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('org_name')">Org</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('plan_id')">Plan</th>
+                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('user_count')">Users</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('agent_count')">Agents</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('evals_24h')">Evals</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('denied_24h')">Denied</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Threats</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onclick="sortOrgs('last_activity')">Last Activity</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200" id="orgs-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Row 6: Performance Panel (collapsible) -->
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <button onclick="togglePerf()" class="w-full px-4 py-3 border-b border-gray-200 flex items-center justify-between text-sm font-medium text-gray-700 hover:bg-gray-50">
+        <span>Performance Metrics</span>
+        <svg id="perf-chevron" class="h-4 w-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+    </button>
+    <div id="perf-panel" class="hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 p-4">
+            <div class="text-center">
+                <div class="text-xs text-gray-500">Avg Latency</div>
+                <div class="text-lg font-semibold text-gray-900" id="perf-avg-req">—</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-gray-500">P95 Latency</div>
+                <div class="text-lg font-semibold text-gray-900" id="perf-p95-req">—</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-gray-500">Avg Eval</div>
+                <div class="text-lg font-semibold text-gray-900" id="perf-avg-eval">—</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-gray-500">P95 Eval</div>
+                <div class="text-lg font-semibold text-gray-900" id="perf-p95-eval">—</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-gray-500">Requests</div>
+                <div class="text-lg font-semibold text-gray-900" id="perf-req-total">—</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-gray-500">Evaluations</div>
+                <div class="text-lg font-semibold text-gray-900" id="perf-eval-total">—</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-gray-500">Error Rate</div>
+                <div class="text-lg font-semibold" id="perf-error-rate">—</div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-async function loadStats() {
-    try {
-        const res = await fetch('/api/v1/meta/stats', { credentials: 'include' });
-        if (!res.ok) return;
-        const data = await res.json();
-        document.getElementById('stat-orgs').textContent = data.total_organizations;
-        document.getElementById('stat-active-orgs').textContent = data.active_organizations;
-        document.getElementById('stat-users').textContent = data.total_users;
-        document.getElementById('stat-agents').textContent = data.total_agents;
-        document.getElementById('stat-rules').textContent = data.total_rules;
-        document.getElementById('stat-evals').textContent = data.total_evaluations_24h;
-    } catch (e) { console.error('Failed to load stats:', e); }
+// --- State ---
+let paused = false;
+let evalChart = null;
+let agentChart = null;
+let orgData = [];
+let orgSortKey = 'evals_24h';
+let orgSortAsc = false;
+let dashboardTimer = null;
+let perfTimer = null;
+
+const AGENT_TYPE_COLORS = {
+    'claude-code': '#8b5cf6',
+    'cursor': '#3b82f6',
+    'openclaw': '#22c55e',
+    'unknown': '#9ca3af',
+};
+
+// --- Chart initialization ---
+function initCharts() {
+    const evalCtx = document.getElementById('eval-chart').getContext('2d');
+    evalChart = new Chart(evalCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Allowed', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.3, pointRadius: 0 },
+                { label: 'Denied', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3, pointRadius: 0 },
+                { label: 'Pending', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, tension: 0.3, pointRadius: 0 },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, font: { size: 10 } } },
+                y: { beginAtZero: true, ticks: { font: { size: 10 } } },
+            },
+        },
+    });
+
+    const agentCtx = document.getElementById('agent-chart').getContext('2d');
+    agentChart = new Chart(agentCtx, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        },
+    });
 }
 
-async function loadOrgs() {
+// --- Data loading ---
+async function loadDashboard() {
     try {
-        const res = await fetch('/api/v1/meta/orgs?limit=10', { credentials: 'include' });
+        const res = await fetch('/api/v1/meta/dashboard', { credentials: 'include' });
         if (!res.ok) return;
-        const orgs = await res.json();
-        const tbody = document.getElementById('orgs-tbody');
-        tbody.innerHTML = orgs.map(o => `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    <a href="/admin/orgs/${o.id}" class="text-amber-600 hover:text-amber-800">${o.name}</a>
+        const d = await res.json();
+
+        // Stat cards
+        document.getElementById('stat-orgs').textContent = d.total_orgs;
+        document.getElementById('stat-active-orgs').textContent = d.active_orgs;
+        document.getElementById('stat-users').textContent = d.total_users;
+        document.getElementById('stat-agents').textContent = d.total_agents;
+        document.getElementById('stat-rules').textContent = d.total_rules;
+        document.getElementById('stat-evals').textContent = d.evals_24h.toLocaleString();
+        document.getElementById('stat-denied').textContent = d.denied_24h.toLocaleString();
+
+        const threatEl = document.getElementById('stat-threats');
+        threatEl.textContent = d.active_threats;
+        threatEl.className = 'mt-1 text-2xl font-semibold ' + (d.active_threats > 0 ? 'text-red-600' : 'text-green-600');
+
+        // Eval volume chart
+        const labels = d.hourly_evals.map(b => {
+            const parts = b.hour.split('T');
+            return parts[1] || parts[0];
+        });
+        evalChart.data.labels = labels;
+        evalChart.data.datasets[0].data = d.hourly_evals.map(b => b.allowed);
+        evalChart.data.datasets[1].data = d.hourly_evals.map(b => b.denied);
+        evalChart.data.datasets[2].data = d.hourly_evals.map(b => b.pending);
+        evalChart.update('none');
+
+        // Agent types doughnut
+        if (d.agent_types.length > 0) {
+            agentChart.data.labels = d.agent_types.map(t => t.agent_type);
+            agentChart.data.datasets[0].data = d.agent_types.map(t => t.count);
+            agentChart.data.datasets[0].backgroundColor = d.agent_types.map(t =>
+                AGENT_TYPE_COLORS[t.agent_type] || AGENT_TYPE_COLORS['unknown']
+            );
+            agentChart.update('none');
+        }
+
+        // Funnel
+        renderFunnel(d.funnel);
+
+        // Org table
+        orgData = d.org_usage;
+        document.getElementById('org-count-label').textContent = `${orgData.length} org${orgData.length !== 1 ? 's' : ''}`;
+        renderOrgTable();
+
+        // Timestamp
+        document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+    } catch (e) {
+        console.error('Dashboard load failed:', e);
+    }
+}
+
+async function loadPerf() {
+    try {
+        const res = await fetch('/api/v1/meta/dashboard/perf', { credentials: 'include' });
+        if (!res.ok) return;
+        const p = await res.json();
+
+        document.getElementById('perf-avg-req').textContent = p.avg_request_latency_ms.toFixed(1) + ' ms';
+        document.getElementById('perf-p95-req').textContent = p.p95_request_latency_ms.toFixed(1) + ' ms';
+        document.getElementById('perf-avg-eval').textContent = p.avg_eval_latency_ms.toFixed(1) + ' ms';
+        document.getElementById('perf-p95-eval').textContent = p.p95_eval_latency_ms.toFixed(1) + ' ms';
+        document.getElementById('perf-req-total').textContent = Math.round(p.requests_per_minute).toLocaleString();
+        document.getElementById('perf-eval-total').textContent = Math.round(p.evals_per_minute).toLocaleString();
+
+        const errEl = document.getElementById('perf-error-rate');
+        errEl.textContent = p.error_rate_pct.toFixed(2) + '%';
+        errEl.className = 'text-lg font-semibold ' + (p.error_rate_pct > 1 ? 'text-red-600' : 'text-green-600');
+
+        // Update stat card latency
+        document.getElementById('stat-latency').textContent = p.avg_request_latency_ms.toFixed(0) + 'ms';
+    } catch (e) {
+        console.error('Perf load failed:', e);
+    }
+}
+
+// --- Funnel rendering ---
+function renderFunnel(f) {
+    const steps = [
+        { label: 'Invited', value: f.invitations_sent_30d },
+        { label: 'Accepted', value: f.invitations_accepted_30d },
+        { label: 'Registered', value: f.registrations_30d },
+        { label: 'First Eval', value: f.orgs_with_first_eval },
+        { label: 'Active 7d', value: f.orgs_active_7d },
+    ];
+
+    const maxVal = Math.max(...steps.map(s => s.value), 1);
+    const container = document.getElementById('funnel-container');
+    const colors = ['bg-blue-500', 'bg-blue-400', 'bg-amber-500', 'bg-green-500', 'bg-green-600'];
+
+    let html = '';
+    for (let i = 0; i < steps.length; i++) {
+        const pct = Math.max((steps[i].value / maxVal) * 100, 8);
+        const convRate = (i > 0 && steps[i - 1].value > 0)
+            ? Math.round(steps[i].value / steps[i - 1].value * 100) + '%'
+            : '';
+
+        html += `
+            <div class="flex-1 flex flex-col items-center">
+                <div class="text-xs font-medium text-gray-700 mb-1">${steps[i].value}</div>
+                <div class="${colors[i]} rounded-t w-full transition-all" style="height: ${pct}%"></div>
+                <div class="text-xs text-gray-500 mt-1 truncate">${steps[i].label}</div>
+                ${convRate ? `<div class="text-xs text-gray-400">${convRate}</div>` : '<div class="text-xs">&nbsp;</div>'}
+            </div>
+            ${i < steps.length - 1 ? '<div class="flex items-center text-gray-300 text-xs pb-6">&#9654;</div>' : ''}
+        `;
+    }
+    container.innerHTML = html;
+}
+
+// --- Org table ---
+function sortOrgs(key) {
+    if (orgSortKey === key) {
+        orgSortAsc = !orgSortAsc;
+    } else {
+        orgSortKey = key;
+        orgSortAsc = key === 'org_name' || key === 'plan_id';
+    }
+    renderOrgTable();
+}
+
+function renderOrgTable() {
+    const sorted = [...orgData].sort((a, b) => {
+        let va = a[orgSortKey], vb = b[orgSortKey];
+        if (va == null) va = '';
+        if (vb == null) vb = '';
+        if (typeof va === 'string') {
+            const cmp = va.localeCompare(vb);
+            return orgSortAsc ? cmp : -cmp;
+        }
+        return orgSortAsc ? va - vb : vb - va;
+    });
+
+    const maxEvals = Math.max(...orgData.map(o => o.evals_24h), 1);
+    const tbody = document.getElementById('orgs-tbody');
+
+    tbody.innerHTML = sorted.map(o => {
+        const barW = Math.max((o.evals_24h / maxEvals) * 100, 0);
+        const threatBorder = o.threats_active > 0 ? 'border-l-4 border-red-500' : '';
+        const lastAct = o.last_activity ? new Date(o.last_activity).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        return `
+            <tr class="${threatBorder}">
+                <td class="px-4 py-3 whitespace-nowrap font-medium">
+                    <a href="/admin/orgs/${o.org_id}" class="text-amber-600 hover:text-amber-800">${escHtml(o.org_name)}</a>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.plan_id}</td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${o.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                <td class="px-4 py-3 whitespace-nowrap text-gray-500">${o.plan_id}</td>
+                <td class="px-4 py-3 whitespace-nowrap text-center">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${o.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                         ${o.is_active ? 'Active' : 'Suspended'}
                     </span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.member_count}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.agent_count}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${o.owner_email || '—'}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                    <a href="/admin/orgs/${o.id}" class="text-amber-600 hover:underline">View</a>
-                    <button onclick="impersonate('${o.id}')" class="text-red-600 hover:underline">Impersonate</button>
+                <td class="px-4 py-3 text-right text-gray-500">${o.user_count}</td>
+                <td class="px-4 py-3 text-right text-gray-500">${o.agent_count}</td>
+                <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end space-x-2">
+                        <div class="w-16 bg-gray-100 rounded-full h-1.5">
+                            <div class="bg-blue-500 h-1.5 rounded-full" style="width:${barW}%"></div>
+                        </div>
+                        <span class="text-gray-700 tabular-nums">${o.evals_24h}</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3 text-right ${o.denied_24h > 0 ? 'text-red-600 font-medium' : 'text-gray-500'}">${o.denied_24h}</td>
+                <td class="px-4 py-3 text-right ${o.threats_active > 0 ? 'text-red-600 font-bold' : 'text-gray-500'}">${o.threats_active}</td>
+                <td class="px-4 py-3 whitespace-nowrap text-gray-500 text-xs">${lastAct}</td>
+                <td class="px-4 py-3 whitespace-nowrap space-x-2">
+                    <a href="/admin/orgs/${o.org_id}" class="text-amber-600 hover:underline text-xs">View</a>
+                    <button onclick="impersonate('${o.org_id}')" class="text-red-600 hover:underline text-xs">Impersonate</button>
                 </td>
             </tr>
-        `).join('');
-    } catch (e) { console.error('Failed to load orgs:', e); }
+        `;
+    }).join('');
 }
 
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// --- Actions ---
 async function impersonate(orgId) {
     if (!confirm('Start impersonating this organization?')) return;
     const res = await fetch('/api/v1/meta/impersonate', {
@@ -113,7 +405,37 @@ async function impersonate(orgId) {
     else alert('Impersonation failed');
 }
 
-loadStats();
-loadOrgs();
+// --- Perf panel toggle ---
+function togglePerf() {
+    const panel = document.getElementById('perf-panel');
+    const chevron = document.getElementById('perf-chevron');
+    panel.classList.toggle('hidden');
+    chevron.style.transform = panel.classList.contains('hidden') ? '' : 'rotate(180deg)';
+    if (!panel.classList.contains('hidden')) loadPerf();
+}
+
+// --- Auto-refresh ---
+function togglePause() {
+    paused = !paused;
+    document.getElementById('pause-btn').textContent = paused ? 'Resume' : 'Pause';
+    if (paused) {
+        clearInterval(dashboardTimer);
+        clearInterval(perfTimer);
+    } else {
+        startTimers();
+    }
+}
+
+function startTimers() {
+    dashboardTimer = setInterval(() => { if (!paused) loadDashboard(); }, 30000);
+    perfTimer = setInterval(() => {
+        if (!paused && !document.getElementById('perf-panel').classList.contains('hidden')) loadPerf();
+    }, 60000);
+}
+
+// --- Init ---
+initCharts();
+loadDashboard();
+startTimers();
 </script>
 {% endblock %}

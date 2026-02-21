@@ -250,7 +250,7 @@ class Agent(Base):
         "Rule",
         back_populates="agent",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="select",
     )
 
     __table_args__ = (
