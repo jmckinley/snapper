@@ -103,7 +103,7 @@ celery_app.conf.beat_schedule = {
     "mcp-catalog-sync": {
         "task": "mcp-catalog-sync",
         "schedule": 86400,  # 24 hours
-        "options": {"time_limit": 300},
+        "options": {"time_limit": 900},
     },
     # Extension config bundle pre-compute (daily)
     "extension-config-refresh": {

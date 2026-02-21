@@ -19,7 +19,7 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-@celery_app.task(name="mcp-catalog-sync", bind=True, max_retries=0, time_limit=300)
+@celery_app.task(name="mcp-catalog-sync", bind=True, max_retries=0, time_limit=900)
 def sync_mcp_catalog(self, force_full: bool = False):
     """Sync MCP server catalog from public registries.
 

@@ -147,11 +147,13 @@ async def fetch_pulsemcp_servers(
     return results
 
 
-async def fetch_glama_servers(max_entries: int = 2000) -> List[Dict[str, Any]]:
+async def fetch_glama_servers(max_entries: int = 20000) -> List[Dict[str, Any]]:
     """Fetch server listings from Glama (breadth source, ~17,600 servers).
 
     No auth required. Tools are always empty in the API.
-    Capped at max_entries per sync to avoid excessive runtime.
+    Glama API returns ~10 items per page regardless of limit param,
+    so we paginate aggressively with a high max_pages ceiling.
+    Capped at max_entries to avoid runaway fetches.
     """
     if not settings.GLAMA_CATALOG_ENABLED:
         logger.debug("Skipping Glama: disabled in config")
@@ -162,10 +164,11 @@ async def fetch_glama_servers(max_entries: int = 2000) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=FETCH_TIMEOUT) as client:
             cursor = None
             pages_fetched = 0
-            max_pages = max_entries // 200 + 1
+            # Glama returns ~10 per page, so we need many pages
+            max_pages = max_entries // 10 + 1
 
             while pages_fetched < max_pages and len(results) < max_entries:
-                params: Dict[str, Any] = {"limit": 200}
+                params: Dict[str, Any] = {"limit": 100}
                 if cursor:
                     params["after"] = cursor
 
@@ -216,6 +219,10 @@ async def fetch_glama_servers(max_entries: int = 2000) -> List[Dict[str, Any]]:
                     break
                 pages_fetched += 1
 
+                # Log progress every 100 pages
+                if pages_fetched % 100 == 0:
+                    logger.info(f"Glama fetch progress: {len(results)} servers, page {pages_fetched}")
+
                 await asyncio.sleep(0.2)
 
     except Exception as e:
@@ -223,30 +230,54 @@ async def fetch_glama_servers(max_entries: int = 2000) -> List[Dict[str, Any]]:
     return results
 
 
-async def fetch_smithery_servers(limit: int = 200) -> List[Dict[str, Any]]:
-    """Fetch server listings from the Smithery registry."""
+async def fetch_smithery_servers(max_entries: int = 5000) -> List[Dict[str, Any]]:
+    """Fetch server listings from the Smithery registry (~3,500+ servers).
+
+    Uses page-based pagination. API returns ~10 items per page.
+    """
     results: List[Dict[str, Any]] = []
     try:
         async with httpx.AsyncClient(timeout=FETCH_TIMEOUT) as client:
-            resp = await client.get(SMITHERY_API, params={"limit": limit})
-            if resp.status_code != 200:
-                logger.debug(f"Smithery returned {resp.status_code}")
-                return results
+            page = 1
+            max_pages = max_entries // 10 + 1
 
-            data = resp.json()
-            servers = data if isinstance(data, list) else data.get("servers", data.get("results", []))
+            while page <= max_pages and len(results) < max_entries:
+                resp = await client.get(SMITHERY_API, params={"page": page, "pageSize": 100})
+                if resp.status_code != 200:
+                    logger.debug(f"Smithery returned {resp.status_code}")
+                    break
 
-            for srv in servers:
-                if not isinstance(srv, dict):
-                    continue
-                results.append({
-                    "name": srv.get("qualifiedName") or srv.get("name", "unknown"),
-                    "description": (srv.get("description") or "")[:500],
-                    "tools": srv.get("tools", []),
-                    "repository": srv.get("repository", {}).get("url") if isinstance(srv.get("repository"), dict) else srv.get("repository"),
-                    "homepage": srv.get("homepage"),
-                    "source": "smithery",
-                })
+                data = resp.json()
+                servers = data.get("servers", data.get("results", []))
+                if not servers:
+                    break
+
+                for srv in servers:
+                    if not isinstance(srv, dict):
+                        continue
+                    results.append({
+                        "name": srv.get("qualifiedName") or srv.get("displayName") or srv.get("name", "unknown"),
+                        "description": (srv.get("description") or "")[:500],
+                        "tools": srv.get("tools", []),
+                        "repository": srv.get("repository", {}).get("url") if isinstance(srv.get("repository"), dict) else srv.get("repository"),
+                        "homepage": srv.get("homepage"),
+                        "source": "smithery",
+                        "is_official": bool(srv.get("verified")),
+                        "popularity_score": _compute_popularity(srv.get("useCount", 0)),
+                    })
+
+                # Check pagination
+                pagination = data.get("pagination", {})
+                total_pages = pagination.get("totalPages", 1)
+                if page >= total_pages:
+                    break
+                page += 1
+
+                if page % 50 == 0:
+                    logger.info(f"Smithery fetch progress: {len(results)} servers, page {page}")
+
+                await asyncio.sleep(0.2)
+
     except Exception as e:
         logger.debug(f"Smithery fetch failed: {e}")
     return results
