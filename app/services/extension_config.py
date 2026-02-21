@@ -128,7 +128,7 @@ async def cache_bundle(org_id: Optional[UUID], bundle: Dict[str, Any], redis: Re
     etag = compute_etag(bundle)
     key = f"{_CACHE_PREFIX}:{org_id or 'global'}"
     payload = json.dumps({"bundle": bundle, "etag": etag})
-    await redis.set(key, payload, ex=_CACHE_TTL)
+    await redis.set(key, payload, expire=_CACHE_TTL)
     return etag
 
 
