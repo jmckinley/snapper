@@ -257,11 +257,11 @@ async def fetch_glama_servers(max_entries: int = 20000) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=FETCH_TIMEOUT) as client:
             cursor = None
             pages_fetched = 0
-            # Glama returns ~10 per page, so we need many pages
-            max_pages = max_entries // 10 + 1
+            # Use `first` param (GraphQL relay convention) for 100/page
+            max_pages = max_entries // 100 + 1
 
             while pages_fetched < max_pages and len(results) < max_entries:
-                params: Dict[str, Any] = {"limit": 100}
+                params: Dict[str, Any] = {"first": 100}
                 if cursor:
                     params["after"] = cursor
 
