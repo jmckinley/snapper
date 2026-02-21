@@ -53,6 +53,98 @@ SOURCE_PRIORITY = {
 # Fetchers
 # ---------------------------------------------------------------------------
 
+PULSEMCP_DIRECTORY = "https://www.pulsemcp.com/servers"
+
+# Regex patterns for scraping PulseMCP public listing pages
+_RE_SERVER_LINK = re.compile(r'href="/servers/([a-zA-Z0-9_-]+)"')
+_RE_TOTAL_COUNT = re.compile(r"of\s+([\d,]+)\s+servers")
+_RE_DESCRIPTION = re.compile(
+    r'href="/servers/([a-zA-Z0-9_-]+)"[^>]*>.*?</a>\s*'
+    r'(?:<[^>]*>)*\s*([^<]{10,500})',
+    re.DOTALL,
+)
+
+
+async def _scrape_pulsemcp_directory(
+    max_pages: int = 210,
+    pages_per_sync: int = 210,
+) -> List[Dict[str, Any]]:
+    """Scrape PulseMCP public server directory as API fallback.
+
+    Crawls paginated listing pages to extract server slugs, names,
+    and descriptions. Runs through all pages each sync (42 servers/page,
+    ~210 pages total, ~0.3s between requests = ~63s).
+
+    No tools or auth_type data available from listing pages — those
+    fields get enriched if a PulseMCP API key is added later.
+    """
+    results: List[Dict[str, Any]] = []
+    seen_slugs: set = set()
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=FETCH_TIMEOUT,
+            follow_redirects=True,
+            headers={
+                "User-Agent": "Snapper-MCP-Catalog/1.0 (security tool; hello@mckinleylabs.com)",
+            },
+        ) as client:
+            page = 1
+
+            while page <= max_pages and page <= pages_per_sync:
+                params = {"page": page, "sort": "alphabetical-asc"}
+                resp = await client.get(PULSEMCP_DIRECTORY, params=params)
+
+                if resp.status_code != 200:
+                    logger.debug(f"PulseMCP scrape page {page}: HTTP {resp.status_code}")
+                    break
+
+                html = resp.text
+
+                # Extract server slugs from links
+                slugs_on_page = _RE_SERVER_LINK.findall(html)
+                # Deduplicate (same slug appears multiple times in HTML)
+                unique_slugs = []
+                for slug in slugs_on_page:
+                    if slug not in seen_slugs and slug not in (
+                        "servers", "clients", "news", "api",
+                    ):
+                        seen_slugs.add(slug)
+                        unique_slugs.append(slug)
+
+                if not unique_slugs:
+                    break
+
+                for slug in unique_slugs:
+                    # Convert slug to display name
+                    name = slug.replace("-", " ").title()
+
+                    results.append({
+                        "name": name,
+                        "description": "",
+                        "tools": [],
+                        "repository": None,
+                        "homepage": f"https://www.pulsemcp.com/servers/{slug}",
+                        "source": "pulsemcp",
+                        "pulsemcp_id": slug,
+                    })
+
+                if page % 50 == 0:
+                    logger.info(
+                        f"PulseMCP scrape progress: {len(results)} servers, page {page}"
+                    )
+
+                page += 1
+                # Be polite: 0.3s between pages = ~63s for 210 pages
+                await asyncio.sleep(0.3)
+
+    except Exception as e:
+        logger.warning(f"PulseMCP scrape failed on page {page}: {e}")
+
+    logger.info(f"PulseMCP scrape complete: {len(results)} servers from {page - 1} pages")
+    return results
+
+
 async def fetch_pulsemcp_servers(
     updated_since: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
@@ -60,10 +152,11 @@ async def fetch_pulsemcp_servers(
 
     Returns tool definitions, auth type, popularity, categories.
     Supports incremental sync via updated_since parameter.
+    Falls back to scraping the public directory if no API key is set.
     """
     if not settings.PULSEMCP_API_KEY:
-        logger.debug("Skipping PulseMCP: no API key configured")
-        return []
+        logger.info("No PulseMCP API key — falling back to public directory scrape")
+        return await _scrape_pulsemcp_directory()
 
     results: List[Dict[str, Any]] = []
     headers = {"X-API-Key": settings.PULSEMCP_API_KEY}
