@@ -46,6 +46,7 @@ Snapper is an Agent Application Firewall — it inspects and enforces policy on 
 | **Observability** | Prometheus metrics + Grafana dashboard |
 | **Policy-as-Code** | YAML export/import for GitOps workflows |
 | **Multi-tenant** | Organizations, teams, role-based access |
+| **Platform Admin** | Meta admin dashboard, org provisioning, impersonation |
 
 See [Enterprise Deployment Guide](docs/ENTERPRISE.md) for details.
 
@@ -565,6 +566,7 @@ See the [Security Guide](docs/SECURITY.md#architecture-assumptions) for full det
 | **Integrations** | Traffic discovery, rule templates, custom MCP servers |
 | **Settings** | Configure alerts and notifications |
 | **Help** | In-app setup guide, FAQ, troubleshooting |
+| **Admin** | Meta admin portal, platform stats, org provisioning (meta admin only) |
 
 ## API
 
@@ -586,6 +588,13 @@ GET    /api/v1/threats/summary      # Dashboard widget stats
 GET    /api/v1/threats/scores/live  # Live threat scores from Redis
 POST   /api/v1/setup/quick-register   # Quick-register any supported agent
 POST   /api/v1/setup/install-config   # Auto-install hook config
+POST   /api/v1/auth/login          # Login (returns JWT cookies)
+POST   /api/v1/auth/register       # Register user + org
+GET    /api/v1/meta/stats           # Platform-wide stats (meta admin)
+GET    /api/v1/meta/orgs            # List all organizations (meta admin)
+POST   /api/v1/meta/provision       # Provision new org (meta admin)
+POST   /api/v1/meta/impersonate     # Impersonate org (meta admin)
+GET    /api/v1/billing/usage        # Current org usage vs plan limits
 GET    /health                    # Health check
 GET    /health/ready              # Readiness check (DB + Redis)
 ```
@@ -723,15 +732,18 @@ SNAPPER_URL=http://localhost:8000 bash scripts/e2e_live_test.sh
 E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_live_test.sh
 ```
 
-Live E2E tests cover (47 tests across 8 phases):
+Live E2E tests cover (~95 tests across 9 phases):
 - **Phase 0:** Environment verification (health, Redis, learning mode, agent, audit)
 - **Phase 0b:** Deployment infrastructure (GHCR image refs, Dockerfile targets, pull-first logic, CI/CD workflow)
 - **Phase 1:** All 15 rule type evaluators via API (18 tests)
 - **Phase 2:** Live OpenClaw agent tasks through snapper-guard plugin (5 tests, optional)
 - **Phase 3:** Approval workflow (create, poll, approve, deny)
 - **Phase 4:** PII vault lifecycle (create, detect, resolve, auto mode, delete)
+- **Phase 4c:** Trust scoring (default 1.0, toggle ON/OFF, reset, rate breach penalty)
 - **Phase 5:** Emergency block/unblock with deny-all rules
+- **Phase 5b:** Slack bot integration (health, Redis prefixes, alert routing)
 - **Phase 6:** Audit trail verification (counts, deny/allow entries, violations)
+- **Phase 7:** Approval automation (HITL rule, approve via API, suggestions)
 
 Prerequisites: Snapper running (app + postgres + redis), `jq` installed. OpenClaw optional for Phase 2.
 
@@ -777,12 +789,14 @@ python scripts/threat_simulator.py --list
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 636 | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery, threat detection |
-| E2E tests (Playwright) | 120 | Browser-based UI testing (skipped without browser) |
-| Live E2E integration | 47 | API-level rule engine, approvals, PII vault, emergency block, audit, deployment infra (skips OpenClaw if unavailable) |
-| Live E2E integrations | 109 | Traffic discovery, templates, custom MCP, legacy rules, coverage analysis |
+| Unit tests | 1,300+ | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery, threat detection, meta admin dashboard |
+| E2E tests (Playwright) | 168 | Browser-based UI testing including auth, billing, org management, wizard |
+| Live E2E integration | 95 | API-level rule engine, approvals, PII vault, trust scoring, emergency block, Slack bot, approval automation, deployment infra |
+| Live E2E integrations | 90 | Traffic discovery, templates, custom MCP, legacy rules, coverage analysis |
+| Live E2E meta admin | 35 | Platform stats, org provisioning, impersonation, feature flags, cross-org audit, access control |
+| Live E2E multi-user | 85 | Org isolation, RBAC, quotas, invitation flow, team management, billing |
 | Threat simulator | 13 | Red-team scenarios: kill chains, baselines, encoding, slow drip, signal storm, benign control |
-| **Total** | **925** | Full coverage across unit, UI, and live integration layers |
+| **Total** | **1,850+** | Full coverage across unit, UI, and live integration layers |
 
 ## Common Commands
 

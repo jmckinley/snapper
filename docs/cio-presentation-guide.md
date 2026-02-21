@@ -452,6 +452,28 @@ Self-hosted mode is always unlimited — no feature gating, no quotas. Air-gappe
 
 ---
 
+## Slide — Multi-Tenant Cloud Operations
+
+**What it says:** Snapper supports full multi-tenant cloud deployment.
+
+**What to say:** Snapper isn't just a self-hosted tool — it's designed to run as a cloud service with complete multi-tenant isolation. Each customer organization gets their own agents, rules, vault, and audit trail — completely isolated from other tenants. The platform includes a meta admin dashboard where the service operator can provision new organizations, manage plans and quotas, toggle features per-org, and even impersonate an org for debugging — all with full audit logging.
+
+**Key capabilities:**
+- **Organization isolation** — agents, rules, vault entries, and audit logs are all org-scoped
+- **Plan-based quotas** — Free (25 agents), Pro ($29/mo, 10 agents), Enterprise ($99/mo, unlimited)
+- **Per-org overrides** — meta admin can override any quota for any org
+- **Feature flags** — toggle Slack, threat detection, SIEM per organization
+- **Impersonation** — debug customer issues with scoped, audit-logged access
+- **Platform dashboard** — cross-org analytics, agent funnel, hourly evaluation heatmap
+
+**Why this matters to investors:** This proves Snapper is ready to be sold as a SaaS product, not just a self-hosted tool. The multi-tenant architecture is already built and tested (85+ E2E tests for multi-user, 35+ for meta admin).
+
+> **Term: Multi-Tenant** — An architecture where a single installation serves multiple customers ("tenants") with complete data isolation between them. Like an apartment building — everyone lives in the same building, but each tenant has their own locked apartment and can't access anyone else's.
+>
+> **Term: Meta Admin** — The platform operator's superuser account. Like the building superintendent — they can access common areas and manage tenants, but their access is logged and audited.
+
+---
+
 ## Slide 19 — Zero to Enforcing in 5 Minutes
 
 **What it says:** Three-step setup process.

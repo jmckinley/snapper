@@ -64,6 +64,18 @@ Uses `$SNAPPER_URL` and `$SNAPPER_API_KEY` environment variables (never hardcode
 
 Any system can call the evaluate endpoint directly with an API key (`snp_*` prefix) or agent external ID. Accepts command, file_access, network, tool, and skill request types.
 
+#### D. Browser Extension (Web-Based AI Chat Interception)
+
+**File**: `extension/background.js`
+
+Chrome/Firefox extension (Manifest V3) that intercepts tool calls in web-based AI chats:
+
+- **Content scripts** for 5 platforms: ChatGPT, Claude.ai, Gemini, Copilot, Grok
+- **PII scanner** (`content/pii-scanner.js`) scans textarea content for 20+ patterns before submission
+- **Decision caching** — ALLOW decisions cached for 5 minutes (per tool_name + params)
+- **Fail mode** — configurable: `closed` (deny on Snapper unreachable) or `open`
+- **Enterprise deployment** — settings lockable via Chrome managed storage policy
+
 ---
 
 ### 2. Evaluation Pipeline
@@ -89,11 +101,14 @@ Request arrives
 
 **File**: `app/services/rule_engine.py::RuleEngine.evaluate()`
 
-#### Rule Loading
-- Loads global + agent-specific rules from PostgreSQL
+#### Rule Loading (Cached)
+- **Redis cache** with 10-second TTL — rule IDs stored per agent (`rules:{agent_id}`)
+- Cache miss → loads global + agent-specific rules from PostgreSQL
 - Filters: `is_active=True`, `is_deleted=False`
 - Org-scoped: only rules from agent's organization or system-wide (`org_id=NULL`)
 - Sorted by priority (descending)
+- **Immediate invalidation** on rule create/update/delete — no stale rules
+- Global rule changes (`agent_id=NULL`) flush all cached rule sets via SCAN+DELETE
 
 #### Evaluation Loop
 
@@ -387,6 +402,8 @@ Tool call executes with real credit card number
 |-----------|---------|-------|
 | Threat signal extraction | <2ms | Compiled regex, no I/O |
 | Rule evaluation | 5-50ms | Depends on rule count |
+| Rule cache hit | <1ms | Redis GET + ID-based DB lookup |
+| PII batch lookup | 1-5ms | 3 IN queries (tokens, placeholders, labels) |
 | Total evaluate endpoint | 50-200ms | Including DB + Redis |
 | Token resolution | 10-50ms | Per-token decrypt |
 | Approval polling | 0-300s | Human decision time |
@@ -409,3 +426,5 @@ Tool call executes with real credit card number
 | `app/routers/slack.py` | Slack bot approval workflow |
 | `plugins/snapper-guard/index.ts` | OpenClaw plugin (tool interception) |
 | `scripts/openclaw-hooks/` | Shell hook scripts |
+| `extension/background.js` | Browser extension service worker |
+| `extension/content/*.js` | Content scripts for 5 AI chat platforms |

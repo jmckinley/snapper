@@ -148,6 +148,7 @@ Yes. Snapper includes the full enterprise checklist:
 - **Compliance & Audit:** 70+ audit event types, configurable retention (7-3,650 days), mapped to SOC 2, GDPR, HIPAA, PCI DSS
 - **SIEM Integration:** CEF syslog (including 6 dedicated threat event IDs), HMAC-signed webhooks, Splunk HEC — connects to any major security monitoring system
 - **Multi-Tenancy:** Complete data isolation per organization — separate encryption keys, policies, agents, and rules
+- **Platform Administration:** Meta admin dashboard with org provisioning, impersonation, feature flags, cross-org audit, user management, and platform-wide analytics
 - **Data Protection:** AES-256-GCM encryption, zero-knowledge PII vault, key rotation for API keys and vault encryption
 - **Threat Detection:** Heuristic bad actor detection with 13 signal types, 7 kill chain state machines, per-agent behavioral baselines, and composite threat scoring
 - **Deployment:** Self-hosted, air-gapped capable, zero telemetry (no data sent back to us)
@@ -170,7 +171,7 @@ Yes. Snapper is fully self-hosted and sends zero telemetry — no usage analytic
 
 ### Q: How is data isolated between customers?
 
-Full multi-tenancy with complete data isolation. Each organization gets its own encryption keys (derived via HKDF from a per-org secret), separate security policies, separate agents, and separate rules. One organization can never see another's data. Snapper supports organizations with teams, and role-based access control (RBAC) with 4 roles — Owner, Admin, Member, and Viewer — each with specific permissions.
+Full multi-tenancy with complete data isolation. Each organization gets its own encryption keys (derived via HKDF from a per-org secret), separate security policies, separate agents, and separate rules. One organization can never see another's data. Snapper supports organizations with teams, and role-based access control (RBAC) with 4 roles — Owner, Admin, Member, and Viewer — each with specific permissions. A platform-level meta admin dashboard allows the service operator to provision organizations, manage quotas and feature flags, impersonate orgs for debugging, and view cross-org audit trails — all with full audit logging.
 
 ### Q: What monitoring and observability does Snapper provide?
 
@@ -216,9 +217,10 @@ Lasso's Intent Deputy, launched February 2026, evaluates whether tool calls alig
 
 ### Q: What is the pricing model?
 
-Two tiers:
-- **Pro:** Up to 25 agents, email support. For small-to-medium teams.
-- **Enterprise:** Unlimited agents, dedicated SLA, SSO/SCIM, priority support, custom deployment. For large organizations.
+Three tiers:
+- **Free:** Up to 25 agents, 250 rules, 50 vault entries, 5 members, 2 teams. For individuals and small projects.
+- **Pro ($29/mo):** Up to 10 agents, 100 rules, 50 vault entries, 5 members, 3 teams. For teams.
+- **Enterprise ($99/mo):** Unlimited everything, dedicated SLA, SSO/SCIM, priority support, custom deployment. For large organizations.
 
 Self-hosted mode is always unlimited — no feature gating and no quotas. Pricing is subscription-based.
 
@@ -252,10 +254,10 @@ No. Snapper is fully self-hosted and requires zero internet connectivity. It nev
 
 ### Q: How well-tested is Snapper?
 
-950+ automated tests across five layers:
-- **636 unit tests** — API, rule engine, middleware, Telegram/Slack bots, PII vault, security monitor, integrations, threat detection (48 threat-specific tests)
-- **121 Playwright E2E tests** — Browser-based UI testing of all dashboard flows
-- **86 live integration tests** — API-level tests of all 16 rule types, approval workflows, PII vault lifecycle, emergency block, trust scoring, and audit trail
+1,850+ automated tests across five layers:
+- **1,300+ unit tests** — API, rule engine, middleware, Telegram/Slack bots, PII vault, security monitor, integrations, threat detection (48 threat-specific tests)
+- **168 Playwright E2E tests** — Browser-based UI testing of all dashboard flows
+- **95 live integration tests** — API-level tests of all 16 rule types, approval workflows, PII vault lifecycle, emergency block, trust scoring, and audit trail
 - **90 integration E2E tests** — Traffic discovery, templates, custom MCP servers, coverage analysis
 - **13 red-team threat simulation tests** — Automated attack scenarios testing all 7 kill chains, behavioral baseline deviation, slow-drip exfiltration, encoding stacking, steganographic detection, signal storms, and benign-traffic negative control
 
@@ -305,7 +307,7 @@ These flow through the same CEF syslog, webhook, and Splunk HEC channels as all 
 
 ### Q: What stage is Snapper at?
 
-Snapper is a working product with 950+ automated tests, 16 rule types, a heuristic bad actor detection engine with 7 kill chains, enterprise features (SSO, SCIM, SIEM, MFA, RBAC, multi-tenancy), dashboard authentication with JWT sessions, and integrations with 10+ AI agent types. It has been deployed and tested in production environments with full enforcement mode active. The product is in beta with active development and a live threat simulator that validates all detection pathways.
+Snapper is a working product with 1,850+ automated tests, 16 rule types, a heuristic bad actor detection engine with 7 kill chains, enterprise features (SSO, SCIM, SIEM, MFA, RBAC, multi-tenancy), dashboard authentication with JWT sessions, and integrations with 10+ AI agent types. It has been deployed and tested in production environments with full enforcement mode active. The product is in beta with active development, a live threat simulator that validates all detection pathways, a meta admin platform dashboard with org provisioning and impersonation.
 
 ### Q: What's on the roadmap?
 
@@ -341,7 +343,7 @@ Snapper adds under 50 milliseconds of latency — less than a sixth of an eye bl
 
 ### Q: "Why not build this in-house?"
 
-Snapper has 950+ tests, 16 rule types, integrations with 10+ agent frameworks, PII vault with AES-256-GCM encryption, SSO/SCIM/SIEM enterprise features, Telegram and Slack bots, a browser extension covering 5 AI platforms, adaptive trust scoring, a heuristic bad actor detection engine with 7 kill chain state machines, and a built-in red-team threat simulator. Building this in-house would take a dedicated security team 18-24 months and ongoing maintenance. The threat landscape evolves constantly (new CVEs, new malicious campaigns, new attack patterns), and keeping up requires continuous security research and detection engineering.
+Snapper has 1,850+ tests, 16 rule types, integrations with 10+ agent frameworks, PII vault with AES-256-GCM encryption, SSO/SCIM/SIEM enterprise features, Telegram and Slack bots, a browser extension covering 5 AI platforms, adaptive trust scoring, a heuristic bad actor detection engine with 7 kill chain state machines, and a built-in red-team threat simulator. Building this in-house would take a dedicated security team 18-24 months and ongoing maintenance. The threat landscape evolves constantly (new CVEs, new malicious campaigns, new attack patterns), and keeping up requires continuous security research and detection engineering.
 
 ### Q: "What if AI agent frameworks add their own security?"
 
@@ -369,7 +371,7 @@ The system is designed for low false positives through multiple mechanisms: (1) 
 | Rule types | 16 |
 | Evaluation latency | < 50ms |
 | Threat signal extraction | < 2.5ms |
-| Automated tests | 950+ |
+| Automated tests | 1,850+ |
 | Supported agent types | 10+ |
 | Browser extension platforms | 5 (ChatGPT, Claude, Gemini, Copilot, Grok) |
 | Known MCP servers recognized | 40+ |
@@ -386,4 +388,6 @@ The system is designed for low false positives through multiple mechanisms: (1) 
 | Competitors benchmarked | 9 products, 18 capabilities |
 | Deploy time | 5 minutes |
 | Encryption standard | AES-256-GCM |
+| Meta admin test coverage | 35 E2E + 13 unit |
+| Multi-user E2E tests | 85 |
 | Enterprise SLA | 99.9% |

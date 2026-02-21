@@ -506,3 +506,75 @@ All data is scoped to organizations:
 - API responses only include data from the authenticated user's org
 - Cross-org data access is not possible through the API
 - System-wide rules (no `agent_id`) are read-only for non-admin users
+
+---
+
+## Platform Administration (Meta Admin)
+
+For cloud deployments, Snapper includes a platform administration layer for the service operator.
+
+### Meta Admin Dashboard
+
+The meta admin dashboard (`/admin`) provides cross-org visibility:
+
+- **Platform stats** — total organizations, agents, users, evaluations (24h), active threats
+- **Organization listing** — paginated with member/agent/rule counts, plan, last activity
+- **Org detail** — members, agents, rules, feature flags, quota overrides
+- **Performance metrics** — p50/p95/p99 evaluation latency, throughput (requires Prometheus)
+- **Hourly evaluation heatmap** — 24-bucket activity visualization
+- **Agent funnel** — registered → active → evaluating conversion metrics
+
+### Organization Provisioning
+
+Meta admins can provision new organizations:
+
+```
+POST /api/v1/meta/provision
+{
+  "name": "Acme Corp",
+  "plan": "pro",
+  "admin_email": "admin@acme.com"
+}
+```
+
+This creates the organization, default team, and sends an admin invitation — all in one call.
+
+### Impersonation
+
+For debugging customer issues, meta admins can impersonate an organization:
+
+```
+POST /api/v1/meta/impersonate
+{ "organization_id": "uuid" }
+```
+
+Returns a scoped JWT with `imp` (impersonator user ID) and `org` (target org) claims. All actions during impersonation are audit-logged with `META_IMPERSONATION_START` and `META_IMPERSONATION_STOP` events.
+
+### Feature Flags
+
+Per-org feature toggles:
+
+```
+POST /api/v1/meta/orgs/{id}/features
+{ "slack_enabled": true, "threat_detection_enabled": true }
+```
+
+### Quota Overrides
+
+Override plan limits per organization:
+
+| Override | Description |
+|----------|-------------|
+| `max_agents_override` | Override plan's agent limit |
+| `max_rules_override` | Override plan's rule limit |
+| `max_vault_entries_override` | Override plan's vault entry limit |
+| `max_seats` | Override plan's team member limit |
+
+Set to `-1` for unlimited. Overrides take precedence over plan defaults.
+
+### Access Control
+
+- Only users with `is_meta_admin=True` can access `/meta/*` endpoints
+- JWT includes `meta: true` claim for meta admins
+- All meta admin actions generate audit events (`META_*` action types)
+- Non-meta-admin requests return 403 Forbidden

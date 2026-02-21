@@ -357,7 +357,7 @@ This ensures that rule priority is meaningful: an administrator can create a hig
 - **DENY always wins** — A deny rule at any priority overrides all allow rules
 - **ALLOW blocks lower-priority REQUIRE_APPROVAL** — Explicit allows from higher-priority rules are respected
 - **Errors = deny** — Exceptions during evaluation result in deny
-- **No caching** — Rules are always loaded fresh from the database to ensure changes take effect immediately
+- **Rule caching** — Rules are cached in Redis with a 10-second TTL for performance. Cache is immediately invalidated on rule create/update/delete, so changes take effect within seconds. Global rule changes (agent_id=NULL) flush all cached rule sets via SCAN+DELETE.
 - **Learning mode** — When `LEARNING_MODE=true`, denials are logged but not enforced (the action proceeds)
 
 ### Rule Types (15)
@@ -605,6 +605,8 @@ Each log entry includes:
 - `(agent_id, action)` — Fast agent-specific queries
 - `(severity, created_at)` — Alert filtering
 - `created_at` — BRIN index for efficient time-range scans on large tables
+- `(organization_id, action, created_at)` — Fast org-scoped dashboard and SIEM queries
+- `(organization_id, created_at DESC)` — Efficient org-scoped reverse-chronological listing
 
 ### Traffic Monitoring & Coverage Analysis
 
@@ -998,6 +1000,24 @@ See [Enterprise Guide](ENTERPRISE.md#siem-integration) for Splunk, QRadar, and S
 | Audit Logs | `organization_id` | Database query filter |
 | PII Vault | `organization_id` + `owner_chat_id` | Database + ownership check |
 | Users | `OrganizationMembership` | Join table |
+
+### Meta Admin Platform
+
+A platform-level meta admin role provides cross-org visibility and management:
+
+| Capability | Endpoint | Access |
+|------------|----------|--------|
+| Platform stats | `GET /meta/stats` | Total orgs, agents, users, evaluations |
+| List organizations | `GET /meta/orgs` | All orgs with member/agent/rule counts |
+| Provision organization | `POST /meta/provision` | Create org + team + admin invite |
+| Org detail | `GET /meta/orgs/{id}` | Members, agents, rules, feature flags |
+| Update org | `PUT /meta/orgs/{id}` | Plan, quotas, feature flags |
+| Feature flags | `POST /meta/orgs/{id}/features` | Per-org feature toggles |
+| Impersonation | `POST /meta/impersonate` | Scoped JWT with `imp` claim |
+| User management | `GET /meta/users` | Cross-org user listing |
+| Cross-org audit | `GET /meta/audit` | Audit logs across all organizations |
+
+All meta admin actions are audit-logged with `META_*` event types. Non-meta-admin users receive 403 on all `/meta/*` endpoints.
 
 ## Browser Extension Security
 
