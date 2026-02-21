@@ -5,7 +5,10 @@ import logging
 import secrets
 from uuid import UUID
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -1102,3 +1105,171 @@ async def revoke_session(
     ))
 
     return {"message": "Session revoked", "session_id": session_id}
+
+
+# --- Browser Extension Auth Endpoints ---
+# These return tokens in the JSON body (extensions can't read httponly cookies cross-origin)
+
+
+class ExtensionLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ExtensionLoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    user: dict
+    organization: Optional[dict] = None
+    expires_in: int
+
+
+class ExtensionRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class ExtensionRefreshResponse(BaseModel):
+    access_token: str
+    expires_in: int
+
+
+@router.post("/extension/login", response_model=ExtensionLoginResponse)
+async def extension_login(
+    request: Request,
+    body: ExtensionLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticate a browser extension user.
+
+    Returns tokens in the JSON body (not cookies) since cross-origin
+    extensions cannot read httponly cookies.
+    """
+    try:
+        user = await authenticate_user(db, body.email, body.password)
+    except ValueError as e:
+        db.add(_create_audit_log(
+            AuditAction.USER_LOGIN_FAILED,
+            f"Extension login failed for {body.email}: {e}",
+            request, severity=AuditSeverity.WARNING,
+            details={"email": body.email, "source": "extension"},
+        ))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
+
+    if user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MFA-enabled accounts must use the dashboard to generate an extension token",
+        )
+
+    # Get default org membership
+    memberships = await _get_user_org_memberships(db, user.id)
+    default_membership = next(
+        (m for m in memberships if m.org_id == user.default_organization_id), None
+    )
+    if not default_membership and memberships:
+        default_membership = memberships[0]
+
+    org_id = default_membership.org_id if default_membership else user.default_organization_id
+    role = default_membership.role if default_membership else "member"
+
+    settings = get_settings()
+    access_token = create_access_token(
+        user.id, org_id, role,
+        is_meta_admin=user.is_meta_admin,
+    )
+    refresh_token = create_refresh_token(user.id)
+
+    db.add(_create_audit_log(
+        AuditAction.USER_LOGIN,
+        f"Extension login: {user.email}",
+        request, user_id=user.id, org_id=org_id,
+        details={"source": "extension"},
+    ))
+
+    logger.info(f"Extension login: {user.email} ({user.id})")
+
+    org_info = None
+    if default_membership:
+        org_info = {
+            "id": str(default_membership.org_id),
+            "name": default_membership.org_name,
+            "slug": default_membership.org_slug,
+        }
+
+    return ExtensionLoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "username": user.username,
+            "role": role,
+        },
+        organization=org_info,
+        expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+@router.post("/extension/refresh", response_model=ExtensionRefreshResponse)
+async def extension_refresh(
+    body: ExtensionRefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Refresh an extension access token using a refresh token from the request body.
+    """
+    try:
+        payload = verify_token(body.refresh_token)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    stmt = select(User).where(User.id == UUID(user_id), User.deleted_at.is_(None))
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or disabled",
+        )
+
+    memberships = await _get_user_org_memberships(db, user.id)
+    default_membership = next(
+        (m for m in memberships if m.org_id == user.default_organization_id), None
+    )
+    if not default_membership and memberships:
+        default_membership = memberships[0]
+
+    org_id = default_membership.org_id if default_membership else user.default_organization_id
+    role = default_membership.role if default_membership else "member"
+
+    settings = get_settings()
+    new_access_token = create_access_token(
+        user.id, org_id, role,
+        is_meta_admin=user.is_meta_admin,
+    )
+
+    return ExtensionRefreshResponse(
+        access_token=new_access_token,
+        expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )

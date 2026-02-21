@@ -197,6 +197,35 @@
     Settings are managed by your organization's IT administrator. Contact them for changes.
   </div>
 
+  <div class="section" id="account-section">
+    <h2>Account</h2>
+    <div id="auth-signed-out">
+      <div class="field">
+        <label>Email</label>
+        <input type="text" id="login_email" placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="login_password" placeholder="Password">
+      </div>
+      <div style="margin-top: 12px;">
+        <button class="btn btn-primary" id="signin-btn">Sign In</button>
+      </div>
+      <div id="login-error" style="color: #ef4444; font-size: 12px; margin-top: 8px; display: none;"></div>
+    </div>
+    <div id="auth-signed-in" style="display: none;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <div style="font-size: 14px; font-weight: 500;" id="auth-email"></div>
+          <div style="font-size: 12px; color: #6b7280;">
+            Role: <span id="auth-role" style="font-weight: 600; text-transform: capitalize;"></span>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="signout-btn">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
   <div class="section">
     <h2>Connection</h2>
     <div class="field">

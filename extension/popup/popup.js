@@ -40,6 +40,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // Check auth state
+  const authState = await new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "get_auth_state" }, resolve);
+  });
+
+  const userBar = document.getElementById("user-bar");
+  const userInfo = document.getElementById("user-info");
+
+  if (authState && authState.authenticated) {
+    userBar.className = "user-bar";
+    userInfo.innerHTML = `
+      <span class="user-email">${authState.email}</span>
+      <span class="role-badge">${authState.role || "member"}</span>
+    `;
+  } else {
+    userBar.className = "user-bar not-signed-in";
+    userInfo.innerHTML = 'Not signed in — <a href="#" id="signin-link">Settings</a>';
+    // Defer the listener to after innerHTML is set
+    setTimeout(() => {
+      const link = document.getElementById("signin-link");
+      if (link) {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          chrome.runtime.openOptionsPage();
+        });
+      }
+    }, 0);
+  }
+
   // Load recent decisions
   const decisions = await new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: "get_recent_decisions" }, resolve);

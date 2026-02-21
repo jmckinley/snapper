@@ -102,6 +102,30 @@
             </div>
         </div>
 
+        <!-- Target Roles (optional) -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Target Roles</h3>
+            <p class="text-sm text-gray-500 mb-4">Optionally restrict this rule to users with specific roles. Leave all unchecked to apply to everyone.</p>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" name="target_roles" value="owner" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                    <span class="text-sm text-gray-700">Owner</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" name="target_roles" value="admin" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                    <span class="text-sm text-gray-700">Admin</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" name="target_roles" value="member" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                    <span class="text-sm text-gray-700">Member</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" name="target_roles" value="viewer" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                    <span class="text-sm text-gray-700">Viewer</span>
+                </label>
+            </div>
+        </div>
+
         <!-- Submit -->
         <div class="flex justify-end space-x-3">
             <a href="/rules" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
@@ -318,6 +342,10 @@
             }
         }
 
+        // Collect target roles (empty = null = all users)
+        const selectedRoles = formData.getAll('target_roles');
+        const targetRoles = selectedRoles.length > 0 ? selectedRoles : null;
+
         const rule = {
             name: formData.get('name'),
             description: formData.get('description'),
@@ -327,7 +355,8 @@
             priority: parseInt(formData.get('priority')) || 0,
             parameters: parameters,
             is_active: true,
-            tags: []
+            tags: [],
+            target_roles: targetRoles
         };
 
         try {

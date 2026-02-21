@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Devices - Snapper{% endblock %}
+
+{% block header %}
+<header class="bg-white shadow">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900">Devices</h1>
+                <p class="mt-1 text-sm text-gray-500">Browser extension endpoints registered with Snapper. Block compromised devices to deny all traffic.</p>
+            </div>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Registered Devices</h3>
+                <p class="text-sm text-gray-500" id="device-count">Loading...</p>
+            </div>
+        </div>
+        <div id="devices-list" class="divide-y divide-gray-200">
+            <div class="px-6 py-8 text-center text-gray-500">
+                <div class="animate-pulse">Loading devices...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rename Modal -->
+<div id="rename-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50">
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Rename Device</h3>
+            <input type="text" id="rename-input" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="e.g., John's MacBook">
+            <div class="mt-4 flex justify-end space-x-3">
+                <button onclick="closeRenameModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
+                <button onclick="saveDeviceName()" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentDeviceId = null;
+
+async function loadDevices() {
+    try {
+        const response = await fetch('/api/v1/devices', { credentials: 'include' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        const count = document.getElementById('device-count');
+        count.textContent = `${data.total} device${data.total !== 1 ? 's' : ''} registered`;
+
+        const list = document.getElementById('devices-list');
+
+        if (!data.items || data.items.length === 0) {
+            list.innerHTML = `
+                <div class="px-6 py-12 text-center">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">No devices registered</h3>
+                    <p class="mt-1 text-sm text-gray-500">Devices are auto-registered when a signed-in user makes requests from the Snapper browser extension.</p>
+                </div>
+            `;
+            return;
+        }
+
+        list.innerHTML = data.items.map(device => {
+            const isBlocked = device.status === 'blocked';
+            const statusBadge = isBlocked
+                ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Blocked</span>'
+                : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>';
+
+            const lastSeen = new Date(device.last_seen_at).toLocaleString();
+            const firstSeen = new Date(device.first_seen_at).toLocaleString();
+            const name = device.name || 'Unnamed device';
+            const platform = device.platform || 'Unknown';
+            const browser = device.browser ? device.browser.substring(0, 60) : 'Unknown browser';
+            const meta = device.metadata || {};
+
+            return `
+                <div class="px-6 py-4 flex items-center justify-between ${isBlocked ? 'bg-red-50' : ''}">
+                    <div class="flex items-center space-x-4">
+                        <div class="flex-shrink-0">
+                            <div class="h-10 w-10 ${isBlocked ? 'bg-red-100' : 'bg-gray-100'} rounded-full flex items-center justify-center">
+                                <svg class="h-5 w-5 ${isBlocked ? 'text-red-600' : 'text-gray-500'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-sm font-medium text-gray-900">${name}</span>
+                                ${statusBadge}
+                            </div>
+                            <div class="text-xs text-gray-500 mt-0.5">
+                                ${platform} &middot; Last seen ${lastSeen}
+                            </div>
+                            <div class="text-xs text-gray-400 mt-0.5">
+                                ID: ${device.device_id.substring(0, 8)}... &middot; First seen ${firstSeen}
+                                ${meta.timezone ? ' &middot; ' + meta.timezone : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="openRenameModal('${device.id}', '${(device.name || '').replace(/'/g, "\\'")}')"
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                            Rename
+                        </button>
+                        ${isBlocked
+                            ? `<button onclick="toggleDeviceStatus('${device.id}', 'active')"
+                                class="inline-flex items-center px-3 py-1.5 border border-green-300 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100">
+                                Unblock
+                            </button>`
+                            : `<button onclick="toggleDeviceStatus('${device.id}', 'blocked')"
+                                class="inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100">
+                                Block
+                            </button>`
+                        }
+                        <button onclick="deleteDevice('${device.id}', '${name.replace(/'/g, "\\'")}')"
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-500 bg-white hover:bg-gray-50">
+                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        document.getElementById('devices-list').innerHTML = `
+            <div class="px-6 py-8 text-center text-red-500">
+                Failed to load devices: ${error.message}
+            </div>
+        `;
+    }
+}
+
+async function toggleDeviceStatus(deviceId, newStatus) {
+    const action = newStatus === 'blocked' ? 'block' : 'unblock';
+    if (!confirm(`Are you sure you want to ${action} this device? ${newStatus === 'blocked' ? 'All requests from this device will be denied.' : ''}`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/v1/devices/${deviceId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ status: newStatus }),
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        await loadDevices();
+    } catch (error) {
+        alert(`Failed to ${action} device: ${error.message}`);
+    }
+}
+
+async function deleteDevice(deviceId, name) {
+    if (!confirm(`Remove device "${name}"? This device will need to re-register.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/v1/devices/${deviceId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+
+        if (!response.ok && response.status !== 204) throw new Error(`HTTP ${response.status}`);
+        await loadDevices();
+    } catch (error) {
+        alert(`Failed to remove device: ${error.message}`);
+    }
+}
+
+function openRenameModal(deviceId, currentName) {
+    currentDeviceId = deviceId;
+    document.getElementById('rename-input').value = currentName;
+    document.getElementById('rename-modal').classList.remove('hidden');
+    document.getElementById('rename-input').focus();
+}
+
+function closeRenameModal() {
+    document.getElementById('rename-modal').classList.add('hidden');
+    currentDeviceId = null;
+}
+
+async function saveDeviceName() {
+    if (!currentDeviceId) return;
+    const name = document.getElementById('rename-input').value.trim();
+
+    try {
+        const response = await fetch(`/api/v1/devices/${currentDeviceId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name }),
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        closeRenameModal();
+        await loadDevices();
+    } catch (error) {
+        alert(`Failed to rename device: ${error.message}`);
+    }
+}
+
+// Load on page ready
+loadDevices();
+</script>
+{% endblock %}

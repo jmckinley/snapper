@@ -153,6 +153,12 @@ class Rule(Base):
         default=list,
         nullable=False,
     )
+    target_roles: Mapped[Optional[list]] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=None,
+        comment="If set, rule only applies to users with these roles (owner/admin/member/viewer). Null = all users.",
+    )
     source: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,

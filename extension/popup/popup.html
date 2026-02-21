@@ -47,6 +47,45 @@
 
     .status-text { font-size: 12px; color: #6b7280; }
 
+    .user-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 12px;
+    }
+
+    .user-email {
+      color: #374151;
+      font-weight: 500;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .role-badge {
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
+    .user-bar.not-signed-in {
+      color: #9ca3af;
+    }
+
+    .user-bar.not-signed-in a {
+      color: #3b82f6;
+      text-decoration: none;
+      font-size: 11px;
+    }
+
     .section {
       padding: 12px 16px;
     }
@@ -128,6 +167,10 @@
   <div class="status-bar">
     <div id="status-dot" class="status-dot unconfigured"></div>
     <span id="status-text" class="status-text">Checking...</span>
+  </div>
+
+  <div id="user-bar" class="user-bar not-signed-in">
+    <span id="user-info">Not signed in</span>
   </div>
 
   <div class="section">

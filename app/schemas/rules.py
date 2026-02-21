@@ -9,6 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.rules import RuleAction, RuleType
 
 
+VALID_TARGET_ROLES = {"owner", "admin", "member", "viewer"}
+
+
 class RuleBase(BaseModel):
     """Base schema for rule data."""
 
@@ -20,6 +23,19 @@ class RuleBase(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     tags: List[str] = Field(default_factory=list)
+    target_roles: Optional[List[str]] = Field(
+        None,
+        description="If set, rule only applies to users with these roles. Null = all users.",
+    )
+
+    @field_validator("target_roles")
+    @classmethod
+    def validate_target_roles(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is not None:
+            invalid = set(v) - VALID_TARGET_ROLES
+            if invalid:
+                raise ValueError(f"Invalid target roles: {invalid}. Must be one of {VALID_TARGET_ROLES}")
+        return v
 
 
 class RuleCreate(RuleBase):
@@ -43,6 +59,16 @@ class RuleUpdate(BaseModel):
     parameters: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     tags: Optional[List[str]] = None
+    target_roles: Optional[List[str]] = None
+
+    @field_validator("target_roles")
+    @classmethod
+    def validate_target_roles(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is not None:
+            invalid = set(v) - VALID_TARGET_ROLES
+            if invalid:
+                raise ValueError(f"Invalid target roles: {invalid}. Must be one of {VALID_TARGET_ROLES}")
+        return v
 
 
 class RuleResponse(RuleBase):
@@ -54,6 +80,7 @@ class RuleResponse(RuleBase):
     agent_id: Optional[UUID] = None
     source: Optional[str] = None
     source_reference: Optional[str] = None
+    target_roles: Optional[List[str]] = None
     match_count: int = 0
     last_matched_at: Optional[datetime] = None
     created_at: datetime

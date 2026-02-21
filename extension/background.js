@@ -2,7 +2,8 @@
  * Snapper Browser Extension — Background Service Worker
  *
  * Handles evaluate calls to Snapper server, approval polling,
- * and session-level caching of allow decisions.
+ * session-level caching of allow decisions, auth token management,
+ * and device fingerprinting.
  */
 
 // Session cache for allow decisions (cleared on extension restart)
@@ -12,6 +13,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 // Recent decisions for popup display
 const recentDecisions = [];
 const MAX_RECENT = 10;
+
+// Track whether device meta has been sent this session
+let deviceMetaSent = false;
 
 /**
  * Get extension configuration from managed storage (enterprise) or local storage.
@@ -64,6 +68,116 @@ async function getConfig() {
 }
 
 /**
+ * Get or create a persistent device ID for this browser instance.
+ */
+async function getOrCreateDeviceId() {
+  const stored = await chrome.storage.local.get(["device_id"]);
+  if (stored.device_id) return stored.device_id;
+  const deviceId = crypto.randomUUID();
+  await chrome.storage.local.set({ device_id: deviceId });
+  return deviceId;
+}
+
+/**
+ * Collect device metadata for fingerprinting.
+ */
+function getDeviceMeta() {
+  return {
+    platform: navigator.platform || "",
+    language: navigator.language || "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    cores: navigator.hardwareConcurrency || 0,
+    memory: navigator.deviceMemory || 0,
+  };
+}
+
+/**
+ * Get stored auth token, refreshing if about to expire.
+ */
+async function getAuthToken(snapperUrl) {
+  const stored = await chrome.storage.local.get([
+    "access_token",
+    "token_expires_at",
+    "refresh_token",
+  ]);
+
+  if (!stored.access_token) return null;
+
+  // Check if token is about to expire (< 2 min remaining)
+  if (stored.token_expires_at && Date.now() > stored.token_expires_at - 120000) {
+    if (stored.refresh_token) {
+      const refreshed = await refreshToken(snapperUrl, stored.refresh_token);
+      if (refreshed) return refreshed;
+    }
+    // Refresh failed — clear stale tokens
+    await chrome.storage.local.remove([
+      "access_token",
+      "refresh_token",
+      "token_expires_at",
+      "user_email",
+      "user_role",
+    ]);
+    return null;
+  }
+
+  return stored.access_token;
+}
+
+/**
+ * Refresh an access token using the refresh token.
+ */
+async function refreshToken(snapperUrl, refreshTokenValue) {
+  try {
+    const response = await fetch(`${snapperUrl}/api/v1/auth/extension/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshTokenValue }),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    await chrome.storage.local.set({
+      access_token: data.access_token,
+      token_expires_at: Date.now() + data.expires_in * 1000,
+    });
+    return data.access_token;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Build common headers for Snapper API calls.
+ * Includes API key, auth token (if signed in), and device ID.
+ */
+async function buildHeaders(config) {
+  const headers = { "Content-Type": "application/json" };
+
+  if (config.apiKey) {
+    headers["X-API-Key"] = config.apiKey;
+  }
+
+  // Auth token (if user is signed in)
+  const token = await getAuthToken(config.snapperUrl);
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Device identification
+  const deviceId = await getOrCreateDeviceId();
+  headers["X-Device-Id"] = deviceId;
+
+  // Send device meta once per session
+  if (!deviceMetaSent) {
+    headers["X-Device-Meta"] = JSON.stringify(getDeviceMeta());
+    deviceMetaSent = true;
+  }
+
+  return headers;
+}
+
+/**
  * Evaluate a tool call against Snapper policy.
  */
 async function evaluate(toolName, toolInput, requestType, source) {
@@ -92,16 +206,36 @@ async function evaluate(toolName, toolInput, requestType, source) {
   };
 
   try {
-    const headers = { "Content-Type": "application/json" };
-    if (config.apiKey) {
-      headers["X-API-Key"] = config.apiKey;
-    }
+    const headers = await buildHeaders(config);
 
     const response = await fetch(`${config.snapperUrl}/api/v1/rules/evaluate`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
+
+    // On 401, try refresh once and retry
+    if (response.status === 401) {
+      const stored = await chrome.storage.local.get(["refresh_token"]);
+      if (stored.refresh_token) {
+        const newToken = await refreshToken(config.snapperUrl, stored.refresh_token);
+        if (newToken) {
+          headers["Authorization"] = `Bearer ${newToken}`;
+          const retryResponse = await fetch(
+            `${config.snapperUrl}/api/v1/rules/evaluate`,
+            { method: "POST", headers, body: JSON.stringify(payload) }
+          );
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            if (retryData.decision === "allow") {
+              allowCache.set(cacheKey, { result: retryData, time: Date.now() });
+            }
+            trackDecision(toolName, retryData.decision, retryData.reason, source);
+            return retryData;
+          }
+        }
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -138,10 +272,7 @@ async function pollApproval(approvalId, timeoutMs = 300000) {
 
   while (Date.now() - start < timeoutMs) {
     try {
-      const headers = {};
-      if (config.apiKey) {
-        headers["X-API-Key"] = config.apiKey;
-      }
+      const headers = await buildHeaders(config);
 
       const response = await fetch(
         `${config.snapperUrl}/api/v1/approvals/${approvalId}/status`,
@@ -207,7 +338,7 @@ function updateBadge(lastDecision) {
   });
 }
 
-// Listen for messages from content scripts
+// Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "evaluate") {
     evaluate(
@@ -238,6 +369,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     allowCache.clear();
     sendResponse({ cleared: true });
     return false;
+  }
+
+  if (message.type === "get_auth_state") {
+    chrome.storage.local
+      .get(["access_token", "user_email", "user_role"])
+      .then((stored) => {
+        sendResponse({
+          authenticated: !!stored.access_token,
+          email: stored.user_email || null,
+          role: stored.user_role || null,
+        });
+      });
+    return true;
   }
 });
 

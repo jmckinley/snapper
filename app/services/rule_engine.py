@@ -65,6 +65,10 @@ class EvaluationContext:
     auto_adjust_trust: bool = False
     owner_chat_id: Optional[str] = None
 
+    # User context (from JWT, if authenticated via browser extension)
+    user_id: Optional[str] = None
+    user_role: Optional[str] = None
+
 
 @dataclass
 class EvaluationResult:
@@ -157,6 +161,15 @@ class RuleEngine:
             for rule in rules:
                 if not rule.is_active:
                     continue
+
+                # Role-based targeting: skip rule if user doesn't match target roles
+                if rule.target_roles:
+                    if context.user_role:
+                        if context.user_role not in rule.target_roles:
+                            continue
+                    else:
+                        # Rule targets specific roles but request is unauthenticated — skip
+                        continue
 
                 # Get evaluator for this rule type
                 evaluator = self._evaluators.get(rule.rule_type)
