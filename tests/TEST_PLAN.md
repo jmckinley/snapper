@@ -46,6 +46,19 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | RE-032 | Reset after window | Wait 60s, retry | ALLOW |
 | RE-033 | Per-agent isolation | Agent A at limit, Agent B | Agent B ALLOW |
 
+### 1.12 Adaptive Trust Scoring
+| Test ID | Description | Input | Expected Result |
+|---------|-------------|-------|-----------------|
+| RE-095 | Default trust is 1.0 | New agent | `trust_score = 1.0` |
+| RE-096 | Trust clamped at MIN 0.5 | Repeated rate breaches | `trust_score >= 0.5` |
+| RE-097 | Trust clamped at MAX 2.0 | Long good behavior | `trust_score <= 2.0` |
+| RE-098 | Rate breach reduces trust | Exceed rate limit | `trust_score < 1.0` |
+| RE-099 | Rule denial does NOT reduce trust | Denylist match | `trust_score` unchanged |
+| RE-100 | Trust disabled = info-only | `auto_adjust_trust=False` | Score tracked but limits unchanged |
+| RE-101 | Trust enabled adjusts limits | `auto_adjust_trust=True` | Rate limit scaled by trust |
+| RE-102 | Reset trust to 1.0 | `POST /agents/{id}/reset-trust` | `trust_score = 1.0` |
+| RE-103 | Toggle trust on/off | `POST /agents/{id}/toggle-trust` | `auto_adjust_trust` flipped |
+
 ### 1.5 Origin Validation (CVE-2026-25253)
 | Test ID | Description | Input | Expected Result |
 |---------|-------------|-------|-----------------|
@@ -374,11 +387,39 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | PERF-002 | 1000 requests/second | No errors, rate limiting works |
 | PERF-003 | Large rule set (100 rules) | Evaluation < 50ms |
 
-### 9.2 Caching
+### 9.2 Rule Engine Caching (10s TTL)
 | Test ID | Description | Expected Result |
 |---------|-------------|-----------------|
-| PERF-010 | Rules cached in Redis | Second request faster |
-| PERF-011 | Cache invalidation on update | New rules apply immediately |
+| PERF-010 | Rules cached in Redis after first load | `rules:{agent_id}` key created with 10s TTL |
+| PERF-011 | Cache hit returns same rules | Second evaluation loads from cache, no DB query |
+| PERF-012 | Cache invalidated on rule create | New rule visible immediately |
+| PERF-013 | Cache invalidated on rule update | Updated rule reflected immediately |
+| PERF-014 | Cache invalidated on rule delete | Deleted rule removed immediately |
+| PERF-015 | Global rule change flushes all caches | Rule with `agent_id=None` → SCAN+DELETE `rules:*` |
+| PERF-016 | Cache miss after TTL expiry | After 10s, rules reloaded from DB |
+
+### 9.3 PII Gate Batch Lookups
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| PERF-020 | Batch vault token lookup | N tokens → 1 `IN` query (not N queries) |
+| PERF-021 | Batch placeholder lookup | M placeholders → 1 `IN` query |
+| PERF-022 | Batch label lookup | L labels → 1 `IN` query (case-insensitive) |
+| PERF-023 | Empty batch returns empty dict | No DB query issued |
+| PERF-024 | Owner scoping preserved in batch | `owner_chat_id` filter applied |
+
+### 9.4 Dashboard Query Consolidation
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| PERF-030 | Meta dashboard uses subquery joins | 50 orgs → ~8 queries (not 351) |
+| PERF-031 | Org usage sorted by evals descending | Most active orgs listed first |
+| PERF-032 | List orgs uses subquery joins | Member/agent/owner counts in single query |
+
+### 9.5 Miscellaneous Optimizations
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| PERF-040 | HKDF key derivation cached | `@lru_cache` on `_get_raw_key()` — same key on repeated calls |
+| PERF-041 | Agent.rules lazy-loaded | `lazy="select"` — rules not loaded unless accessed |
+| PERF-042 | EvaluationContext carries agent fields | `auto_adjust_trust`, `owner_chat_id` pre-loaded — no re-query |
 
 ---
 
@@ -415,6 +456,96 @@ This test plan covers all functionality of the Snapper Rules Manager including r
 | MCP-032 | DELETE without WHERE | DENY |
 | MCP-033 | DROP TABLE | DENY |
 | MCP-034 | SQL injection attempt | DENY |
+
+---
+
+## 11. PII Vault & PII Gate Tests
+
+### 11.1 PII Vault CRUD
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| PV-001 | Create vault entry | Token `{{SNAPPER_VAULT:<32hex>}}` returned |
+| PV-002 | AES-256-GCM encryption | Stored value encrypted at rest |
+| PV-003 | List entries by owner | Only `owner_chat_id` entries returned |
+| PV-004 | Delete entry (soft delete) | `is_deleted=True`, token no longer resolvable |
+| PV-005 | Domain-locked entry | Resolution blocked for wrong domain |
+| PV-006 | Placeholder and label creation | Both fields stored and retrievable |
+| PV-007 | Legacy Fernet auto-detect | Old encrypted entries decrypted correctly |
+
+### 11.2 PII Gate Evaluation
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| PV-010 | Vault token detected in command | REQUIRE_APPROVAL with PII details |
+| PV-011 | Raw PII detected (email, phone) | REQUIRE_APPROVAL with findings |
+| PV-012 | Auto mode resolves inline | ALLOW with resolved data |
+| PV-013 | Placeholder reference resolved | Matched vault entry by placeholder |
+| PV-014 | Label reference resolved | Matched vault entry by label (case-insensitive) |
+| PV-015 | No PII = no gate trigger | ALLOW (gate passes through) |
+
+### 11.3 Vault Security
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| PV-020 | Brute-force lockout (5 failures/15min) | Locked after 5 bad attempts |
+| PV-021 | 128-bit token width | Token hex portion is 32 chars |
+| PV-022 | Per-user Telegram routing | Approval sent to entry's `owner_chat_id` |
+| PV-023 | 30s PII TTL in Redis | Decrypted PII expires from Redis after 30s |
+
+---
+
+## 11b. Threat Detection Engine Tests
+
+### 11b.1 Signal Extraction
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TH-001 | FILE_READ signal | Detected from `cat`, `head`, `tail` commands |
+| TH-002 | CREDENTIAL_ACCESS signal | Detected from `.env`, `.pem`, `.key` access |
+| TH-003 | NETWORK_SEND signal | Detected from `curl`, `wget`, `fetch` |
+| TH-004 | ENCODING signal | Detected from base64/hex patterns |
+| TH-005 | PII_OUTBOUND signal | Detected from PII in outbound data |
+| TH-006 | PRIVESC signal | Detected from `sudo`, `chmod`, `chown` |
+| TH-007 | All 13 signal types | Each type extractable from sample input |
+
+### 11b.2 Kill Chain Detection
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TH-010 | Data exfil chain | FILE_READ → NETWORK_SEND detected |
+| TH-011 | Credential theft chain | CREDENTIAL_ACCESS → NETWORK_SEND |
+| TH-012 | PII harvest chain | PII_OUTBOUND × 3 → NETWORK_SEND |
+| TH-013 | Encoded exfil chain | FILE_READ → ENCODING → NETWORK_SEND |
+| TH-014 | Privilege escalation chain | PRIVESC → FILE_READ → NETWORK_SEND |
+| TH-015 | All 7 chains defined | Chain registry has 7 entries |
+
+### 11b.3 Composite Scoring
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| TH-020 | Score >= 80 → DENY | Rule engine overrides to DENY |
+| TH-021 | Score 60-79 → REQUIRE_APPROVAL | Rule engine overrides to REQUIRE_APPROVAL |
+| TH-022 | Score < 60 → no override | Normal rule evaluation applies |
+| TH-023 | Benign traffic → low score | Score < 10 for normal commands |
+
+---
+
+## 11c. Meta Admin Dashboard Tests
+
+### 11c.1 Dashboard Endpoint (`tests/test_meta_dashboard.py`)
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| MD-001 | Dashboard returns DashboardResponse | All required fields present |
+| MD-002 | Non-meta-admin gets 403 | Access denied for regular users |
+| MD-003 | hourly_evals has 24 buckets | One per hour of day |
+| MD-004 | org_usage sorted by evals desc | Most active orgs first |
+| MD-005 | agent_types groups correctly | openclaw, cursor, etc. grouped |
+| MD-006 | funnel counts match test data | registered → active → evaluating counts |
+| MD-007 | Perf endpoint returns PerformanceStats | p50, p95, p99, throughput |
+| MD-008 | Perf handles missing Prometheus | Graceful fallback, no crash |
+
+### 11c.2 Dashboard Query Performance
+| Test ID | Description | Expected Result |
+|---------|-------------|-----------------|
+| MD-010 | Org loop replaced with subquery joins | Single consolidated query |
+| MD-011 | Agent/rule/member counts via subqueries | No per-org DB queries |
+| MD-012 | Eval stats aggregated per org | 24h window grouped by org |
+| MD-013 | Threat counts joined as subquery | Active + investigating threats |
 
 ---
 
@@ -603,6 +734,27 @@ Automated bash-based tests in `scripts/e2e_live_test.sh` that validate all rule 
 | LIVE-602 | Deny audit entries exist | `denied_count` > 0 |
 | LIVE-603 | Allow audit entries exist | `allowed_count` > 0 |
 | LIVE-604 | Policy violations recorded | `violations.total` > 0 |
+
+### 11.8 Meta Admin E2E (`scripts/e2e_meta_admin_test.sh`)
+
+Automated bash-based tests validating all meta admin endpoints against a running instance. 11 phases, ~35 assertions.
+
+| Phase | Tests | What It Validates |
+|-------|-------|-------------------|
+| 0 | Authentication | Login as meta admin, session cookies |
+| 1 | Platform Stats | `GET /meta/stats` schema, org/agent/user/eval counts |
+| 2 | List Orgs | `GET /meta/orgs` pagination, plan fields, member counts |
+| 3 | Provision Org | `POST /meta/provision` creates org + admin invite |
+| 4 | Org Detail | `GET /meta/orgs/{id}` with members, agents, rules |
+| 5 | Update Org | `PUT /meta/orgs/{id}` plan change, quota overrides |
+| 6 | Feature Flags | `POST /meta/orgs/{id}/features` toggle flags |
+| 7 | Impersonation | `POST /meta/impersonate` scoped JWT with `imp` claim |
+| 8 | User Management | `GET /meta/users` list, search, user details |
+| 9 | Cross-Org Audit | `GET /meta/audit` cross-org audit log query |
+| 10 | Access Control | Non-meta-admin gets 403 on all endpoints |
+| 11 | Dashboard Pages | HTML pages load (admin portal, org detail) |
+
+Run: `ssh root@76.13.127.76 "cd /opt/snapper && bash scripts/e2e_meta_admin_test.sh"`
 
 ---
 

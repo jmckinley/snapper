@@ -50,6 +50,7 @@ This test plan validates Snapper's security enforcement across all subsystems: r
 | `test_org_scoping.py` | ~15 | Org-scoped agents, rules, vault, cross-org isolation |
 | `test_multi_tenant_isolation.py` | ~15 | Cross-org boundary enforcement, resource isolation |
 | `test_meta_admin.py` | ~15 | Meta admin auth, provision org, impersonation |
+| `test_meta_dashboard.py` | 13 | Dashboard schema, org usage, hourly evals, funnel, perf endpoint |
 | `test_quotas.py` | ~10 | Plan limits, quota enforcement, 402 responses |
 | `test_billing.py` | ~10 | Stripe integration, plan changes, usage |
 | `test_rbac.py` | ~10 | Role-based access control, permissions |
@@ -61,7 +62,7 @@ This test plan validates Snapper's security enforcement across all subsystems: r
 | `test_security_research.py` | ~10 | CVE feed, auto-mitigation |
 | Other test files | ~600+ | Rate limiter, suggestions, approvals, audit, API keys, etc. |
 
-**Total: ~1,200+ unit tests**
+**Total: ~1,300+ unit tests**
 
 Run: `docker compose exec app pytest tests/ -v`
 
@@ -97,11 +98,12 @@ Run: `E2E_BASE_URL=https://76.13.127.76:8443 pytest tests/e2e -v`
 
 | Script | Tests | Coverage |
 |--------|-------|----------|
-| `e2e_live_test.sh` | ~93 | All rule evaluators, approval workflow, PII vault, trust scoring, emergency block, audit trail, Slack integration, approval automation, deployment infra |
+| `e2e_live_test.sh` | ~95 | All rule evaluators, approval workflow, PII vault, trust scoring, emergency block, audit trail, Slack integration, approval automation, deployment infra |
 | `e2e_integrations_test.sh` | ~90 | Traffic discovery, known servers, coverage, rule creation, active packs, curated/generic server rules |
 | `e2e_threat_test.sh` | 6 phases | Threat simulator (13 scenarios), backend state, kill chain pipeline, signal coverage, event resolution, config validation |
 | `e2e_openclaw_test.sh` | 19 | Full-pipeline agent traffic (browser allow, rate limit, PII, approvals, metadata, emergency block, audit) |
 | `e2e_multiuser_test.sh` | ~85 | Multi-tenant: org isolation, RBAC, quotas, invitation flow, team management, billing |
+| `e2e_meta_admin_test.sh` | ~35 | Meta admin: platform stats, org provisioning, impersonation, feature flags, user management, cross-org audit, access control |
 
 **Note:** All bash E2E scripts auto-authenticate in cloud mode (SELF_HOSTED=false) by registering a test user and using session cookies.
 
@@ -333,6 +335,60 @@ Run: `E2E_CHAT_ID=<telegram_chat_id> bash scripts/e2e_openclaw_test.sh`
 
 ---
 
+## Test Group E2: Meta Admin & Platform Dashboard
+
+### E2.1 Meta Admin E2E (`scripts/e2e_meta_admin_test.sh`)
+
+~35 tests across 12 phases validating all meta admin endpoints:
+
+| Phase | Tests | What It Validates |
+|-------|-------|-------------------|
+| 0 | Auth (1) | Login as meta admin, session cookies |
+| 1 | Platform Stats (3) | `GET /meta/stats` schema, org/agent/user/eval counts |
+| 2 | List Orgs (4) | `GET /meta/orgs` pagination, plan fields, member/agent counts |
+| 3 | Provision Org (4) | `POST /meta/provision` creates org + team + admin invite |
+| 4 | Org Detail (3) | `GET /meta/orgs/{id}` members, agents, rules arrays |
+| 5 | Update Org (4) | `PUT /meta/orgs/{id}` plan change, quota overrides, feature flags |
+| 6 | Feature Flags (3) | `POST /meta/orgs/{id}/features` toggle on/off, verify persistence |
+| 7 | Impersonation (3) | `POST /meta/impersonate` scoped JWT with `imp` + `org` claims |
+| 8 | User Management (3) | `GET /meta/users` list, search, user detail with orgs |
+| 9 | Cross-Org Audit (3) | `GET /meta/audit` cross-org audit log query, filter by org |
+| 10 | Access Control (3) | Non-meta-admin gets 403 on all `/meta/*` endpoints |
+| 11 | Dashboard Pages (2) | Admin portal HTML loads, org detail page loads |
+
+**Auth:** Uses pre-existing meta admin account (not auto-registered).
+
+Run: `ssh root@76.13.127.76 "cd /opt/snapper && bash scripts/e2e_meta_admin_test.sh"`
+
+### E2.2 Dashboard Unit Tests (`tests/test_meta_dashboard.py`)
+
+13 unit tests covering the platform dashboard API:
+
+| # | Test | What It Validates |
+|---|------|-------------------|
+| E2.2.1 | Dashboard returns DashboardResponse | All schema fields present |
+| E2.2.2 | Non-meta-admin rejected | 403 for regular users |
+| E2.2.3 | hourly_evals 24 buckets | One bucket per hour |
+| E2.2.4 | org_usage sorted by evals desc | Most active orgs first |
+| E2.2.5 | agent_types grouped | Agent type counts by category |
+| E2.2.6 | funnel matches test data | registered → active → evaluating |
+| E2.2.7 | Perf endpoint schema | p50, p95, p99, throughput fields |
+| E2.2.8 | Perf handles missing Prometheus | Graceful fallback values |
+| E2.2.9 | Dashboard query consolidation | Subquery joins (not per-org loop) |
+
+### E2.3 Dashboard Performance Engineering
+
+| # | Test | What It Validates |
+|---|------|-------------------|
+| E2.3.1 | Rule engine Redis cache (10s TTL) | Rules cached after first load, invalidated on mutation |
+| E2.3.2 | PII gate batch lookups | 3 IN queries (tokens, placeholders, labels) not N loops |
+| E2.3.3 | HKDF key derivation cached | `@lru_cache` on `_get_raw_key()` |
+| E2.3.4 | Agent.rules lazy-loaded | `lazy="select"` — no eager subquery |
+| E2.3.5 | EvaluationContext pre-loads agent fields | `auto_adjust_trust`, `owner_chat_id` avoid re-query |
+| E2.3.6 | Audit log composite indexes | `(org_id, action, created_at)` and `(org_id, created_at DESC)` |
+
+---
+
 ## Test Group F: Enterprise & Provider Integration
 
 ### F.1 Enterprise SSO (Test Group H)
@@ -446,17 +502,18 @@ All audit log creation sites call `publish_from_audit_log()`:
 - [ ] `email-validator` installed for Playwright (`pip install email-validator`)
 
 ### Unit Tests
-- [ ] Run `docker compose exec app pytest tests/ -v` — ~1,200+ tests
-- [ ] Expected: ~1,200 pass, ~40 skip (Celery-dependent, SDK package)
+- [ ] Run `docker compose exec app pytest tests/ -v` — ~1,300+ tests
+- [ ] Expected: ~1,250 pass, ~50 skip (Celery-dependent, SDK package, ai_providers)
 
 ### Playwright E2E Tests
 - [ ] Run `E2E_BASE_URL=https://76.13.127.76:8443 pytest tests/e2e -v` — ~168 tests
 - [ ] Expected: ~160+ pass, 2 skipped by design (integrations search/enable)
 
 ### Live API E2E Tests
-- [ ] Run `bash scripts/e2e_live_test.sh` — ~93 tests across 8 phases
+- [ ] Run `bash scripts/e2e_live_test.sh` — ~95 tests across 8 phases
 - [ ] Run `bash scripts/e2e_integrations_test.sh` — ~90 tests across 11 phases
 - [ ] Run `bash scripts/e2e_threat_test.sh` — 6 phases (13 simulator scenarios)
+- [ ] Run `bash scripts/e2e_meta_admin_test.sh` — ~35 tests across 12 phases
 - [ ] Verify all pass (Phase 2 skipped if no E2E_CHAT_ID, Phase 5b needs Slack)
 
 ### Multi-User E2E Tests
@@ -468,11 +525,13 @@ All audit log creation sites call `publish_from_audit_log()`:
 - [ ] Verify 19/19 pass
 
 ### Sign-off
-- [ ] All automated tests pass (unit + Playwright + live E2E + integrations + threat + multiuser)
+- [ ] All automated tests pass (unit + Playwright + live E2E + integrations + threat + multiuser + meta admin)
 - [ ] SIEM wiring verified (38+ sites)
 - [ ] Multi-tenant isolation verified (cross-org boundaries enforced)
 - [ ] Threat detection operational (13/13 scenarios, kill chains detected)
 - [ ] Per-org quota overrides working (meta admin can customize limits)
+- [ ] Meta admin dashboard operational (platform stats, org provisioning, impersonation)
+- [ ] Performance optimizations verified (rule cache, batch PII, dashboard consolidation)
 - [ ] No security bypasses found
 - [ ] Performance targets met (< 50ms p95 rule evaluation)
 - [ ] Documentation updated
