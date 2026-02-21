@@ -19,7 +19,7 @@ from app.database import check_db_health, close_db, init_db
 from app.redis_client import redis_client
 
 # Import routers
-from app.routers import agents, approvals, audit, devices, integrations, rules, security, setup, shadow_ai, slack, telegram, vault
+from app.routers import agents, approvals, audit, devices, extension_config, integrations, mcp_catalog, rules, security, setup, shadow_ai, slack, telegram, vault
 from app.routers import auth as auth_router
 from app.routers import organizations as org_router
 from app.routers import billing as billing_router
@@ -192,6 +192,8 @@ app.include_router(approval_policies_router.router, prefix=settings.API_V1_PREFI
 app.include_router(suggestions_router.router, prefix=settings.API_V1_PREFIX, tags=["Core"])
 app.include_router(threats_router.router, prefix=settings.API_V1_PREFIX, tags=["Threats"])
 app.include_router(shadow_ai.router, prefix=settings.API_V1_PREFIX, tags=["Shadow AI"])
+app.include_router(mcp_catalog.router, prefix=settings.API_V1_PREFIX, tags=["MCP Catalog"])
+app.include_router(extension_config.router, prefix=settings.API_V1_PREFIX, tags=["Extension"])
 if settings.META_ADMIN_ENABLED:
     app.include_router(meta_admin_router.router, prefix=settings.API_V1_PREFIX, tags=["Meta Admin"])
 

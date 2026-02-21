@@ -3,6 +3,7 @@
  *
  * Intercepts extension calls (Search, Workspace, Maps, YouTube),
  * code execution, and file analysis.
+ * Uses shared.js for evaluation, overlays, and clipboard monitoring.
  */
 
 (function () {
@@ -11,114 +12,12 @@
   const SOURCE = "gemini";
   let enabled = true;
 
-  chrome.storage.local.get(["gemini_enabled"], (result) => {
+  chrome.storage.local.get(["gemini_enabled", "synced_blocked_services"], (result) => {
     enabled = result.gemini_enabled !== false;
+    if ((result.synced_blocked_services || []).includes(SOURCE)) enabled = false;
   });
 
-  // Selector helper with fallback chains for robustness
-  function $(selectors, root = document) {
-    for (const sel of selectors) {
-      try { const el = root.querySelector(sel); if (el) return el; } catch (e) { /* skip */ }
-    }
-    return null;
-  }
-
-  function showDenyOverlay(element, toolName, reason, ruleName) {
-    const overlay = document.createElement("div");
-    overlay.className = "snapper-inline-deny";
-    overlay.innerHTML = `
-      <div class="snapper-inline-header">
-        <span class="snapper-icon">&#128721;</span>
-        <strong>Blocked by Snapper</strong>
-      </div>
-      <div class="snapper-inline-details">
-        <div>Tool: <code>${toolName}</code></div>
-        <div>Rule: ${ruleName || "Security Policy"}</div>
-        <div>Reason: ${reason}</div>
-      </div>
-    `;
-    element.style.position = "relative";
-    element.appendChild(overlay);
-  }
-
-  function showApprovalBanner(element, toolName, approvalId) {
-    const banner = document.createElement("div");
-    banner.className = "snapper-inline-approval";
-    banner.id = `snapper-approval-${approvalId}`;
-    banner.innerHTML = `
-      <div class="snapper-inline-header">
-        <span class="snapper-icon snapper-pulse">&#9203;</span>
-        <strong>Waiting for Approval</strong>
-      </div>
-      <div class="snapper-inline-details">
-        <div>Tool: <code>${toolName}</code></div>
-        <div>Request: ${approvalId.substring(0, 8)}...</div>
-        <div class="snapper-approval-note">Check Telegram or Snapper dashboard.</div>
-      </div>
-    `;
-    element.style.position = "relative";
-    element.appendChild(banner);
-    return banner;
-  }
-
-  async function evaluateToolCall(toolName, toolInput, requestType) {
-    if (!enabled) return { decision: "allow", reason: "Extension disabled" };
-
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage(
-        { type: "evaluate", toolName, toolInput, requestType, source: SOURCE },
-        resolve
-      );
-    });
-  }
-
-  async function pollApproval(approvalId) {
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage(
-        { type: "poll_approval", approvalId, timeout: 300000 },
-        resolve
-      );
-    });
-  }
-
-  async function handleToolCall(element, toolName, toolInput, requestType) {
-    const result = await evaluateToolCall(toolName, toolInput, requestType);
-
-    if (result.decision === "allow") return;
-
-    if (result.decision === "deny") {
-      showDenyOverlay(element, toolName, result.reason, result.matched_rule_name);
-      return;
-    }
-
-    if (result.decision === "require_approval") {
-      const approvalId = result.approval_request_id;
-      if (!approvalId) {
-        showDenyOverlay(element, toolName, "Approval required but no ID", null);
-        return;
-      }
-
-      const banner = showApprovalBanner(element, toolName, approvalId);
-      const approvalResult = await pollApproval(approvalId);
-      banner.remove();
-
-      if (approvalResult.decision !== "allow") {
-        showDenyOverlay(element, toolName, approvalResult.reason || "Denied", null);
-      }
-    }
-  }
-
   // ---- DOM Observation ----
-
-  // Gemini extension name mapping
-  const EXTENSION_TOOLS = {
-    "google_search": "tool",
-    "google_maps": "tool",
-    "youtube": "tool",
-    "google_flights": "tool",
-    "google_hotels": "tool",
-    "workspace": "tool",
-  };
 
   const observer = new MutationObserver((mutations) => {
     if (!enabled) return;
@@ -139,7 +38,9 @@
             block.querySelector(".extension-name")?.textContent ||
             "extension";
 
-          handleToolCall(block, extName, {}, "tool");
+          if (typeof window.snapperHandleToolCall === "function") {
+            window.snapperHandleToolCall(block, extName, {}, "tool", SOURCE);
+          }
         }
 
         // Detect code execution blocks
@@ -151,7 +52,9 @@
           block.dataset.snapperChecked = "true";
 
           const code = block.querySelector("code, pre")?.textContent || "";
-          handleToolCall(block, "code_execution", { code: code.substring(0, 1000) }, "command");
+          if (typeof window.snapperHandleToolCall === "function") {
+            window.snapperHandleToolCall(block, "code_execution", { code: code.substring(0, 1000) }, "command", SOURCE);
+          }
         }
 
         // Detect file analysis
@@ -163,7 +66,9 @@
           block.dataset.snapperChecked = "true";
 
           const fileName = block.textContent?.trim() || "unknown";
-          handleToolCall(block, "file_analysis", { file: fileName }, "file_access");
+          if (typeof window.snapperHandleToolCall === "function") {
+            window.snapperHandleToolCall(block, "file_analysis", { file: fileName }, "file_access", SOURCE);
+          }
         }
       }
     }
@@ -184,7 +89,9 @@
 
       if (editor && sendButton && !editor.dataset.snapperPii) {
         editor.dataset.snapperPii = "true";
-        attachPIIScanner(editor, sendButton);
+        if (typeof attachPIIScanner === "function") {
+          attachPIIScanner(editor, sendButton);
+        }
       }
     });
 
@@ -195,6 +102,10 @@
     document.addEventListener("DOMContentLoaded", setupPIIScanning);
   } else {
     setupPIIScanning();
+  }
+
+  if (typeof window.snapperSetupClipboardMonitoring === "function") {
+    window.snapperSetupClipboardMonitoring();
   }
 
   console.log("[Snapper] Gemini content script loaded");

@@ -169,6 +169,14 @@ class Settings(BaseSettings):
     SHADOW_AI_SCAN_INTERVAL_SECONDS: int = 300    # 5min scan interval
     SHADOW_AI_KNOWN_AI_DOMAINS: str = ""          # Comma-separated extra domains
 
+    # MCP Catalog enrichment
+    PULSEMCP_API_KEY: Optional[str] = None         # PulseMCP API key for rich tool data
+    PULSEMCP_TENANT_ID: Optional[str] = None       # PulseMCP tenant ID
+    GLAMA_CATALOG_ENABLED: bool = True             # Enable Glama breadth catalog
+
+    # Extension config sync
+    EXTENSION_SYNC_INTERVAL_SECONDS: int = 3600    # Default sync interval for browser extension
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

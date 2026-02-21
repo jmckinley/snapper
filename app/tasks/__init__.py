@@ -27,7 +27,7 @@ celery_app.conf.update(
 )
 
 # Import task modules to register them
-from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review, shadow_ai_scan, mcp_catalog_sync  # noqa
+from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review, shadow_ai_scan, mcp_catalog_sync, extension_config_refresh  # noqa
 
 # Configure periodic tasks (Celery Beat)
 celery_app.conf.beat_schedule = {
@@ -102,6 +102,12 @@ celery_app.conf.beat_schedule = {
     # MCP server catalog sync (daily)
     "mcp-catalog-sync": {
         "task": "mcp-catalog-sync",
+        "schedule": 86400,  # 24 hours
+        "options": {"time_limit": 300},
+    },
+    # Extension config bundle pre-compute (daily)
+    "extension-config-refresh": {
+        "task": "extension-config-refresh",
         "schedule": 86400,  # 24 hours
         "options": {"time_limit": 120},
     },

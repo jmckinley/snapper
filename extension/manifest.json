@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Snapper AI Firewall",
-  "version": "0.1.0",
-  "description": "Enforce security policy on AI chat interactions — ChatGPT, Claude, Gemini, Copilot, and Grok.",
+  "version": "0.2.0",
+  "description": "Enforce security policy on AI chat interactions — 70+ AI services with tool detection, PII scanning, and shadow AI tracking.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "webNavigation",
+    "clipboardRead",
+    "alarms"
   ],
   "host_permissions": [
     "*://chatgpt.com/*",
@@ -13,7 +16,11 @@
     "*://claude.ai/*",
     "*://gemini.google.com/*",
     "*://copilot.microsoft.com/*",
-    "*://grok.com/*"
+    "*://grok.com/*",
+    "*://chat.deepseek.com/*",
+    "*://perplexity.ai/*",
+    "*://www.perplexity.ai/*",
+    "*://github.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -21,31 +28,76 @@
   "content_scripts": [
     {
       "matches": ["*://chatgpt.com/*", "*://chat.openai.com/*"],
-      "js": ["content/pii-scanner.js", "content/chatgpt.js"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/chatgpt.js"],
       "css": ["styles/overlay.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["*://claude.ai/*"],
-      "js": ["content/pii-scanner.js", "content/claude.js"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/claude.js"],
       "css": ["styles/overlay.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["*://gemini.google.com/*"],
-      "js": ["content/pii-scanner.js", "content/gemini.js"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/gemini.js"],
       "css": ["styles/overlay.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["*://copilot.microsoft.com/*"],
-      "js": ["content/pii-scanner.js", "content/copilot.js"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/copilot.js"],
       "css": ["styles/overlay.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["*://grok.com/*"],
-      "js": ["content/pii-scanner.js", "content/grok.js"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/grok.js"],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://chat.deepseek.com/*"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/deepseek.js"],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://perplexity.ai/*", "*://www.perplexity.ai/*"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/perplexity.js"],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://github.com/copilot*"],
+      "js": ["content/pii-scanner.js", "content/shared.js", "content/github-copilot.js"],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://chat.mistral.ai/*",
+        "*://poe.com/*",
+        "*://meta.ai/*", "*://www.meta.ai/*",
+        "*://huggingface.co/chat*",
+        "*://cursor.com/*", "*://www.cursor.com/*",
+        "*://replit.com/*",
+        "*://v0.dev/*",
+        "*://bolt.new/*",
+        "*://lovable.dev/*",
+        "*://app.jasper.ai/*",
+        "*://app.copy.ai/*",
+        "*://app.writesonic.com/*",
+        "*://notion.so/*", "*://www.notion.so/*",
+        "*://app.writer.com/*",
+        "*://midjourney.com/*", "*://www.midjourney.com/*",
+        "*://app.leonardo.ai/*",
+        "*://ideogram.ai/*",
+        "*://app.runwayml.com/*",
+        "*://sora.com/*",
+        "*://app.grammarly.com/*"
+      ],
+      "js": ["content/pii-scanner.js", "content/shared.js", "data/service-registry.js", "content/generic-ai.js"],
       "css": ["styles/overlay.css"],
       "run_at": "document_idle"
     }
@@ -93,6 +145,18 @@
           "type": "string",
           "enum": ["warn", "block"],
           "description": "PII action: warn (allow bypass) or block (no bypass)"
+        },
+        "clipboard_monitoring": {
+          "type": "boolean",
+          "description": "Enable clipboard/paste PII monitoring"
+        },
+        "shadow_ai_tracking": {
+          "type": "boolean",
+          "description": "Enable shadow AI visit tracking"
+        },
+        "blocked_services": {
+          "type": "array",
+          "description": "List of service source IDs to block entirely"
         }
       }
     }

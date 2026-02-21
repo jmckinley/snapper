@@ -11,7 +11,7 @@
       color: #374151;
       background: #f9fafb;
       padding: 24px;
-      max-width: 600px;
+      max-width: 640px;
       margin: 0 auto;
     }
 
@@ -91,7 +91,10 @@
       align-items: center;
       justify-content: space-between;
       padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
     }
+
+    .toggle-row:last-child { border-bottom: none; }
 
     .toggle-label {
       font-size: 14px;
@@ -106,6 +109,7 @@
       position: relative;
       width: 44px;
       height: 24px;
+      flex-shrink: 0;
     }
 
     .toggle input {
@@ -184,14 +188,85 @@
       font-size: 14px;
       opacity: 0;
       transition: opacity 0.3s;
+      z-index: 1000;
     }
 
     .toast.show { opacity: 1; }
+
+    /* Category tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 6px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      background: white;
+    }
+
+    .tab.active {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    .tab:hover:not(.active) { background: #f3f4f6; }
+
+    /* Service item with risk badge */
+    .service-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .service-row:last-child { border-bottom: none; }
+
+    .service-info {
+      flex: 1;
+    }
+
+    .service-name {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .service-domain {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+      text-transform: uppercase;
+    }
+
+    .badge-tier1 { background: #dbeafe; color: #1d4ed8; }
+    .badge-tier2 { background: #fef3c7; color: #92400e; }
+    .badge-tier3 { background: #f3f4f6; color: #6b7280; }
+    .badge-high { background: #fee2e2; color: #991b1b; }
+    .badge-medium { background: #fef3c7; color: #92400e; }
+    .badge-low { background: #d1fae5; color: #065f46; }
+
+    #services-list { max-height: 300px; overflow-y: auto; }
   </style>
 </head>
 <body>
   <h1>Snapper AI Firewall</h1>
-  <p class="subtitle">Configure your connection to the Snapper server.</p>
+  <p class="subtitle">Configure your connection and monitored AI services.</p>
 
   <div id="managed-notice" class="managed-notice" style="display: none;">
     Settings are managed by your organization's IT administrator. Contact them for changes.
@@ -250,56 +325,16 @@
   </div>
 
   <div class="section">
-    <h2>Sites</h2>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">ChatGPT</div>
-        <div class="toggle-desc">chatgpt.com / chat.openai.com</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="chatgpt_enabled" checked>
-        <span class="toggle-slider"></span>
-      </label>
+    <h2>AI Services</h2>
+    <div class="tabs" id="service-tabs">
+      <div class="tab active" data-category="all">All</div>
+      <div class="tab" data-category="chat">Chat</div>
+      <div class="tab" data-category="coding">Coding</div>
+      <div class="tab" data-category="writing">Writing</div>
+      <div class="tab" data-category="image">Image/Video</div>
     </div>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">Claude</div>
-        <div class="toggle-desc">claude.ai</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="claude_enabled" checked>
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">Gemini</div>
-        <div class="toggle-desc">gemini.google.com</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="gemini_enabled" checked>
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">Copilot</div>
-        <div class="toggle-desc">copilot.microsoft.com</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="copilot_enabled" checked>
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">Grok</div>
-        <div class="toggle-desc">grok.com</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="grok_enabled" checked>
-        <span class="toggle-slider"></span>
-      </label>
+    <div id="services-list">
+      <!-- Dynamically generated from SERVICE_REGISTRY -->
     </div>
   </div>
 
@@ -324,6 +359,57 @@
     </div>
   </div>
 
+  <div class="section">
+    <h2>Privacy</h2>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Clipboard monitoring</div>
+        <div class="toggle-desc">Scan pasted text for PII before it reaches AI services</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="clipboard_monitoring" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Shadow AI tracking</div>
+        <div class="toggle-desc">Report visits to AI services for enterprise visibility</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="shadow_ai_tracking" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Config Sync</h2>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Auto-sync configuration</div>
+        <div class="toggle-desc">Periodically fetch updated service registry and settings from Snapper</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="config_auto_sync" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="field" style="margin-top: 12px;">
+      <label>Sync Interval</label>
+      <select id="sync_interval_minutes">
+        <option value="15">Every 15 minutes</option>
+        <option value="60" selected>Every hour</option>
+        <option value="360">Every 6 hours</option>
+        <option value="0">Manual only</option>
+      </select>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+      <button class="btn btn-secondary" id="sync-now-btn">Sync Now</button>
+      <span id="sync-status" style="font-size: 12px; color: #6b7280;"></span>
+    </div>
+  </div>
+
   <div class="actions">
     <button class="btn btn-secondary" id="test-btn">Test Connection</button>
     <button class="btn btn-primary" id="save-btn">Save</button>
@@ -331,6 +417,7 @@
 
   <div id="toast" class="toast"></div>
 
+  <script src="../data/service-registry.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

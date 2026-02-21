@@ -338,6 +338,204 @@ function updateBadge(lastDecision) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Tier 3: Visit-Only Tracking (webNavigation)
+// ---------------------------------------------------------------------------
+
+// Domain deduplication: one report per domain per hour
+const visitCache = new Map();
+const VISIT_DEDUP_MS = 60 * 60 * 1000; // 1 hour
+
+// Tier 3 domains to track via webNavigation
+const TIER3_DOMAINS = [
+  "together.xyz", "coral.cohere.com", "dashboard.cohere.com",
+  "console.anyscale.com", "fireworks.ai", "console.groq.com", "groq.com",
+  "openrouter.ai", "replicate.com", "platform.stability.ai",
+  "app.photoroom.com", "canva.com", "firefly.adobe.com",
+  "descript.com", "app.descript.com", "otter.ai", "coda.io",
+  "tome.app", "gamma.app", "www.beautiful.ai",
+  "app.tabnine.com", "codeium.com", "sourcegraph.com",
+  "windsurf.com", "phind.com", "www.phind.com",
+  "you.com", "pi.ai", "character.ai", "beta.character.ai",
+  "inflection.ai",
+];
+
+/**
+ * Report an AI service visit to Snapper for shadow AI tracking.
+ */
+async function reportVisit(hostname, url, source) {
+  const config = await getConfig();
+  if (!config.snapperUrl) return;
+
+  // Dedup check
+  const cacheKey = `${source}:${hostname}`;
+  const lastVisit = visitCache.get(cacheKey);
+  if (lastVisit && Date.now() - lastVisit < VISIT_DEDUP_MS) return;
+  visitCache.set(cacheKey, Date.now());
+
+  try {
+    const headers = await buildHeaders(config);
+    await fetch(`${config.snapperUrl}/api/v1/shadow-ai/report`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        detections: [{
+          detection_type: "browser_visit",
+          destination: hostname,
+          host_identifier: config.agentId || "browser-extension",
+          details: { url, source, detected_by: "snapper-extension" },
+        }],
+      }),
+    });
+  } catch (e) {
+    // Non-critical — just log
+    console.debug("[Snapper] Visit report failed:", e.message);
+  }
+}
+
+// Setup webNavigation listener for Tier 3 domains
+try {
+  chrome.webNavigation.onCompleted.addListener(
+    (details) => {
+      if (details.frameId !== 0) return; // Main frame only
+      try {
+        const url = new URL(details.url);
+        const hostname = url.hostname.replace("www.", "");
+
+        chrome.storage.local.get(["shadow_ai_tracking"], (settings) => {
+          if (settings.shadow_ai_tracking === false) return;
+          reportVisit(hostname, details.url, "tier3_visit");
+        });
+      } catch (e) { /* invalid URL */ }
+    },
+    { url: TIER3_DOMAINS.map((d) => ({ hostContains: d })) }
+  );
+} catch (e) {
+  // webNavigation permission might not be granted yet
+  console.debug("[Snapper] webNavigation not available:", e.message);
+}
+
+
+// ---------------------------------------------------------------------------
+// Config Sync ("Phone Home")
+// ---------------------------------------------------------------------------
+
+const SYNC_ALARM_NAME = "snapper_config_sync";
+
+/**
+ * Fetch latest config bundle from the Snapper server.
+ * Best-effort: failures are logged but never disrupt browsing.
+ */
+async function syncConfig() {
+  const config = await getConfig();
+  if (!config.snapperUrl) return;
+
+  // Check if auto-sync is disabled
+  const prefs = await chrome.storage.local.get(["config_auto_sync"]);
+  if (prefs.config_auto_sync === false) return;
+
+  try {
+    const headers = await buildHeaders(config);
+
+    // Send stored ETag for conditional request
+    const stored = await chrome.storage.local.get(["synced_config_etag"]);
+    if (stored.synced_config_etag) {
+      headers["If-None-Match"] = `"${stored.synced_config_etag}"`;
+    }
+
+    const response = await fetch(`${config.snapperUrl}/api/v1/extension/config`, {
+      headers,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.status === 304) {
+      // Config unchanged — just update timestamp
+      await chrome.storage.local.set({
+        config_last_sync: Date.now(),
+        config_sync_status: "current",
+      });
+      console.debug("[Snapper] Config sync: 304 Not Modified");
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const bundle = await response.json();
+    const etag = (response.headers.get("etag") || "").replace(/"/g, "");
+
+    // Store synced config fields
+    await chrome.storage.local.set({
+      synced_service_registry: bundle.service_registry || [],
+      synced_blocked_services: bundle.blocked_services || [],
+      synced_feature_flags: bundle.feature_flags || {},
+      synced_visit_domains: bundle.visit_domains || [],
+      synced_config_version: bundle.config_version || "",
+      synced_config_etag: etag,
+      config_last_sync: Date.now(),
+      config_sync_status: "current",
+    });
+
+    // Update sync interval if server specifies one
+    if (bundle.sync_interval_seconds) {
+      const intervalMinutes = Math.max(1, Math.round(bundle.sync_interval_seconds / 60));
+      await chrome.storage.local.set({ sync_interval_minutes: intervalMinutes });
+    }
+
+    console.debug("[Snapper] Config synced:", bundle.config_version);
+  } catch (error) {
+    console.debug("[Snapper] Config sync failed:", error.message);
+    await chrome.storage.local.set({
+      config_sync_status: "error",
+      config_sync_error: error.message,
+    });
+  }
+}
+
+/**
+ * Setup the periodic sync alarm.
+ */
+async function setupSyncAlarm() {
+  const prefs = await chrome.storage.local.get([
+    "config_auto_sync",
+    "sync_interval_minutes",
+  ]);
+
+  if (prefs.config_auto_sync === false) {
+    chrome.alarms.clear(SYNC_ALARM_NAME);
+    return;
+  }
+
+  const intervalMinutes = prefs.sync_interval_minutes || 60;
+
+  // 0 means manual-only
+  if (intervalMinutes === 0) {
+    chrome.alarms.clear(SYNC_ALARM_NAME);
+    return;
+  }
+
+  chrome.alarms.create(SYNC_ALARM_NAME, {
+    delayInMinutes: 1,         // First sync 1 min after startup
+    periodInMinutes: intervalMinutes,
+  });
+}
+
+// Alarm listener
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === SYNC_ALARM_NAME) {
+    syncConfig();
+  }
+});
+
+// Setup alarm on service worker startup
+setupSyncAlarm();
+
+
+// ---------------------------------------------------------------------------
+// Message Listener
+// ---------------------------------------------------------------------------
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "evaluate") {
@@ -383,6 +581,71 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   }
+
+  // Visit report from Tier 2 content scripts
+  if (message.type === "report_visit") {
+    reportVisit(message.hostname, message.url, message.source);
+    return false;
+  }
+
+  // Paste event report from content scripts
+  if (message.type === "report_paste") {
+    trackDecision(
+      "clipboard_paste",
+      "info",
+      `PII detected in paste: ${(message.findings || []).join(", ")}`,
+      message.source
+    );
+    return false;
+  }
+
+  // Trigger immediate config sync
+  if (message.type === "sync_config_now") {
+    syncConfig().then(() => {
+      chrome.storage.local.get(
+        ["config_last_sync", "config_sync_status", "config_sync_error"],
+        sendResponse
+      );
+    });
+    return true;
+  }
+
+  // Get config sync status
+  if (message.type === "get_sync_status") {
+    chrome.storage.local.get(
+      [
+        "config_last_sync",
+        "config_sync_status",
+        "config_sync_error",
+        "synced_config_version",
+        "synced_service_registry",
+        "synced_blocked_services",
+      ],
+      (data) => {
+        sendResponse({
+          lastSync: data.config_last_sync || null,
+          status: data.config_sync_status || "never",
+          error: data.config_sync_error || null,
+          configVersion: data.synced_config_version || null,
+          serviceCount: (data.synced_service_registry || []).length,
+          blockedCount: (data.synced_blocked_services || []).length,
+        });
+      }
+    );
+    return true;
+  }
+
+  // Get visit tracking data for popup
+  if (message.type === "get_visit_stats") {
+    const stats = {};
+    for (const [key, time] of visitCache.entries()) {
+      const [source] = key.split(":");
+      if (!stats[source]) stats[source] = 0;
+      stats[source]++;
+    }
+    sendResponse(stats);
+    return false;
+  }
 });
 
 // Clean expired cache entries periodically
@@ -391,6 +654,12 @@ setInterval(() => {
   for (const [key, value] of allowCache.entries()) {
     if (now - value.time > CACHE_TTL_MS) {
       allowCache.delete(key);
+    }
+  }
+  // Clean old visit cache entries
+  for (const [key, time] of visitCache.entries()) {
+    if (now - time > VISIT_DEDUP_MS) {
+      visitCache.delete(key);
     }
   }
 }, 60000);

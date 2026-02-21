@@ -99,6 +99,56 @@ document.addEventListener("DOMContentLoaded", async () => {
       .join("");
   }
 
+  // Show config sync status
+  try {
+    const syncData = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "get_sync_status" }, resolve);
+    });
+
+    if (syncData && syncData.lastSync) {
+      const syncBar = document.getElementById("sync-bar");
+      const syncText = document.getElementById("sync-status-text");
+      syncBar.style.display = "flex";
+
+      const ago = formatTimeAgo(syncData.lastSync);
+      if (syncData.status === "error") {
+        syncText.textContent = `Config sync failed ${ago}`;
+        syncText.style.color = "#ef4444";
+      } else {
+        syncText.textContent = `Config synced ${ago}`;
+        syncText.style.color = "#22c55e";
+      }
+    }
+  } catch (e) {
+    // Sync status not available
+  }
+
+  // Load visit tracking data
+  try {
+    const visitStats = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "get_visit_stats" }, resolve);
+    });
+
+    if (visitStats && Object.keys(visitStats).length > 0) {
+      const visitsSection = document.getElementById("visits-section");
+      const visitsList = document.getElementById("visits-list");
+      visitsSection.style.display = "block";
+
+      visitsList.innerHTML = Object.entries(visitStats)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([source, count]) => `
+          <div class="decision-item">
+            <span class="decision-tool">${source.replace(/_/g, " ")}</span>
+            <span class="decision-time">${count} visit${count > 1 ? "s" : ""}</span>
+          </div>
+        `)
+        .join("");
+    }
+  } catch (e) {
+    // Visit stats not available
+  }
+
   // Settings link
   document.getElementById("settings-link").addEventListener("click", (e) => {
     e.preventDefault();
