@@ -474,12 +474,15 @@ async def discover_traffic(
 # Rule generation from discovered traffic
 # ---------------------------------------------------------------------------
 
-def generate_rules_for_server(server_name: str) -> list[dict]:
+async def generate_rules_for_server(server_name: str, db=None) -> list[dict]:
     """Generate rules for an MCP server.
 
-    For known servers with a curated rule pack, returns the full curated rules.
-    For unknown servers, generates three generic defaults:
-      allow reads, approve writes, deny destructive.
+    Priority order:
+      1. Curated rule packs in KNOWN_MCP_SERVERS + rule_packs.py (unchanged)
+      2. Catalog-based tailored rules (uses actual tool names from catalog)
+      3. Generic 3-rule fallback (verb-guessing)
+
+    The db parameter enables catalog lookup. If None, skips step 2.
     """
     if not server_name or not server_name.strip():
         raise ValueError("server_name must not be empty")
@@ -488,7 +491,7 @@ def generate_rules_for_server(server_name: str) -> list[dict]:
     info = KNOWN_MCP_SERVERS.get(sn, {})
     display = info.get("display", _titleize(sn))
 
-    # Check if a curated rule pack exists for this server
+    # 1. Check if a curated rule pack exists for this server
     template_id = info.get("template_id")
     if template_id:
         from app.data.rule_packs import get_rule_pack
@@ -496,7 +499,17 @@ def generate_rules_for_server(server_name: str) -> list[dict]:
         if pack and pack.get("rules"):
             return pack["rules"]
 
-    # Fallback: generate generic 3 rules
+    # 2. Try catalog-based tailored rules (actual tool names)
+    if db is not None:
+        try:
+            from app.services.catalog_rule_generator import generate_rules_from_catalog
+            catalog_rules = await generate_rules_from_catalog(db, server_name)
+            if catalog_rules:
+                return catalog_rules
+        except Exception as e:
+            logger.debug(f"Catalog rule generation failed for {server_name}: {e}")
+
+    # 3. Fallback: generate generic 3 rules
     read_verbs = "read|get|list|search|query|describe|fetch|view|find|show|status|info|count"
     write_verbs = "create|update|write|send|post|set|put|add|edit|modify|upsert|insert|comment|reply|push|commit|upload|move|rename|append"
     delete_verbs = "delete|drop|destroy|remove|purge|truncate|kill|force|archive|ban|kick"

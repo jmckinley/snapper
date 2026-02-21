@@ -189,17 +189,25 @@ async def create_rules_for_server(
     if not request.server_name.strip():
         raise HTTPException(status_code=400, detail="server_name must not be empty")
 
-    rule_defs = generate_rules_for_server(request.server_name)
+    rule_defs = await generate_rules_for_server(request.server_name, db=db)
 
-    # Determine source based on whether curated pack was used
+    # Determine source based on whether curated or catalog pack was used
     sn = request.server_name.strip().lower().replace("-", "_")
     info = KNOWN_MCP_SERVERS.get(sn, {})
     template_id = info.get("template_id")
     pack = get_rule_pack(template_id) if template_id else None
     is_curated = pack is not None and pack.get("rules")
+    is_catalog = any("(catalog)" in r.get("name", "") for r in rule_defs)
 
-    source = "rule_pack" if is_curated else "traffic_discovery"
-    source_ref = template_id if is_curated else f"mcp_server:{request.server_name}"
+    if is_curated:
+        source = "rule_pack"
+        source_ref = template_id
+    elif is_catalog:
+        source = "catalog"
+        source_ref = f"catalog:{request.server_name}"
+    else:
+        source = "traffic_discovery"
+        source_ref = f"mcp_server:{request.server_name}"
 
     created = []
     for rule_def in rule_defs:
@@ -272,7 +280,7 @@ async def get_active_packs(
     query = select(Rule).where(
         Rule.is_active == True,
         Rule.is_deleted == False,
-        Rule.source.in_(["rule_pack", "traffic_discovery"]),
+        Rule.source.in_(["rule_pack", "traffic_discovery", "catalog"]),
     )
     if agent_id:
         query = query.where(
@@ -298,8 +306,13 @@ async def get_active_packs(
                 if pack:
                     display_name = pack["name"]
                     icon = pack["icon"]
-            elif rule.source == "traffic_discovery" and ref.startswith("mcp_server:"):
-                server_name = ref.replace("mcp_server:", "")
+            elif rule.source in ("traffic_discovery", "catalog"):
+                if ref.startswith("catalog:"):
+                    server_name = ref.replace("catalog:", "")
+                elif ref.startswith("mcp_server:"):
+                    server_name = ref.replace("mcp_server:", "")
+                else:
+                    server_name = ref
                 sn = server_name.lower().replace("-", "_")
                 info = KNOWN_MCP_SERVERS.get(sn, {})
                 display_name = info.get("display", server_name.replace("_", " ").title())
@@ -341,16 +354,16 @@ async def disable_server_rules(
     sn = request.server_name.strip()
 
     # Build source_reference candidates
-    # Could be a pack_id directly, or mcp_server:<name>
-    refs = [sn, f"mcp_server:{sn}"]
+    # Could be a pack_id directly, mcp_server:<name>, or catalog:<name>
+    refs = [sn, f"mcp_server:{sn}", f"catalog:{sn}"]
     # Also try normalized form
     sn_normalized = sn.lower().replace("-", "_")
     if sn_normalized != sn:
-        refs.extend([sn_normalized, f"mcp_server:{sn_normalized}"])
+        refs.extend([sn_normalized, f"mcp_server:{sn_normalized}", f"catalog:{sn_normalized}"])
 
     query = select(Rule).where(
         Rule.is_deleted == False,
-        Rule.source.in_(["rule_pack", "traffic_discovery"]),
+        Rule.source.in_(["rule_pack", "traffic_discovery", "catalog"]),
         Rule.source_reference.in_(refs),
     )
     if request.agent_id:

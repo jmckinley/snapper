@@ -19,13 +19,17 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-@celery_app.task(name="mcp-catalog-sync", bind=True, max_retries=0, time_limit=120)
-def sync_mcp_catalog(self):
-    """Sync MCP server catalog from public registries."""
-    return _run_async(_sync_async())
+@celery_app.task(name="mcp-catalog-sync", bind=True, max_retries=0, time_limit=300)
+def sync_mcp_catalog(self, force_full: bool = False):
+    """Sync MCP server catalog from public registries.
+
+    Args:
+        force_full: If True, skip incremental sync and re-fetch everything.
+    """
+    return _run_async(_sync_async(force_full=force_full))
 
 
-async def _sync_async():
+async def _sync_async(force_full: bool = False):
     from app.database import engine, get_db_context
     from app.services.mcp_catalog import sync_catalog
 
@@ -33,6 +37,6 @@ async def _sync_async():
     await engine.dispose()
 
     async with get_db_context() as db:
-        result = await sync_catalog(db)
+        result = await sync_catalog(db, force_full=force_full)
 
     return result
