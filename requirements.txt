@@ -54,7 +54,7 @@ structlog>=24.1.0
 prometheus-client>=0.20.0
 
 # ML (BGE classifier for MCP server categorization)
-sentence-transformers>=2.2.0
+# sentence-transformers>=2.2.0  # Optional: ~4GB with PyTorch+CUDA. Install manually for tier-3 classification.
 
 # SSO / OIDC
 python3-saml>=1.16.0
