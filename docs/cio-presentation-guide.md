@@ -94,19 +94,19 @@
 
 **What to say:** Snapper creates a new security checkpoint between an AI agent's decision and its execution. Every time an agent wants to do something (run a command, access a file, make a network call), Snapper inspects it first. Three key capabilities:
 
-1. **Auto-Discovery** — Snapper watches traffic and automatically identifies which AI tools and agents are running, even ones IT didn't know about. It recognizes 40+ popular AI server types out of the box.
+1. **Auto-Discovery** — Snapper watches traffic and automatically identifies which AI tools and agents are running, even ones IT didn't know about. It maintains a catalog of 27,000+ MCP servers and auto-classifies each into one of 13 security categories (like data_store, shell_exec, payment_finance) with tailored rule templates.
 
 2. **Three interception methods** — It can inspect CLI agents, API-based agents, and web-based AI chats (through a browser extension).
 
 3. **16 rule types** — Different security checks for different threats: blocking dangerous commands, protecting PII, rate limiting, time restrictions, and more. All evaluated in under 50 milliseconds — the user doesn't even notice the delay.
 
-**Stats to highlight:** 16 rule types, under 50ms latency, 1,100+ automated tests, supports 6 native agent frameworks.
+**Stats to highlight:** 16 rule types, under 50ms latency, 2,000+ automated tests (1,500+ unit, 168 Playwright), supports 6 native agent frameworks.
 
 > **Term: CLI (Command-Line Interface)** — A text-based way to interact with a computer by typing commands. Developer tools like Claude Code, Cursor, and OpenClaw run in the CLI. These are the most common AI coding agents.
 >
 > **Term: API (Application Programming Interface)** — A way for software programs to talk to each other. When a company builds an AI-powered app, it makes API calls to services like OpenAI or Anthropic. Snapper can inspect these calls.
 >
-> **Term: MCP (Model Context Protocol)** — A standard developed by Anthropic that lets AI agents connect to external tools and services (databases, file systems, web browsers, etc.) through a common interface. Think of MCP as a universal adapter — one standard that works with many tools. Snapper can automatically detect which MCP servers are in use and create security rules for them.
+> **Term: MCP (Model Context Protocol)** — A standard developed by Anthropic that lets AI agents connect to external tools and services (databases, file systems, web browsers, etc.) through a common interface. Think of MCP as a universal adapter — one standard that works with many tools. Snapper maintains a catalog of 27,000+ MCP servers and auto-classifies each into one of 13 security categories using a 3-tier engine (name pattern matching, description keyword scoring, and AI embeddings). Each category has a tailored rule template — for example, "payment_finance" requires approval for ALL operations, while "monitoring" allows reads freely.
 >
 > **Term: PII (Personally Identifiable Information)** — Data that can identify a specific person: Social Security numbers, credit card numbers, email addresses, phone numbers, medical records. Protecting PII is required by laws like GDPR, HIPAA, and PCI DSS.
 >
@@ -230,7 +230,7 @@ Additionally, Snapper scans every agent action for 30+ patterns that look like P
 
 3. **Browser Extension — Snapper Guard** (5 platforms) — Employees paste sensitive data into web-based AI chats (ChatGPT, Claude.ai, Gemini, Microsoft Copilot, Grok). Snapper Guard is a browser extension that catches PII before it leaves the browser. This is a huge deal — no network tool, firewall, or DLP can see this traffic because it happens inside the browser.
 
-**Plus: Traffic Discovery** — Snapper watches audit logs and automatically identifies which AI servers and tools are in use. It recognizes 40+ known server types (GitHub, Slack, databases, etc.) and can create tailored security rules with one click.
+**Plus: Traffic Discovery** — Snapper watches audit logs and automatically identifies which AI servers and tools are in use. It maintains a catalog of 27,000+ MCP servers, auto-classified into 13 security categories, and can create tailored security rules with one click.
 
 **Key talking point:** "The browser extension is critical because it closes the 'shadow AI' gap. No network tool can see what someone pastes into a ChatGPT window."
 
@@ -410,7 +410,7 @@ With Snapper: breaches are prevented at the decision layer (before data is expos
 
 **The key calculation:** "If Snapper prevents even a single security incident, it pays for itself in less than a week."
 
-**For investors:** The 1,100+ automated tests and 99.9% enterprise SLA demonstrate production-grade quality.
+**For investors:** The 2,000+ automated tests (1,500+ unit, 168 Playwright) and 99.9% enterprise SLA demonstrate production-grade quality.
 
 > **Term: SLA (Service Level Agreement)** — A contractual guarantee of uptime and performance. "99.9% SLA" means Snapper guarantees to be available 99.9% of the time — that's less than 8.8 hours of downtime per year. Enterprise customers require SLAs to manage risk.
 >

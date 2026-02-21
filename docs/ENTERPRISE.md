@@ -479,6 +479,72 @@ if not verify_webhook(request.body, sig, WEBHOOK_SECRET):
 
 ---
 
+## MCP Server Catalog & Auto-Classification
+
+Snapper maintains a catalog of 27,000+ MCP servers synced daily from public registries (Glama, Smithery, PulseMCP, mcp.run, and the official MCP servers list). Each server is automatically classified into one of **13 security categories** using a 3-tier classification engine:
+
+1. **Tier 1 — Name pattern matching:** Compiled regex against server names (<1ms)
+2. **Tier 2 — Description keyword scoring:** High-confidence keywords score 3 points, medium 1 point, threshold of 3
+3. **Tier 3 — BGE embedding similarity:** BAAI/bge-small-en-v1.5 model (~5ms/server, runs as a Celery background task)
+
+### Security Categories
+
+| Category | Policy |
+|----------|--------|
+| `data_store` | Deny bulk export, deny drop/truncate, approve writes |
+| `code_repository` | Allow reads, approve commits/merges, deny force-push/delete-branch |
+| `filesystem` | Allow reads, approve writes, deny deletion, block sensitive paths |
+| `shell_exec` | Allowlist safe reads, deny rm/sudo/pipes |
+| `browser_automation` | Allow navigate/screenshot, approve form fills, PII gate |
+| `network_http` | Allow GET/search, approve POST, deny internal IPs |
+| `communication` | Allow reads, approve sends, deny admin/delete |
+| `cloud_infra` | Allow describe/list, approve create, deny terminate/delete |
+| `identity_auth` | Deny most, approve reads only |
+| `payment_finance` | Require approval for ALL, deny refunds/reversals |
+| `ai_model` | Allow queries, approve training, deny model deletion |
+| `monitoring` | Allow reads, approve config changes, deny data deletion |
+| `general` | Allow reads, approve writes, deny destructive (fallback) |
+
+When an agent first calls a tool from an unrecognized MCP server, Snapper auto-applies the category-based rule template (3-5 rules per category), deduplicates via Redis, and enforces a per-org cap of 200 auto-created rules.
+
+---
+
+## Bot Commands (Telegram & Slack)
+
+Snapper provides full bot integration for both Telegram and Slack, with feature parity between the two.
+
+### Slack Commands
+
+All Slack commands use the `/snapper-` prefix to avoid conflicts with other apps:
+
+| Command | Description |
+|---------|-------------|
+| `/snapper-status` | Check Snapper connection status |
+| `/snapper-rules` | View active security rules |
+| `/snapper-test run <cmd>` | Test if a command would be allowed |
+| `/snapper-pending` | List pending approval requests |
+| `/snapper-vault list\|add\|delete\|domains` | Manage encrypted PII vault entries |
+| `/snapper-trust` | View/reset/enable/disable agent trust scores |
+| `/snapper-block` | Emergency block ALL agent actions |
+| `/snapper-unblock` | Resume normal operation |
+| `/snapper-pii` | View/set PII gate mode (protected/auto) |
+| `/snapper-purge` | Clean up bot messages in channel |
+| `/snapper-help` | Show all available commands |
+| `/snapper-dashboard` | Open the Snapper web dashboard |
+
+### Telegram Commands
+
+Telegram bot uses the same command set without the `snapper-` prefix: `/rules`, `/test`, `/vault`, `/trust`, `/block`, `/unblock`, `/pii`, `/purge`, `/help`, `/start`.
+
+### Alert Routing
+
+Approval notifications are routed based on the agent's `owner_chat_id`:
+- Numeric ID (e.g., `123456`) -> Telegram DM with inline Approve/Deny buttons
+- `U` prefix (e.g., `U0ACYA78DSR`) -> Slack DM with action buttons
+- Org webhooks -> HTTP POST to configured URL
+
+---
+
 ## Multi-Tenant Architecture
 
 ### Organization Scoping

@@ -137,7 +137,7 @@ Snapper has 8 independent security layers that every request must pass through: 
 
 Snapper automatically detects which AI tools and MCP servers are in use by analyzing agent traffic — no manual configuration required. It recognizes 40+ curated server types (GitHub, Slack, databases, etc.) and shows which commands have security rules and which are uncovered. With one click, it generates tailored security rules for any discovered service. This solves the "I don't know what my agents are using" problem.
 
-Beyond traffic analysis, Snapper maintains an MCP Server Catalog of 27,000+ servers synced daily from 5 registries (mcp.so, Glama, Smithery, PulseMCP, Open Directory). Every server is automatically classified into one of 13 security categories — payment/finance, shell/system, identity/auth, data stores, cloud infrastructure, and more — using a 3-tier classification engine: compiled regex name matching (<1ms), description keyword scoring (<1ms), and BGE ML embedding similarity (~5ms). Each category has a predefined security posture (from "maximum" for payment processors to "default" for general-purpose tools), and the corresponding rule template is auto-applied the first time an agent accesses that server. This means every MCP server gets security coverage without manual configuration — payment servers require approval for all actions, shell servers deny most operations by default, and data stores allow reads but gate writes and destructive operations.
+Beyond traffic analysis, Snapper maintains an MCP Server Catalog of 27,129+ servers synced daily from 5 registries (PulseMCP, Smithery, Glama, NPM, awesome-mcp-servers). Every server is automatically classified into one of 13 security categories — payment/finance, shell/system, identity/auth, data stores, cloud infrastructure, and more — using a 3-tier classification engine: compiled regex name matching (<1ms), description keyword scoring (<1ms), and BGE ML embedding similarity (~5ms). Each category has a predefined security posture (from "maximum" for payment processors to "default" for general-purpose tools), and the corresponding rule template is auto-applied the first time an agent accesses that server. This means every MCP server gets security coverage without manual configuration — payment servers require approval for all actions, shell servers deny most operations by default, and data stores allow reads but gate writes and destructive operations.
 
 ---
 
@@ -256,8 +256,8 @@ No. Snapper is fully self-hosted and requires zero internet connectivity. It nev
 
 ### Q: How well-tested is Snapper?
 
-1,850+ automated tests across five layers:
-- **1,300+ unit tests** — API, rule engine, middleware, Telegram/Slack bots, PII vault, security monitor, integrations, threat detection (48 threat-specific tests)
+2,000+ automated tests across five layers:
+- **1,500+ unit tests** — API, rule engine, middleware, Telegram/Slack bots, PII vault, security monitor, integrations, threat detection (48 threat-specific tests)
 - **168 Playwright E2E tests** — Browser-based UI testing of all dashboard flows
 - **95 live integration tests** — API-level tests of all 16 rule types, approval workflows, PII vault lifecycle, emergency block, trust scoring, and audit trail
 - **90 integration E2E tests** — Traffic discovery, templates, custom MCP servers, coverage analysis
@@ -309,7 +309,7 @@ These flow through the same CEF syslog, webhook, and Splunk HEC channels as all 
 
 ### Q: What stage is Snapper at?
 
-Snapper is a working product with 1,850+ automated tests, 16 rule types, a heuristic bad actor detection engine with 7 kill chains, enterprise features (SSO, SCIM, SIEM, MFA, RBAC, multi-tenancy), dashboard authentication with JWT sessions, and integrations with 10+ AI agent types. It has been deployed and tested in production environments with full enforcement mode active. The product is in beta with active development, a live threat simulator that validates all detection pathways, a meta admin platform dashboard with org provisioning and impersonation.
+Snapper is a working product with 2,000+ automated tests, 16 rule types, a heuristic bad actor detection engine with 7 kill chains, enterprise features (SSO, SCIM, SIEM, MFA, RBAC, multi-tenancy), dashboard authentication with JWT sessions, and integrations with 10+ AI agent types. It has been deployed and tested in production environments with full enforcement mode active. The product is in beta with active development, a live threat simulator that validates all detection pathways, a meta admin platform dashboard with org provisioning and impersonation.
 
 ### Q: What's on the roadmap?
 
@@ -345,7 +345,7 @@ Snapper adds under 50 milliseconds of latency — less than a sixth of an eye bl
 
 ### Q: "Why not build this in-house?"
 
-Snapper has 1,850+ tests, 16 rule types, integrations with 10+ agent frameworks, PII vault with AES-256-GCM encryption, SSO/SCIM/SIEM enterprise features, Telegram and Slack bots, a browser extension covering 5 AI platforms, adaptive trust scoring, a heuristic bad actor detection engine with 7 kill chain state machines, and a built-in red-team threat simulator. Building this in-house would take a dedicated security team 18-24 months and ongoing maintenance. The threat landscape evolves constantly (new CVEs, new malicious campaigns, new attack patterns), and keeping up requires continuous security research and detection engineering.
+Snapper has 2,000+ tests, 16 rule types, integrations with 10+ agent frameworks, PII vault with AES-256-GCM encryption, SSO/SCIM/SIEM enterprise features, Telegram and Slack bots, a browser extension covering 5 AI platforms, adaptive trust scoring, a heuristic bad actor detection engine with 7 kill chain state machines, and a built-in red-team threat simulator. Building this in-house would take a dedicated security team 18-24 months and ongoing maintenance. The threat landscape evolves constantly (new CVEs, new malicious campaigns, new attack patterns), and keeping up requires continuous security research and detection engineering.
 
 ### Q: "What if AI agent frameworks add their own security?"
 
@@ -376,7 +376,7 @@ The system is designed for low false positives through multiple mechanisms: (1) 
 | Automated tests | 2,000+ |
 | Supported agent types | 10+ |
 | Browser extension platforms | 5 (ChatGPT, Claude, Gemini, Copilot, Grok) |
-| Known MCP servers recognized | 27,000+ cataloged, 40+ curated |
+| Known MCP servers recognized | 27,129+ cataloged, 40+ curated |
 | PII patterns detected | 30+ |
 | Threat signal types | 13 |
 | Kill chain state machines | 7 |
@@ -393,5 +393,5 @@ The system is designed for low false positives through multiple mechanisms: (1) 
 | Meta admin test coverage | 35 E2E + 13 unit |
 | Multi-user E2E tests | 85 |
 | MCP security categories | 13 |
-| MCP catalog sources | 5 registries (daily sync) |
+| MCP catalog sources | 5 registries: PulseMCP, Smithery, Glama, NPM, awesome-mcp-servers (daily sync) |
 | Enterprise SLA | 99.9% |

@@ -329,7 +329,7 @@ Snapper passively detects MCP servers and tools from live agent traffic, then su
 
 **Key features:**
 - **Auto-discovery** — Detects 40+ known MCP servers by name pattern
-- **MCP Server Catalog** — 27,000+ servers indexed from 5 registries (PulseMCP, Smithery, Glama, NPM, awesome-mcp-servers)
+- **MCP Server Catalog** — 27,129+ servers indexed from 5 registries (PulseMCP, Smithery, Glama, NPM, awesome-mcp-servers)
 - **13 security categories** — Every server is automatically classified into one of 13 categories: `data_store`, `code_repository`, `filesystem`, `shell_exec`, `browser_automation`, `network_http`, `communication`, `cloud_infra`, `identity_auth`, `payment_finance`, `ai_model`, `monitoring`, `general`
 - **3-tier classification engine** — Regex name matching, description keyword scoring, and BGE embedding similarity for accurate categorization
 - **Category-based rule templates** — 13 category templates auto-apply appropriate security rules on first traffic encounter from any classified server
@@ -347,7 +347,7 @@ Snapper passively detects MCP servers and tools from live agent traffic, then su
 | `POST /api/v1/integrations/traffic/create-server-rules` | Generate 3 smart default rules |
 | `GET /api/v1/integrations/traffic/known-servers` | List 40+ recognized MCP servers |
 | `GET /api/v1/integrations/legacy-rules` | Rules from removed templates |
-| `GET /api/v1/mcp-catalog/servers` | Browse 27,000+ MCP servers with filtering |
+| `GET /api/v1/mcp-catalog/servers` | Browse 27,129+ MCP servers with filtering |
 | `GET /api/v1/mcp-catalog/categories` | 13 security categories with server counts |
 | `GET /api/v1/mcp-catalog/categories/{cat}/rules` | Preview category rule templates |
 
@@ -367,7 +367,7 @@ Snapper passively detects MCP servers and tools from live agent traffic, then su
 | `GET /api/v1/threats/summary` | Dashboard threat summary stats |
 | `GET /api/v1/threats/scores/live` | Live per-agent threat scores from Redis |
 | `POST /api/v1/threats/{id}/resolve` | Resolve or mark false positive |
-| `GET /api/v1/mcp-catalog/servers` | Browse 27,000+ MCP servers with filtering |
+| `GET /api/v1/mcp-catalog/servers` | Browse 27,129+ MCP servers with filtering |
 | `GET /api/v1/mcp-catalog/categories` | 13 security categories with server counts |
 | `GET /api/v1/mcp-catalog/categories/{cat}/rules` | Preview category rule templates |
 
@@ -596,7 +596,7 @@ POST   /api/v1/integrations/traffic/create-server-rules  # Smart default rules
 GET    /api/v1/threats              # Threat events (filter by agent, severity, type)
 GET    /api/v1/threats/summary      # Dashboard widget stats
 GET    /api/v1/threats/scores/live  # Live threat scores from Redis
-GET    /api/v1/mcp-catalog/servers  # Browse 27,000+ MCP servers with filtering
+GET    /api/v1/mcp-catalog/servers  # Browse 27,129+ MCP servers with filtering
 GET    /api/v1/mcp-catalog/categories  # 13 security categories with server counts
 GET    /api/v1/mcp-catalog/categories/{cat}/rules  # Preview category rule templates
 POST   /api/v1/setup/quick-register   # Quick-register any supported agent
@@ -803,7 +803,7 @@ python scripts/threat_simulator.py --list
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Unit tests | 1,450+ | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery, threat detection, MCP catalog classifier, meta admin dashboard |
+| Unit tests | 1,500+ | API, rule engine, middleware, Telegram, Slack, PII vault/gate, security monitor, integrations, traffic discovery, threat detection, MCP catalog classifier, meta admin dashboard |
 | E2E tests (Playwright) | 168 | Browser-based UI testing including auth, billing, org management, wizard |
 | Live E2E integration | 95 | API-level rule engine, approvals, PII vault, trust scoring, emergency block, Slack bot, approval automation, deployment infra |
 | Live E2E integrations | 90 | Traffic discovery, templates, custom MCP, legacy rules, coverage analysis |

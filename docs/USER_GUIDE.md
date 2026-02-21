@@ -609,6 +609,16 @@ curl -X POST /api/v1/threats/{id}/resolve \
 | `THREAT_DENY_THRESHOLD` | `80` | Score for automatic denial |
 | `THREAT_APPROVAL_THRESHOLD` | `60` | Score for human approval |
 
+### Shadow AI Detection
+
+Snapper can discover unauthorized AI tools running on your hosts — even ones your team didn't set up. Three detection methods run in parallel:
+
+- **Network egress scanning** — Checks active TCP connections against known AI API domains (OpenAI, Anthropic, Cohere, Mistral, etc.)
+- **Process scanning** — Scans running processes for known AI tool signatures (Copilot, Cursor, Cline, local LLM runners, etc.)
+- **Container scanning** — Queries the Docker socket for running containers with known AI tool images (Ollama, text-generation-webui, etc.)
+
+Detections are tracked per-host with occurrence counts, first/last seen timestamps, and resolution workflow. View findings on the Shadow AI dashboard page (`/shadow-ai`) or via the API (`GET /api/v1/shadow-ai`).
+
 ---
 
 ## Agent Setup

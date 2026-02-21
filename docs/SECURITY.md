@@ -382,7 +382,7 @@ This ensures that rule priority is meaningful: an administrator can create a hig
 
 ### MCP Server Catalog Security
 
-Snapper maintains a catalog of 27,000+ MCP servers classified into 13 security categories. Each category has a security posture (maximum, very strict, strict, moderate, low, default) that determines the rule template auto-applied when an agent first accesses that server. This provides defense-in-depth for the MCP ecosystem:
+Snapper maintains a catalog of 27,129+ MCP servers classified into 13 security categories. Each category has a security posture (maximum, very strict, strict, moderate, low, default) that determines the rule template auto-applied when an agent first accesses that server. This provides defense-in-depth for the MCP ecosystem:
 
 - **Payment/finance servers** (Stripe, PayPal) get maximum security — all actions require approval
 - **Shell/identity servers** (Bash, Auth0) get very strict controls — most actions denied by default
