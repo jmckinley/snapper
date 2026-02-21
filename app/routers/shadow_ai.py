@@ -379,3 +379,55 @@ async def report_findings(
             pass
 
     return {"new": new_count, "updated": updated_count}
+
+
+# ---------------------------------------------------------------------------
+# Known AI services endpoint (for browser extension)
+# ---------------------------------------------------------------------------
+
+# AI service registry — served to the extension on startup (24h cache)
+_KNOWN_AI_SERVICES = [
+    {"source": "chatgpt", "label": "ChatGPT", "domains": ["chatgpt.com", "chat.openai.com"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "claude", "label": "Claude", "domains": ["claude.ai"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "gemini", "label": "Gemini", "domains": ["gemini.google.com"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "copilot", "label": "Microsoft Copilot", "domains": ["copilot.microsoft.com"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "grok", "label": "Grok", "domains": ["grok.com"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "deepseek", "label": "DeepSeek", "domains": ["chat.deepseek.com"], "risk": "high", "category": "chat", "data_residency": "CN"},
+    {"source": "perplexity", "label": "Perplexity", "domains": ["perplexity.ai"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "github_copilot", "label": "GitHub Copilot Web", "domains": ["github.com/copilot"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "mistral", "label": "Mistral Le Chat", "domains": ["chat.mistral.ai"], "risk": "medium", "category": "chat", "data_residency": "EU"},
+    {"source": "poe", "label": "Poe", "domains": ["poe.com"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "meta_ai", "label": "Meta AI", "domains": ["meta.ai"], "risk": "medium", "category": "chat", "data_residency": "US"},
+    {"source": "huggingchat", "label": "HuggingChat", "domains": ["huggingface.co/chat"], "risk": "low", "category": "chat", "data_residency": "US"},
+    {"source": "cursor", "label": "Cursor", "domains": ["cursor.com"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "replit", "label": "Replit", "domains": ["replit.com"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "v0", "label": "v0.dev", "domains": ["v0.dev"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "bolt", "label": "bolt.new", "domains": ["bolt.new"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "lovable", "label": "Lovable", "domains": ["lovable.dev"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "jasper", "label": "Jasper", "domains": ["app.jasper.ai"], "risk": "low", "category": "writing", "data_residency": "US"},
+    {"source": "notion_ai", "label": "Notion AI", "domains": ["notion.so"], "risk": "medium", "category": "writing", "data_residency": "US"},
+    {"source": "midjourney", "label": "Midjourney", "domains": ["midjourney.com"], "risk": "low", "category": "image", "data_residency": "US"},
+    {"source": "sora", "label": "Sora", "domains": ["sora.com"], "risk": "medium", "category": "image", "data_residency": "US"},
+    {"source": "grammarly", "label": "Grammarly", "domains": ["app.grammarly.com"], "risk": "low", "category": "writing", "data_residency": "US"},
+    {"source": "together", "label": "Together AI", "domains": ["together.xyz"], "risk": "low", "category": "chat", "data_residency": "US"},
+    {"source": "groq", "label": "Groq", "domains": ["console.groq.com", "groq.com"], "risk": "low", "category": "chat", "data_residency": "US"},
+    {"source": "openrouter", "label": "OpenRouter", "domains": ["openrouter.ai"], "risk": "low", "category": "chat", "data_residency": "US"},
+    {"source": "replicate", "label": "Replicate", "domains": ["replicate.com"], "risk": "low", "category": "chat", "data_residency": "US"},
+    {"source": "character_ai", "label": "Character.AI", "domains": ["character.ai"], "risk": "low", "category": "chat", "data_residency": "US"},
+    {"source": "windsurf", "label": "Windsurf", "domains": ["windsurf.com"], "risk": "medium", "category": "coding", "data_residency": "US"},
+    {"source": "phind", "label": "Phind", "domains": ["phind.com"], "risk": "low", "category": "coding", "data_residency": "US"},
+]
+
+
+@router.get("/known-services")
+async def get_known_services():
+    """Return the AI service registry for browser extension configuration.
+
+    The extension fetches this on startup (with a 24h cache) to stay
+    updated with new services without requiring a new extension release.
+    """
+    return {
+        "services": _KNOWN_AI_SERVICES,
+        "version": "0.2.0",
+        "total": len(_KNOWN_AI_SERVICES),
+    }

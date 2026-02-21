@@ -122,6 +122,7 @@ class AuditAction(str, Enum):
     # Shadow AI detection events
     SHADOW_AI_DETECTED = "shadow_ai_detected"
     SHADOW_AI_RESOLVED = "shadow_ai_resolved"
+    SHADOW_AI_BROWSER_VISIT = "shadow_ai_browser_visit"
 
 
 class AuditSeverity(str, Enum):
