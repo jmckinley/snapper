@@ -333,17 +333,19 @@ class TestDiscoverTraffic:
 
 class TestGenerateRulesForServer:
 
-    def test_creates_three_rules(self):
+    @pytest.mark.asyncio
+    async def test_creates_three_rules(self):
         """Should generate exactly 3 rules: allow reads, approve writes, deny destructive."""
-        rules = generate_rules_for_server("google_calendar")
+        rules = await generate_rules_for_server("google_calendar")
         assert len(rules) == 3
 
         actions = {r["action"] for r in rules}
         assert actions == {"allow", "require_approval", "deny"}
 
-    def test_patterns_use_provided_server_name(self):
+    @pytest.mark.asyncio
+    async def test_patterns_use_provided_server_name(self):
         """Patterns include the server name in both Claude and OpenClaw formats."""
-        rules = generate_rules_for_server("google_calendar")
+        rules = await generate_rules_for_server("google_calendar")
         allow_rule = next(r for r in rules if r["action"] == "allow")
         patterns = allow_rule["parameters"]["patterns"]
 
@@ -351,47 +353,54 @@ class TestGenerateRulesForServer:
         assert any("mcp__" in p for p in patterns)
         assert any("google_calendar_" in p for p in patterns)
 
-    def test_known_server_returns_curated_pack(self):
+    @pytest.mark.asyncio
+    async def test_known_server_returns_curated_pack(self):
         """Known server with curated pack returns full curated rules (more than 3)."""
-        rules = generate_rules_for_server("github")
+        rules = await generate_rules_for_server("github")
         # GitHub pack has 4 curated rules
         assert len(rules) == len(RULE_PACKS["github"]["rules"])
         assert len(rules) > 3
         assert "GitHub" in rules[0]["name"]
 
-    def test_unknown_server_returns_generic_three(self):
+    @pytest.mark.asyncio
+    async def test_unknown_server_returns_generic_three(self):
         """Unknown server returns exactly 3 generic rules."""
-        rules = generate_rules_for_server("my-custom-thing")
+        rules = await generate_rules_for_server("my-custom-thing")
         assert len(rules) == 3
         assert "My Custom Thing" in rules[0]["name"]
 
-    def test_known_server_without_pack_returns_generic(self):
+    @pytest.mark.asyncio
+    async def test_known_server_without_pack_returns_generic(self):
         """Known server with no curated pack (template_id=None) returns generic 3."""
         # "linear" is known but has template_id=None
-        rules = generate_rules_for_server("linear")
+        rules = await generate_rules_for_server("linear")
         assert len(rules) == 3
 
-    def test_rejects_empty_server_name(self):
+    @pytest.mark.asyncio
+    async def test_rejects_empty_server_name(self):
         """Empty server name raises ValueError."""
         with pytest.raises(ValueError, match="must not be empty"):
-            generate_rules_for_server("")
+            await generate_rules_for_server("")
 
-    def test_rejects_whitespace_only(self):
+    @pytest.mark.asyncio
+    async def test_rejects_whitespace_only(self):
         """Whitespace-only name raises ValueError."""
         with pytest.raises(ValueError, match="must not be empty"):
-            generate_rules_for_server("   ")
+            await generate_rules_for_server("   ")
 
-    def test_rule_types_are_correct(self):
+    @pytest.mark.asyncio
+    async def test_rule_types_are_correct(self):
         """Allow/approve = command_allowlist, deny = command_denylist."""
-        rules = generate_rules_for_server("test")
+        rules = await generate_rules_for_server("test")
         allow = next(r for r in rules if r["action"] == "allow")
         deny = next(r for r in rules if r["action"] == "deny")
         assert allow["rule_type"] == "command_allowlist"
         assert deny["rule_type"] == "command_denylist"
 
-    def test_deny_has_highest_priority(self):
+    @pytest.mark.asyncio
+    async def test_deny_has_highest_priority(self):
         """Deny rules should have the highest priority."""
-        rules = generate_rules_for_server("test")
+        rules = await generate_rules_for_server("test")
         deny = next(r for r in rules if r["action"] == "deny")
         allow = next(r for r in rules if r["action"] == "allow")
         assert deny["priority"] > allow["priority"]

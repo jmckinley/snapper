@@ -177,6 +177,27 @@ if score >= 80 → override to DENY
 if score >= 60 → override to REQUIRE_APPROVAL
 ```
 
+### MCP Server Catalog & Auto-Classification
+
+When the rule engine encounters an MCP tool call with no matching rules, Snapper's auto-apply layer kicks in:
+
+1. Parse tool name to extract server key (e.g., `mcp__postgres__query` → `postgres`)
+2. Check Redis dedup key (`category_rules_applied:{org_id}:{server_key}`)
+3. Look up server in the 27,000+ entry catalog → get `security_category`
+4. Generate rules from the category template (3-5 rules per category)
+5. Persist rules to DB, invalidate rule cache, set Redis dedup key (24h TTL)
+
+Classification happens at catalog sync time via a 3-tier engine:
+- **Tier 1:** Compiled regex name matching (12 patterns, <1ms)
+- **Tier 2:** Description keyword scoring (high-confidence = 3pts, medium = 1pt, threshold = 3)
+- **Tier 3:** BGE embedding similarity (BAAI/bge-small-en-v1.5, ~5ms/server, Celery background task)
+
+Performance safeguards:
+- Per-org rule cap (200 auto-created rules maximum)
+- Scalar column query (only fetches `security_category`, not full ORM object)
+- Redis deduplication prevents repeated catalog lookups
+- Rule cache invalidation ensures new rules take effect immediately
+
 ---
 
 ### 4. Threat Detection (Background)

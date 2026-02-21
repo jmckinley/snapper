@@ -173,6 +173,7 @@ class Settings(BaseSettings):
     PULSEMCP_API_KEY: Optional[str] = None         # PulseMCP API key for rich tool data
     PULSEMCP_TENANT_ID: Optional[str] = None       # PulseMCP tenant ID
     GLAMA_CATALOG_ENABLED: bool = True             # Enable Glama breadth catalog
+    AUTO_CATEGORY_RULES: bool = True               # Auto-apply category rules on first traffic
 
     # Extension config sync
     EXTENSION_SYNC_INTERVAL_SECONDS: int = 3600    # Default sync interval for browser extension

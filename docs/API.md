@@ -511,6 +511,159 @@ Passively discovers MCP servers and tools from live agent traffic, checks rule c
 | POST | `/api/v1/integrations/traffic/create-server-rules` | Generate 3 smart default rules for a server |
 | GET | `/api/v1/integrations/traffic/known-servers` | List 40+ recognized MCP servers |
 
+### MCP Server Catalog
+
+Browse, search, and filter 27,000+ MCP servers aggregated from Glama, Smithery, and PulseMCP. Each server is classified into a security category with tailored rule templates.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/mcp-catalog/servers` | Browse 27,000+ MCP servers with search and filtering |
+| GET | `/api/v1/mcp-catalog/servers/{id}` | Server details with tools and suggested rules |
+| GET | `/api/v1/mcp-catalog/stats` | Catalog statistics by trust tier, auth type, source |
+| GET | `/api/v1/mcp-catalog/categories` | 13 security categories with server counts |
+| GET | `/api/v1/mcp-catalog/categories/{category}/rules` | Preview template rules for a category |
+| POST | `/api/v1/mcp-catalog/sync` | Trigger manual catalog sync (admin only) |
+
+#### Browse Catalog
+
+```bash
+curl "http://localhost:8000/api/v1/mcp-catalog/servers?search=postgres&security_category=data_store&page=1&page_size=50"
+```
+
+Query params: `search`, `category`, `security_category`, `auth_type`, `trust_tier`, `sort_by` (`popularity`|`name`|`tools_count`), `page`, `page_size`
+
+Response:
+```json
+{
+  "servers": [
+    {
+      "id": "uuid",
+      "name": "PostgreSQL MCP Server",
+      "normalized_name": "postgres",
+      "description": "Query and manage PostgreSQL databases",
+      "tools_count": 12,
+      "trust_tier": "established",
+      "auth_type": "env_var",
+      "popularity_score": 850,
+      "categories": ["database"],
+      "is_official": false,
+      "source": "glama",
+      "security_category": "data_store"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 50,
+  "pages": 1
+}
+```
+
+#### Server Details
+
+```bash
+curl "http://localhost:8000/api/v1/mcp-catalog/servers/{id}"
+```
+
+Returns full server details including tool definitions and a preview of suggested rules:
+```json
+{
+  "id": "uuid",
+  "name": "PostgreSQL MCP Server",
+  "normalized_name": "postgres",
+  "tools": [
+    {"name": "query", "description": "Execute a SQL query"}
+  ],
+  "security_metadata": {},
+  "security_category": "data_store",
+  "suggested_rules_preview": [
+    {"name": "Postgres - Allow Read Operations", "rule_type": "command_allowlist", "action": "allow"},
+    {"name": "Postgres - Approve Write Operations", "rule_type": "command_allowlist", "action": "require_approval"},
+    {"name": "Postgres - Block Destructive Operations", "rule_type": "command_denylist", "action": "deny"}
+  ]
+}
+```
+
+#### Catalog Statistics
+
+```bash
+curl "http://localhost:8000/api/v1/mcp-catalog/stats"
+```
+
+Response:
+```json
+{
+  "total_servers": 27432,
+  "by_trust_tier": {"established": 120, "community": 25000, "unknown": 2312},
+  "by_auth_type": {"none": 18000, "env_var": 5000, "oauth": 2000, "unknown": 2432},
+  "by_source": {"glama": 12000, "smithery": 10000, "pulsemcp": 5432},
+  "last_sync_time": "2026-02-21T06:00:00Z",
+  "tools_enriched_count": 8500
+}
+```
+
+#### Security Categories
+
+```bash
+curl "http://localhost:8000/api/v1/mcp-catalog/categories"
+```
+
+Returns 13 categories with server counts, posture, and template rule counts:
+```json
+{
+  "categories": [
+    {
+      "category": "data_store",
+      "name": "Data Store",
+      "posture": "restrictive",
+      "description": "Databases and data warehouses",
+      "template_rule_count": 4,
+      "server_count": 312
+    }
+  ],
+  "total_servers": 27432
+}
+```
+
+#### Preview Category Rules
+
+```bash
+curl "http://localhost:8000/api/v1/mcp-catalog/categories/data_store/rules"
+```
+
+Returns the template rules that would be created for a server in this category:
+```json
+{
+  "category": "data_store",
+  "name": "Data Store",
+  "posture": "restrictive",
+  "rules": [
+    {"name": "Example Server - Allow Read Operations", "rule_type": "command_allowlist", "action": "allow"},
+    {"name": "Example Server - Approve Write Operations", "rule_type": "command_allowlist", "action": "require_approval"},
+    {"name": "Example Server - Block Destructive Operations", "rule_type": "command_denylist", "action": "deny"}
+  ]
+}
+```
+
+#### Trigger Catalog Sync
+
+Admin-only endpoint that triggers a background Celery task to re-sync all registries.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mcp-catalog/sync?force_full=true" \
+  -H "Cookie: session=..."
+```
+
+Response:
+```json
+{
+  "message": "Catalog sync started",
+  "task_id": "celery-task-uuid",
+  "force_full": true
+}
+```
+
+Query params: `force_full` (bool, default `false`) — when true, re-syncs all servers instead of incremental.
+
 #### Traffic Insights
 
 Returns discovered services grouped by MCP server, CLI tool, or builtin — with command counts, coverage status, and template links.
@@ -620,6 +773,8 @@ Response:
   ]
 }
 ```
+
+> **Catalog-aware rules:** If the server exists in the MCP catalog (see [MCP Server Catalog](#mcp-server-catalog)) with a `security_category` other than `"general"`, category-specific template rules are used instead of the generic 3-rule defaults. For example, a `data_store` server gets stricter rules tuned for database access patterns. The endpoint checks the catalog automatically — no extra parameters needed.
 
 #### Custom MCP Template
 

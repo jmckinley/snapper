@@ -509,6 +509,34 @@ async def generate_rules_for_server(server_name: str, db=None) -> list[dict]:
         except Exception as e:
             logger.debug(f"Catalog rule generation failed for {server_name}: {e}")
 
+    # 2.5. Try category-based template rules (from security_category)
+    if db is not None:
+        try:
+            from app.models.mcp_catalog import MCPServerCatalog
+            from app.data.category_rule_templates import generate_rules_from_category
+
+            cat_server = (
+                await db.execute(
+                    select(MCPServerCatalog).where(
+                        or_(
+                            MCPServerCatalog.normalized_name == sn,
+                            MCPServerCatalog.normalized_name == sn.replace("_", "-"),
+                        )
+                    )
+                )
+            ).scalar_one_or_none()
+
+            if cat_server and cat_server.security_category != "general":
+                cat_rules = generate_rules_from_category(
+                    category=cat_server.security_category,
+                    server_key=sn,
+                    server_display=display,
+                )
+                if cat_rules:
+                    return cat_rules
+        except Exception as e:
+            logger.debug(f"Category rule generation failed for {server_name}: {e}")
+
     # 3. Fallback: generate generic 3 rules
     read_verbs = "read|get|list|search|query|describe|fetch|view|find|show|status|info|count"
     write_verbs = "create|update|write|send|post|set|put|add|edit|modify|upsert|insert|comment|reply|push|commit|upload|move|rename|append"

@@ -135,7 +135,9 @@ Snapper has 8 independent security layers that every request must pass through: 
 
 ### Q: What is Traffic Discovery?
 
-Snapper automatically detects which AI tools and MCP servers are in use by analyzing agent traffic — no manual configuration required. It recognizes 40+ known server types (GitHub, Slack, databases, etc.) and shows which commands have security rules and which are uncovered. With one click, it generates tailored security rules for any discovered service. This solves the "I don't know what my agents are using" problem.
+Snapper automatically detects which AI tools and MCP servers are in use by analyzing agent traffic — no manual configuration required. It recognizes 40+ curated server types (GitHub, Slack, databases, etc.) and shows which commands have security rules and which are uncovered. With one click, it generates tailored security rules for any discovered service. This solves the "I don't know what my agents are using" problem.
+
+Beyond traffic analysis, Snapper maintains an MCP Server Catalog of 27,000+ servers synced daily from 5 registries (mcp.so, Glama, Smithery, PulseMCP, Open Directory). Every server is automatically classified into one of 13 security categories — payment/finance, shell/system, identity/auth, data stores, cloud infrastructure, and more — using a 3-tier classification engine: compiled regex name matching (<1ms), description keyword scoring (<1ms), and BGE ML embedding similarity (~5ms). Each category has a predefined security posture (from "maximum" for payment processors to "default" for general-purpose tools), and the corresponding rule template is auto-applied the first time an agent accesses that server. This means every MCP server gets security coverage without manual configuration — payment servers require approval for all actions, shell servers deny most operations by default, and data stores allow reads but gate writes and destructive operations.
 
 ---
 
@@ -371,10 +373,10 @@ The system is designed for low false positives through multiple mechanisms: (1) 
 | Rule types | 16 |
 | Evaluation latency | < 50ms |
 | Threat signal extraction | < 2.5ms |
-| Automated tests | 1,850+ |
+| Automated tests | 2,000+ |
 | Supported agent types | 10+ |
 | Browser extension platforms | 5 (ChatGPT, Claude, Gemini, Copilot, Grok) |
-| Known MCP servers recognized | 40+ |
+| Known MCP servers recognized | 27,000+ cataloged, 40+ curated |
 | PII patterns detected | 30+ |
 | Threat signal types | 13 |
 | Kill chain state machines | 7 |
@@ -390,4 +392,6 @@ The system is designed for low false positives through multiple mechanisms: (1) 
 | Encryption standard | AES-256-GCM |
 | Meta admin test coverage | 35 E2E + 13 unit |
 | Multi-user E2E tests | 85 |
+| MCP security categories | 13 |
+| MCP catalog sources | 5 registries (daily sync) |
 | Enterprise SLA | 99.9% |

@@ -126,6 +126,14 @@ class MCPServerCatalog(Base):
         comment="First-party server flag",
     )
 
+    security_category: Mapped[str] = mapped_column(
+        String(30),
+        server_default="general",
+        nullable=False,
+        index=True,
+        comment="Security category for rule template selection",
+    )
+
     pulsemcp_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,

@@ -380,6 +380,17 @@ This ensures that rule priority is meaningful: an administrator can create a hig
 | `sandbox_required` | Require containerized execution |
 | `pii_gate` | Vault token + raw PII detection |
 
+### MCP Server Catalog Security
+
+Snapper maintains a catalog of 27,000+ MCP servers classified into 13 security categories. Each category has a security posture (maximum, very strict, strict, moderate, low, default) that determines the rule template auto-applied when an agent first accesses that server. This provides defense-in-depth for the MCP ecosystem:
+
+- **Payment/finance servers** (Stripe, PayPal) get maximum security — all actions require approval
+- **Shell/identity servers** (Bash, Auth0) get very strict controls — most actions denied by default
+- **Data stores** (PostgreSQL, Redis) get strict controls — reads allowed, writes need approval, destructive ops blocked
+- **Unknown servers** get generic 3-rule defaults until classified
+
+Classification uses a 3-tier engine: compiled regex name matching (<1ms), description keyword scoring (<1ms), and BGE embedding similarity (~5ms). Auto-applied rules are capped at 200 per organization with Redis deduplication to prevent rule bloat.
+
 ---
 
 ## API Authentication

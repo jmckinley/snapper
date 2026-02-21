@@ -739,7 +739,7 @@ Snapper passively detects MCP servers and tools from live agent traffic — no c
 
 ### Rule Templates
 
-Snapper includes 10 pre-built rule templates for common services:
+Snapper includes 10 pre-built rule templates for common services (plus 13 security-category templates from the MCP catalog — see [MCP Server Catalog](#mcp-server-catalog--security-categories) below):
 
 | Template | Rules | What It Covers |
 |----------|-------|---------------|
@@ -762,9 +762,40 @@ Snapper includes 10 pre-built rule templates for common services:
 
 **Selectable templates** (like Slack) let you pick which rules to enable — some may be off by default.
 
+### MCP Server Catalog & Security Categories
+
+Snapper maintains a catalog of **27,000+ MCP servers** synced daily from 5 public registries (Glama, Smithery, PulseMCP, mcp.run, and the official MCP servers list). Each server is automatically classified into one of 13 security categories, and that category determines which rule template is auto-applied when traffic from the server is first seen by your organization.
+
+**Security categories:**
+
+| Category | Posture | Example Servers |
+|----------|---------|----------------|
+| `data_store` | Strict | PostgreSQL, Redis, MongoDB, Pinecone |
+| `code_repository` | Moderate | GitHub, GitLab, Bitbucket |
+| `filesystem` | Strict | Local files, S3, Google Drive |
+| `shell_exec` | Very strict | Shell, Bash, SSH |
+| `browser_automation` | Strict | Puppeteer, Playwright, Selenium |
+| `network_http` | Moderate | Fetch, Brave Search, Tavily |
+| `communication` | Moderate | Slack, Discord, Gmail, Telegram |
+| `cloud_infra` | Strict | AWS, Docker, Kubernetes, Terraform |
+| `identity_auth` | Very strict | Auth0, Okta, Keycloak |
+| `payment_finance` | Maximum | Stripe, PayPal, Plaid |
+| `ai_model` | Moderate | OpenAI, Anthropic, Ollama |
+| `monitoring` | Low | Sentry, Datadog, Grafana |
+| `general` | Default | Fallback for unclassified servers |
+
+**How it works:**
+
+1. When an agent calls `evaluate` with a tool name Snapper hasn't seen before, the catalog is checked for a matching server.
+2. If found, the server's security category determines the rule template — stricter categories generate more restrictive rules (e.g., `payment_finance` blocks by default and requires approval for all operations, while `monitoring` allows most reads).
+3. Rules are auto-created **per-organization** with Redis-based deduplication, so the same server won't generate duplicate rules even if multiple agents use it simultaneously.
+4. Each organization has a cap of **200 auto-created rules** to prevent runaway rule generation.
+
+If the server is not in the catalog, Snapper falls back to the generic 3-rule pattern (allow reads, approve writes, block destructive) described in the Custom MCP section below.
+
 ### Custom MCP Server
 
-For MCP servers not in the template list, use **Custom MCP**:
+For MCP servers not in the template list, use **Custom MCP**. If the server exists in the catalog (27,000+ servers), Snapper will use the category-specific template for more tailored rules instead of the generic 3-rule fallback:
 
 1. Click the "Custom MCP Server" card (or use the "Add MCP Server" input)
 2. Enter the server name (e.g., `google_calendar`, `notion`, `linear`)

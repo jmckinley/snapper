@@ -27,7 +27,7 @@ celery_app.conf.update(
 )
 
 # Import task modules to register them
-from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review, shadow_ai_scan, mcp_catalog_sync, extension_config_refresh  # noqa
+from app.tasks import security_research, alerts, telegram_cleanup, audit_retention, threat_analysis, ai_threat_review, shadow_ai_scan, mcp_catalog_sync, extension_config_refresh, bge_classify  # noqa
 
 # Configure periodic tasks (Celery Beat)
 celery_app.conf.beat_schedule = {
@@ -110,5 +110,11 @@ celery_app.conf.beat_schedule = {
         "task": "extension-config-refresh",
         "schedule": 86400,  # 24 hours
         "options": {"time_limit": 120},
+    },
+    # BGE classify servers that tiers 1+2 couldn't handle (daily, after catalog sync)
+    "bge-classify-servers": {
+        "task": "bge-classify-servers",
+        "schedule": 86400,  # 24 hours
+        "options": {"time_limit": 300},
     },
 }

@@ -1312,6 +1312,130 @@ class EvaluateResponse(BaseModel):
     resolved_data: Optional[Dict[str, Any]] = None  # Inline-resolved vault tokens (auto mode)
 
 
+_MAX_AUTO_CATEGORY_RULES_PER_ORG = 200  # Cap to prevent unbounded rule growth
+
+
+async def _auto_apply_category_rules(db, redis, tool_name, agent, result):
+    """Auto-apply category-based rules for uncovered MCP servers.
+
+    When an MCP tool call has no matching rule, look up its server in
+    the catalog, get its security_category, and create rules from the
+    category template. Rules take effect on the next request.
+
+    Performance safeguards:
+      - Redis dedup key prevents repeated catalog lookups (24h TTL)
+      - Per-org cap prevents unbounded rule accumulation
+      - Catalog lookup uses indexed normalized_name column
+      - Cache invalidated immediately so new rules take effect
+    """
+    from app.services.traffic_discovery import parse_tool_name
+
+    parsed = parse_tool_name(tool_name)
+    if parsed.source_type != "mcp" or parsed.server_key in ("unknown", "other"):
+        return
+
+    # Redis dedup key — fast-path skip if already processed for this org
+    org_id = str(agent.organization_id) if agent.organization_id else "global"
+    dedup_key = f"category_rules_applied:{org_id}:{parsed.server_key}"
+    if await redis.get(dedup_key):
+        return
+
+    # Check per-org auto-rule cap before doing any DB work
+    cap_key = f"category_rules_count:{org_id}"
+    current_count = await redis.get(cap_key)
+    if current_count and int(current_count) >= _MAX_AUTO_CATEGORY_RULES_PER_ORG:
+        await redis.set(dedup_key, "capped", expire=86400)
+        return
+
+    # Look up server in catalog (indexed lookup, single row)
+    from app.models.mcp_catalog import MCPServerCatalog
+    from sqlalchemy import select, or_
+
+    sn = parsed.server_key.replace("-", "_")
+    cat_server = (
+        await db.execute(
+            select(MCPServerCatalog.security_category).where(
+                or_(
+                    MCPServerCatalog.normalized_name == parsed.server_key,
+                    MCPServerCatalog.normalized_name == sn,
+                    MCPServerCatalog.normalized_name == parsed.server_key.replace("_", "-"),
+                )
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if not cat_server or cat_server == "general":
+        # Set dedup key even for general to avoid repeated lookups (1h TTL)
+        await redis.set(dedup_key, "general", expire=3600)
+        return
+
+    security_category = cat_server  # scalar query returns the column value directly
+
+    # Generate rules from category template
+    from app.data.category_rule_templates import generate_rules_from_category
+
+    display = parsed.server_key.replace("-", " ").replace("_", " ").title()
+    rules = generate_rules_from_category(
+        category=security_category,
+        server_key=sn,
+        server_display=display,
+    )
+
+    if not rules:
+        await redis.set(dedup_key, "empty", expire=3600)
+        return
+
+    # Create rules in DB
+    from app.models.rules import Rule, RuleType, RuleAction
+
+    created_count = 0
+    for rule_data in rules:
+        try:
+            rule_type = RuleType(rule_data["rule_type"])
+            action = RuleAction(rule_data["action"])
+        except (ValueError, KeyError):
+            continue
+
+        rule = Rule(
+            name=rule_data["name"],
+            description=rule_data.get("description", ""),
+            rule_type=rule_type,
+            action=action,
+            priority=rule_data.get("priority", 100),
+            parameters=rule_data.get("parameters", {}),
+            is_active=True,
+            organization_id=agent.organization_id,
+            source=f"category:{security_category}",
+            source_reference=f"category:{security_category}:{parsed.server_key}",
+        )
+        db.add(rule)
+        created_count += 1
+
+    if created_count > 0:
+        await db.flush()
+
+        # Invalidate rule cache so new rules take effect immediately
+        from app.services.rule_engine import RuleEngine
+        engine = RuleEngine(db, redis)
+        await engine.invalidate_cache(agent.id)
+
+        # Track auto-rule count for per-org cap (7-day TTL, refreshed on each add)
+        try:
+            new_total = int(current_count or 0) + created_count
+            await redis.set(cap_key, str(new_total), expire=604800)
+        except Exception:
+            pass
+
+        logger.info(
+            f"Auto-applied {created_count} category rules for "
+            f"{parsed.server_key} ({security_category}) "
+            f"org={org_id}"
+        )
+
+    # Set dedup key (24h TTL)
+    await redis.set(dedup_key, security_category, expire=86400)
+
+
 @router.post("/evaluate", response_model=EvaluateResponse, tags=["Core"])
 async def evaluate_request(
     request: EvaluateRequest,
@@ -1630,6 +1754,15 @@ async def evaluate_request(
             await publish_signals(redis, threat_signals)
     except Exception:
         pass  # Never block the hot path
+
+    # Auto-apply category rules for uncovered MCP servers (fire-and-forget)
+    if settings.AUTO_CATEGORY_RULES and request.tool_name:
+        try:
+            await _auto_apply_category_rules(
+                db, redis, request.tool_name, agent, result
+            )
+        except Exception:
+            pass  # Never block the hot path
 
     # Log to audit trail (all decisions: allow, deny, require_approval)
     audit_action_map = {

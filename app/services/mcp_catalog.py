@@ -558,6 +558,9 @@ async def sync_catalog(db, force_full: bool = False) -> Dict[str, int]:
                         existing["tools"].append(tool)
                         existing_tool_names.add(tool_name)
 
+    # Import classifier for security category assignment
+    from app.services.server_classifier import classify_server_with_method
+
     # Determine trust tiers
     known_names = set()
     for key in KNOWN_MCP_SERVERS:
@@ -588,7 +591,20 @@ async def sync_catalog(db, force_full: bool = False) -> Dict[str, int]:
             )
         ).scalar_one_or_none()
 
+        # Classify server into security category (tiers 1+2, <1ms)
+        sec_category, sec_method = classify_server_with_method(
+            data.get("name", normalized),
+            data.get("description", ""),
+        )
+
         if existing:
+            # Update security category if currently general or if we have a better classification
+            if existing.security_category == "general" and sec_category != "general":
+                existing.security_category = sec_category
+                meta = dict(existing.security_metadata or {})
+                meta["classification_method"] = sec_method
+                existing.security_metadata = meta
+
             # Update fields from higher-priority source
             if data.get("description") and (not existing.description or SOURCE_PRIORITY.get(data.get("source", ""), 0) >= SOURCE_PRIORITY.get(existing.source, 0)):
                 existing.description = data["description"]
@@ -625,6 +641,10 @@ async def sync_catalog(db, force_full: bool = False) -> Dict[str, int]:
             existing.last_synced_at = datetime.now(timezone.utc)
             updated_count += 1
         else:
+            entry_meta = data.get("security_metadata", {})
+            if sec_method != "default":
+                entry_meta["classification_method"] = sec_method
+
             entry = MCPServerCatalog(
                 name=data.get("name", normalized),
                 normalized_name=normalized,
@@ -641,7 +661,8 @@ async def sync_catalog(db, force_full: bool = False) -> Dict[str, int]:
                 is_official=data.get("is_official", False),
                 pulsemcp_id=data.get("pulsemcp_id"),
                 glama_id=data.get("glama_id"),
-                security_metadata=data.get("security_metadata", {}),
+                security_metadata=entry_meta,
+                security_category=sec_category,
                 last_synced_at=datetime.now(timezone.utc),
             )
             db.add(entry)

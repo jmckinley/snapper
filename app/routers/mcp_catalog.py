@@ -40,6 +40,7 @@ class CatalogServerResponse(BaseModel):
     source: str
     repository: Optional[str] = None
     homepage: Optional[str] = None
+    security_category: str = "general"
 
 
 class CatalogServerDetail(CatalogServerResponse):
@@ -69,6 +70,7 @@ async def list_catalog_servers(
     db: AsyncSession = Depends(get_db),
     search: Optional[str] = Query(None, min_length=1, max_length=200),
     category: Optional[str] = None,
+    security_category: Optional[str] = None,
     auth_type: Optional[str] = None,
     trust_tier: Optional[str] = None,
     sort_by: str = Query("popularity", regex="^(popularity|name|tools_count)$"),
@@ -94,6 +96,9 @@ async def list_catalog_servers(
     if category:
         # Categories is a JSONB array — check if it contains the value
         query = query.where(MCPServerCatalog.categories.contains([category]))
+
+    if security_category:
+        query = query.where(MCPServerCatalog.security_category == security_category)
 
     if auth_type:
         query = query.where(MCPServerCatalog.auth_type == auth_type)
@@ -136,6 +141,7 @@ async def list_catalog_servers(
                 source=s.source,
                 repository=s.repository,
                 homepage=s.homepage,
+                security_category=s.security_category,
             ).model_dump()
             for s in servers
         ],
@@ -190,6 +196,7 @@ async def get_catalog_server(
         repository=server.repository,
         homepage=server.homepage,
         security_metadata=server.security_metadata or {},
+        security_category=server.security_category,
         pulsemcp_id=server.pulsemcp_id,
         glama_id=server.glama_id,
         last_synced_at=server.last_synced_at,
@@ -245,6 +252,66 @@ async def get_catalog_stats(
         last_sync_time=last_sync,
         tools_enriched_count=tools_enriched,
     ).model_dump()
+
+
+@router.get("/categories")
+async def list_security_categories(
+    db: AsyncSession = Depends(get_db),
+):
+    """List security categories with server counts.
+
+    Returns all 13 security categories with the number of servers
+    classified into each one, plus template rule info.
+    """
+    from app.data.category_rule_templates import get_all_categories
+
+    # Get server counts per category
+    count_result = await db.execute(
+        select(MCPServerCatalog.security_category, func.count(MCPServerCatalog.id))
+        .group_by(MCPServerCatalog.security_category)
+    )
+    counts = {row[0]: row[1] for row in count_result.all()}
+
+    categories = get_all_categories()
+    for cat in categories:
+        cat["server_count"] = counts.get(cat["category"], 0)
+
+    return {
+        "categories": categories,
+        "total_servers": sum(counts.values()),
+    }
+
+
+@router.get("/categories/{category}/rules")
+async def preview_category_rules(
+    category: str,
+):
+    """Preview the template rules for a security category.
+
+    Shows what rules would be created for a server in this category,
+    using placeholder server name.
+    """
+    from app.data.category_rule_templates import (
+        CATEGORY_RULE_TEMPLATES,
+        generate_rules_from_category,
+    )
+
+    if category not in CATEGORY_RULE_TEMPLATES:
+        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+
+    rules = generate_rules_from_category(
+        category=category,
+        server_key="example_server",
+        server_display="Example Server",
+    )
+    template = CATEGORY_RULE_TEMPLATES[category]
+
+    return {
+        "category": category,
+        "name": template["name"],
+        "posture": template["posture"],
+        "rules": rules,
+    }
 
 
 @router.post("/sync")
