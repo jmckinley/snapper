@@ -50,6 +50,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/auth/mfa/verify",
         "/api/v1/auth/extension/login",
         "/api/v1/auth/extension/refresh",
+        "/api/v1/extension/config",
     }
 
     # Path prefixes exempt from auth
